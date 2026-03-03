@@ -1,0 +1,12 @@
+{
+  "name": "maverick",
+  "description": "Autonomous AI development skills, agents, and hooks for Claude Code",
+  "version": "0.1.0",
+  "author": {
+    "name": "David Cheal",
+    "email": "david.cheal@thermite.au"
+  },
+  "homepage": "https://github.com/thermiteau/maverick",
+  "repository": "https://github.com/thermiteau/maverick",
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "topic": "logging",
+    "prompt": "Identify how logging is implemented in this codebase. Look for logger configuration, log levels, structured logging patterns, and where logs are sent. Use the logging best practice skill to guide the implementation.",
+    "bestPracticeSkill": "skills/logging-bestpractice/SKILL.md"
+  },
+  {
+    "topic": "alerting",
+    "prompt": "Identify how alerting is implemented in this codebase. Look for alert mechanisms, notification services, severity levels, and alert routing. Use the alertingbest practice skill to guide the implementation.",
+    "bestPracticeSkill": "skills/alerting-bestpractice/SKILL.md"
+  },
+  {
+    "topic": "unit-testing",
+    "prompt": "Identify how unit testing is implemented in this codebase. Look for unit test frameworks, test runners, test coverage tools, and test data generation. Use the best practice skill to guide the implementation.",
+    "bestPracticeSkill": "skills/unit-testing-bestpractice/SKILL.md"
+  },
+  {
+    "topic": "integration-testing",
+    "prompt": "Identify how integration testing is implemented in this codebase. Look for integration test frameworks, test runners, test coverage tools, and test data generation.",
+    "bestPracticeSkill": "skills/integration-testing-bestpractice/SKILL.md"
+  },
+  {
+    "topic": "linting",
+    "prompt": "Identify how linting and code formatting is configured in this codebase. Look for linter configs, formatter configs, pre-commit hooks, CI lint steps, and editor settings. Use the linting best practice skill to guide the implementation.",
+    "bestPracticeSkill": "skills/linting-bestpractice/SKILL.md"
+  },
+  {
+    "topic": "cicd",
+    "prompt": "Identify which CI/CD platform this codebase uses. Check for GitHub Actions (.github/workflows/), GitLab CI (.gitlab-ci.yml), Azure DevOps (azure-pipelines.yml), and any other CI/CD configuration. Document the pipeline stages, quality gates, and deployment strategy. If the platform is GitHub Actions, GitLab CI, or Azure DevOps, also note which platform-specific skill applies (cicd-github, cicd-gitlab, or cicd-azure). If the platform is none of these three, create a detailed project skill describing the specific platform's configuration, commands for monitoring pipeline status, common failure patterns, and platform boundaries. Use the CI/CD best practice skill to guide the implementation.",
+    "bestPracticeSkill": "skills/cicd-bestpractice/SKILL.md"
+  }
+]

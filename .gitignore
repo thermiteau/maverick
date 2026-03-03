@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+docs/plans
+CLAUDE.md
+.claude/
+.DS_Store
+build/
+maverick.egg-info/
+prototyping/
+node_modules/

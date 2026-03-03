@@ -1,0 +1,21 @@
+{
+  "name": "thermite",
+  "description": "AI driven solutions that nearly always mostly work.",
+  "owner": {
+    "name": "David Cheal",
+    "email": "david.cheal@thermite.au"
+  },
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "name": "maverick",
+      "description": "Skills, Agents, and Hooks for autonomous AI development. Claude Code, Cursor IDE, Codex.",
+      "version": "0.1.0",
+      "source": "./",
+      "author": {
+        "name": "David Cheal",
+        "email": "david.cheal@thermite.au"
+      }
+    }
+  ]
+}

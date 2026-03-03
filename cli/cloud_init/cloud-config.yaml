@@ -1,0 +1,131 @@
+#cloud-config
+#
+# claude-vps cloud-init configuration
+#
+# Configuration placeholders — update before use:
+#   USERNAME:       claude
+#   AGENT_ID:       claude-agent-01
+#   YOUR_DOMAIN:    example.com
+#   AWS_REGION:     us-east-1
+#   SECRET_ARN:     arn:aws:secretsmanager:us-east-1:123456789:secret:claude-vps/api-keys
+#   SSH_PUBLIC_KEY: ssh-ed25519 AAAA... user@host
+
+users:
+  - name: claude
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: [sudo]
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAA... user@host
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - git
+  - curl
+  - wget
+  - tmux
+  - jq
+  - unzip
+  - python3-pip
+
+write_files:
+  - path: /home/claude/.bashrc.d/claude-vps.sh
+    owner: claude:claude
+    permissions: "0644"
+    content: |
+      # claude-vps bashrc additions
+      alias yolo="claude --dangerously-skip-permissions --permission-mode bypassPermissions"
+      export PATH="$HOME/.local/bin:$PATH"
+
+      if [ -n "$SSH_TTY" ] && [ -z "$TMUX" ]; then
+        tmux attach -t claude || tmux new -s claude
+      fi
+
+runcmd:
+  # --- GitHub CLI ---
+  - |
+    (type -p wget >/dev/null || (apt-get update && apt-get install wget -y)) \
+    && mkdir -p -m 755 /etc/apt/keyrings \
+    && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    && cat $out | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && mkdir -p -m 755 /etc/apt/sources.list.d \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install gh -y
+
+  # --- Tailscale ---
+  - curl -fsSL https://tailscale.com/install.sh | bash
+
+  # --- NVM + Node.js (as user) ---
+  - su - claude -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash'
+  - su - claude -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm install 22'
+
+  # --- uv (as user) ---
+  - su - claude -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+
+  # --- Claude Code (as user) ---
+  - su - claude -c 'curl -fsSL https://claude.ai/install.sh | bash'
+
+  # --- SSH key generation (as user) ---
+  - su - claude -c 'ssh-keygen -t ed25519 -C "claude-agent-01@example.com" -f /home/claude/.ssh/id_ed25519 -N ""'
+
+  # --- Git config (as user) ---
+  - su - claude -c 'git config --global user.email "claude-agent-01@example.com"'
+  - su - claude -c 'git config --global user.name "claude-agent-01"'
+
+  # --- Source .bashrc.d from .bashrc ---
+  - |
+    cat >> /home/claude/.bashrc << 'BASHRC_EOF'
+
+    # Source all scripts in .bashrc.d
+    if [ -d "$HOME/.bashrc.d" ]; then
+      for f in "$HOME/.bashrc.d"/*.sh; do
+        [ -r "$f" ] && . "$f"
+      done
+    fi
+    BASHRC_EOF
+  - chown claude:claude /home/claude/.bashrc
+
+  # --- Fetch secrets from AWS Secrets Manager ---
+  - |
+    SECRET_JSON=$(aws secretsmanager get-secret-value \
+      --secret-id "arn:aws:secretsmanager:us-east-1:123456789:secret:claude-vps/api-keys" \
+      --region us-east-1 \
+      --query SecretString --output text)
+
+    ANTHROPIC_API_KEY=$(echo "$SECRET_JSON" | jq -r '.ANTHROPIC_API_KEY')
+    OPENAI_API_KEY=$(echo "$SECRET_JSON" | jq -r '.OPENAI_API_KEY')
+    GH_TOKEN=$(echo "$SECRET_JSON" | jq -r '.GH_TOKEN')
+
+    cat > /home/claude/.bashrc.d/secrets.sh <<EOF
+    export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY"
+    export OPENAI_API_KEY="$OPENAI_API_KEY"
+    export GH_TOKEN="$GH_TOKEN"
+    EOF
+    chmod 600 /home/claude/.bashrc.d/secrets.sh
+    chown claude:claude /home/claude/.bashrc.d/secrets.sh
+
+    # Authenticate GitHub CLI
+    su - claude -c "echo '$GH_TOKEN' | gh auth login --with-token"
+
+  # --- Install Claude plugins (as user) ---
+  - |
+    su - claude -c '
+      . $HOME/.bashrc.d/secrets.sh
+      claude plugin marketplace add thermiteau/maverick
+      claude plugin marketplace add claude-plugins-official
+      claude plugin install superpowers@claude-plugins-official --scope user
+      claude plugin install claude-code-setup@claude-plugins-official --scope user
+      claude plugin install commit-commands@claude-plugins-official --scope user
+      claude plugin install feature-dev@claude-plugins-official --scope user
+      claude plugin install frontend-design@claude-plugins-official --scope user
+      claude plugin install github@claude-plugins-official --scope user
+      claude plugin install hookify@claude-plugins-official --scope user
+      claude plugin install ralph-loop@claude-plugins-official --scope user
+      claude plugin install security-guidance@claude-plugins-official --scope user
+      claude plugin install stripe@claude-plugins-official --scope user
+      claude plugin install typescript-lsp@claude-plugins-official --scope user
+    '
