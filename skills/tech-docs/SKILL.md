@@ -1,8 +1,6 @@
 ---
 name: tech-docs
-description: Create or update technical documentation for a project. Covers architecture, service interactions, data flows, and design decisions. Produces professional markdown with Mermaid diagrams.
-user-invocable: true
-disable-model-invocation: false
+description: Technical documentation standards — document structure, writing style, file organisation, mermaid diagrams, and validation. Referenced by do-docs and tech-docs-writer.
 ---
 
 # Technical Documentation
@@ -13,87 +11,22 @@ Produce technical documentation that explains **what** systems do, **how** they 
 
 Avoid documenting business processes or product capabilities.
 
-## Process
+## Repository Type Detection
 
-```dot
-digraph docs {
-    "Understand the request" [shape=box];
-    "Explore the codebase" [shape=box];
-    "Audit existing docs" [shape=diamond];
-    "Identify scope" [shape=box];
-    "Write / update documentation" [shape=box];
-    "Validate accuracy" [shape=diamond];
-    "Done" [shape=box];
-    "Revise" [shape=box];
+A project is a **mono-repo** if any of the following are present:
 
-    "Understand the request" -> "Explore the codebase";
-    "Explore the codebase" -> "Audit existing docs";
-    "Audit existing docs" -> "Identify scope" [label="docs exist"];
-    "Audit existing docs" -> "Identify scope" [label="no docs"];
-    "Identify scope" -> "Write / update documentation";
-    "Write / update documentation" -> "Validate accuracy";
-    "Validate accuracy" -> "Done" [label="accurate"];
-    "Validate accuracy" -> "Revise" [label="gaps found"];
-    "Revise" -> "Validate accuracy";
-}
-```
+- `package.json` with a `workspaces` field
+- `pnpm-workspace.yaml`
+- `lerna.json`
+- `Cargo.toml` with a `[workspace]` section
+- `go.work` file
+- Multiple `pyproject.toml` files in subdirectories
+- `nx.json`
+- `rush.json`
 
-### 1. Understand the Request
+If none of these indicators are found, treat the project as a **single-repo**.
 
-Clarify what needs documenting:
-
-- A specific component, service, or subsystem
-- An architectural overview or cross-cutting concern
-- A design decision or technology choice
-- An update to existing documentation after a change
-
-### 2. Explore the Codebase
-
-Before writing anything, read the relevant source code:
-
-- Use Glob, Grep, Read, and subagents to understand actual behaviour
-- Examine dependency files to understand the technology stack
-- Review configuration and infrastructure files for deployment context
-- Look at test files to understand expected behaviours and edge cases
-
-### 3. Audit Existing Documentation
-
-Check whether a `docs/` directory (or `docs/technical/`) already exists. If it does, read every document in it before writing anything new.
-
-For each existing document, assess:
-
-- **Structure compliance** — does it follow the Document Structure defined in this skill? (frontmatter, Overview, Core Content, Integration Points, Design Decisions)
-- **Accuracy** — do factual claims still match the current source code? Flag anything outdated or incorrect.
-- **Token efficiency** — does it follow the writing style and token budget guidelines? Look for prose padding, narrative filler, or documents exceeding 500 lines.
-- **Diagram coverage** — do documents describing interactions or flows include Mermaid diagrams?
-- **Cross-references** — are `relates-to` links in frontmatter correct and complete?
-
-After auditing, classify each document as:
-
-| Status | Action |
-| --- | --- |
-| Compliant and accurate | Leave unchanged |
-| Accurate but non-compliant | Rewrite to match this skill's structure and standards |
-| Outdated or inaccurate | Update with verified information from the current codebase |
-| Redundant or overlapping | Consolidate into a single document |
-
-Then identify **gaps** — areas of the codebase that have no documentation coverage. Use the codebase exploration from step 2 to determine what is missing.
-
-### 4. Identify Scope
-
-Determine the documentation boundary:
-
-- What is being documented (and what is explicitly out of scope)
-- Where the documentation should live (co-located with code or in a central docs directory)
-- Whether this is a new document, an update to an existing one, or a rewrite of a non-compliant one
-
-### 5. Write / Update Documentation
-
-Follow the structure and standards below. When updating existing documents, preserve any accurate content and restructure it to comply with this skill's standards rather than rewriting from scratch.
-
-### 6. Validate Accuracy
-
-Cross-reference every factual claim with the source code. If you cannot verify something, say so rather than guessing.
+This determination controls where documentation is stored — see [File Organisation](#file-organisation).
 
 ## Documentation Principles
 
@@ -172,11 +105,33 @@ Docs are loaded into LLM context alongside code, conversation history, and tool 
 
 ### File Organisation
 
-- Store all documentation under `docs/technical/`
+#### Root-level directory structure (all projects)
+
+```
+docs/
+  technical/     — root-level / cross-cutting technical docs
+  product/       — product documentation (features, user guides, business context)
+  maverick/      — maverick-generated project skills (if applicable)
+```
+
+#### Single-repo projects
+
+All technical docs go in `docs/technical/` — no additional nesting required.
+
+#### Mono-repo projects
+
+- Cross-cutting and architectural docs go in `docs/technical/` at the repo root
+- Package-specific technical docs go in `<package>/docs/` (no `technical/` subdirectory needed since package docs are inherently technical)
+- Each `<package>/docs/` maintains its own `index.md` listing that package's documents
+- Product docs are **never** stored at the package level — always in root `docs/product/`
+
+#### General rules
+
 - Create **separate files** for distinct topics rather than monolithic documents
 - Use `kebab-case.md` naming (e.g. `authentication-architecture.md`)
 - Each file should be self-contained but may cross-reference others via `relates-to` in frontmatter
 - Maintain an `index.md` in `docs/technical/` listing all documents with one-line descriptions — this serves as the entry point for LLM context loading
+- In mono-repos, root `docs/technical/index.md` should link to each `<package>/docs/index.md`
 
 ### Sizing
 
@@ -231,7 +186,7 @@ Before finalising documentation:
 - [ ] Cross-references use correct relative paths
 - [ ] Document is under 500 lines (split if larger)
 - [ ] YAML frontmatter present with title, scope, relates-to, last-verified
-- [ ] `docs/technical/index.md` updated if this is a new document
+- [ ] `docs/technical/index.md` updated if this is a new document (and `<package>/docs/index.md` for mono-repo package docs)
 - [ ] Bullet points and tables used instead of prose where possible
 - [ ] All public exports from documented modules are covered (check for multiple exports per file)
 - [ ] Numbering, terminology, and facts are consistent across all documents in the set

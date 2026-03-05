@@ -1,5 +1,5 @@
 from maverick.models import AgentConfig
-from maverick.names import AGENT_TECH_DOCS_WRITER, MAV_SCOPE_BOUNDARIES, TECH_DOCS
+from maverick.names import AGENT_TECH_DOCS_WRITER, DO_DOCS, MAV_SCOPE_BOUNDARIES, TECH_DOCS
 
 CONFIG = AgentConfig(
     name=AGENT_TECH_DOCS_WRITER,
@@ -12,6 +12,7 @@ CONFIG = AgentConfig(
     model="sonnet",
     color="blue",
     skills=[
+        DO_DOCS,
         TECH_DOCS,
         MAV_SCOPE_BOUNDARIES,
     ],

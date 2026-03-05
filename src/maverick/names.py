@@ -4,6 +4,7 @@
 # Skills
 # ---------------------------------------------------------------------------
 
+DO_DOCS = "do-docs"
 DO_ISSUE_SOLO = "do-issue-solo"
 MAV_BP_ALERTING = "mav-bp-alerting"
 MAV_BP_CICD = "mav-bp-cicd"
@@ -31,6 +32,7 @@ TECH_DOCS = "tech-docs"
 UPSKILL = "upskill"
 
 ALL_SKILL_NAMES = {
+    DO_DOCS,
     DO_ISSUE_SOLO,
     MAV_BP_ALERTING,
     MAV_BP_CICD,
