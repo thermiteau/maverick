@@ -123,6 +123,7 @@ maverick/
 │   └── tech-docs-writer.md
 ├── hooks/                      # Tool-call enforcement rules
 ├── docs/                       # Philosophy and rationale (this directory)
+├── scripts/                    # Developer tooling (release, validation)
 ├── cli/                        # Maverick CLI (init, cloud, worker)
 └── .claude-plugin/             # Plugin manifest
 ```

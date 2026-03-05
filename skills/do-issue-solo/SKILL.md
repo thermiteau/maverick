@@ -78,6 +78,7 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
    - Altered data flows, integration points, or architectural patterns
    - Modified feature behaviour described in existing docs
 3. If documentation updates are needed, dispatch the **tech-docs-writer** agent with:
+   - Mode: **update**
    - The diff (`git diff develop...HEAD`)
    - The list of affected doc files (or a note that new documentation is needed)
    - Instruction to update existing docs to reflect the changes — not to rewrite unrelated sections

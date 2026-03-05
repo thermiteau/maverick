@@ -13,8 +13,9 @@ For each topic entry in `topics.json`:
 
 1. Read the `topic`, `prompt`, and `bestPracticeSkill` fields
 2. If the best-practice skill file exists, read it for reference
-3. Run the scan process (below) for that topic
-4. Write the project skill to `docs/maverick/skills/<topic>/SKILL.md`
+3. Detect repository type (once, cached across all topics — see step 0 below)
+4. **Single-repo**: scan the entire repo, write to `docs/maverick/skills/<topic>/SKILL.md`
+5. **Mono-repo**: for each package, scope scanning to that package directory and write to `<package>/docs/maverick/skills/<topic>/SKILL.md`. Also scan the repo root for cross-cutting implementations and write those to `docs/maverick/skills/<topic>/SKILL.md`. Cross-cutting topics (see below) always write to root only.
 
 Use subagents or parallel agents to process multiple topics concurrently when possible.
 
@@ -33,6 +34,8 @@ Additionally, the default scan hints below are used to find code patterns.
 ```dot
 digraph generate {
     "Receive topic + scan hints" [shape=box];
+    "Detect repository type" [shape=diamond];
+    "Enumerate packages" [shape=box];
     "Check dependency files" [shape=box];
     "Grep for code patterns" [shape=box];
     "Glob for relevant files" [shape=box];
@@ -41,7 +44,10 @@ digraph generate {
     "Write full project skill" [shape=box];
     "Write recommended skill from best practice" [shape=box];
 
-    "Receive topic + scan hints" -> "Check dependency files";
+    "Receive topic + scan hints" -> "Detect repository type";
+    "Detect repository type" -> "Check dependency files" [label="single-repo"];
+    "Detect repository type" -> "Enumerate packages" [label="mono-repo"];
+    "Enumerate packages" -> "Check dependency files" [label="for each package"];
     "Check dependency files" -> "Grep for code patterns";
     "Grep for code patterns" -> "Glob for relevant files";
     "Glob for relevant files" -> "Read discovered files";
@@ -50,6 +56,34 @@ digraph generate {
     "Technology found?" -> "Write recommended skill from best practice" [label="no"];
 }
 ```
+
+### 0. Detect Repository Type
+
+Determine whether the project is a mono-repo or single-repo. A project is a **mono-repo** if any of the following are present:
+
+- `package.json` with a `workspaces` field
+- `pnpm-workspace.yaml`
+- `lerna.json`
+- `Cargo.toml` with a `[workspace]` section
+- `go.work` file
+- Multiple `pyproject.toml` files in subdirectories
+- `nx.json`
+- `rush.json`
+
+If none of these indicators are found, treat the project as a **single-repo**.
+
+Cache this result for the entire invocation — do not re-detect for each topic.
+
+**Package enumeration:** Once a mono-repo is detected, enumerate all packages by reading the workspace configuration:
+
+- **npm/yarn**: read `workspaces` array from root `package.json` (resolve globs)
+- **pnpm**: read `packages` list from `pnpm-workspace.yaml`
+- **lerna**: read `packages` from `lerna.json`
+- **Cargo**: read `members` from `[workspace]` in root `Cargo.toml`
+- **Go**: read `use` directives from `go.work`
+- **Python**: list subdirectories containing `pyproject.toml`
+- **Nx**: read `projects` from `nx.json` or list directories with `project.json`
+- **Rush**: read `projects[].projectFolder` from `rush.json`
 
 ### 1. Check Dependency Files
 
@@ -61,6 +95,8 @@ Search for topic-related packages in:
 - `build.gradle.kts`
 - `go.mod`
 - `Cargo.toml`
+
+**Mono-repo:** Check dependency files **within each package directory** (e.g. `<package>/package.json`, `<package>/pyproject.toml`), not just at the root. Root-level dependency files are still checked for cross-cutting concerns shared across packages.
 
 ### 2. Grep for Code Patterns
 
@@ -81,7 +117,17 @@ Read the files found in steps 2-3 to understand:
 
 ### 5. Write the Project Skill
 
-Write `SKILL.md` to `docs/maverick/skills/<topic>/SKILL.md` using the Write tool (which creates parent directories automatically). Do NOT use `mkdir` via Bash.
+**Single-repo:** Write `SKILL.md` to `docs/maverick/skills/<topic>/SKILL.md` using the Write tool (which creates parent directories automatically). Do NOT use `mkdir` via Bash.
+
+**Mono-repo:** Output path depends on whether the topic is cross-cutting or package-scoped:
+
+- **Cross-cutting topics** → `docs/maverick/skills/<topic>/SKILL.md` at the repo root (scan the entire repo)
+- **Package-scoped topics** → `<package>/docs/maverick/skills/<topic>/SKILL.md` for each package (scan scoped to that package directory). If root-level implementations also exist, write a root skill at `docs/maverick/skills/<topic>/SKILL.md` as well.
+
+### Cross-Cutting vs Package-Scoped Topics
+
+- **Cross-cutting** (always root, even in mono-repos): `cicd` — CI/CD is configured once at the repo root and applies to all packages.
+- **Package-scoped** (per-package in mono-repos): `logging`, `alerting`, `unit-testing`, `integration-testing`, `linting`, `database` — these vary by package and tech stack.
 
 ## Mandatory Output Structure
 
@@ -91,6 +137,7 @@ Every generated project skill MUST use this exact structure:
 ---
 title: <Topic> — Project Implementation
 topic: <topic-name>
+package: <package-name>          # only for package-level skills in mono-repos
 last-verified: <YYYY-MM-DD>
 ---
 
@@ -111,13 +158,15 @@ last-verified: <YYYY-MM-DD>
 <Specific file paths where the relevant code lives.>
 ```
 
+The `package` field is only included for package-level skills generated in mono-repos. Omit it for root-level and single-repo skills.
+
 ## Rules
 
 - **Prose only** — no code examples, config snippets, or CLI commands
 - **Facts only** (detected implementations) — describe what exists in the codebase; for recommended skills, describe what should be adopted based on best-practice guidance
 - **Under 100 lines** — this is a fact sheet, not documentation
 - **All four sections required** — Stack, Configuration, Patterns, File Locations
-- **Frontmatter required** — title, topic, last-verified fields mandatory
+- **Frontmatter required** — title, topic, last-verified fields mandatory; package field mandatory for package-level skills
 - **Write directly** — no user approval needed, file is version-controlled
 
 ## When Nothing Is Found
@@ -151,6 +200,7 @@ Use the same mandatory output structure but with **recommended** content:
 ---
 title: <Topic> — Project Implementation
 topic: <topic-name>
+package: <package-name>          # only for package-level skills in mono-repos
 last-verified: <YYYY-MM-DD>
 status: recommended
 ---
