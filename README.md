@@ -2,10 +2,10 @@
 <br />
 <div align="center">
   <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="docs/media/maverick-logo.png" alt="Logo" width="80" height="80">
+    <img src="docs/media/maverick-logo.png" alt="Logo" width="200" height="200">
   </a>
 
-  <h3 align="center">Maverick</h3>
+  <h1 align="center">Maverick</h1>
 
   <p align="center">
     Claude Code tooling to build software right
@@ -56,13 +56,13 @@ Because every codebase is unique, there is no way to ship defined skills that ar
 
 ### Infrastructure as Code solution for remote Claude Code instances
 
-There are multiple ways to run Claude Code, the most obvious being the software runnign locally on your machine.  This works well for interactive development where you ask Claude Code to complete a task, answer any questions as they come up and monitor the progress.
+There are multiple ways to run Claude Code, the most obvious being the software running locally on your machine.  This works well for interactive development where you ask Claude Code to complete a task, answer any questions as they come up and monitor the progress.
 
 It falls down when you need to complete multiple features or bug fixes at the same time. Claude Code on local machines, doesnt scale.
 
-Maverick resolves this by deploying Claude Code workers to remote Claude platforms such as Amazon Web Services. Those workers are triggered by creating tickets (issues) in GitHub. The worker will autonomously complete the requirements and keep you up to date by update the ticket.
+Maverick solves this by deploying Claude Code workers to remote Claude platforms such as Amazon Web Services. Those workers are triggered by creating tickets (issues) in GitHub. The worker will autonomously complete the requirements and keep you up to date with notes in the Github Issue.
 
-This is more complicated than many cassual users would require and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
+This is more complicated than cassual users may need and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
 
 ## Install
 
@@ -97,25 +97,7 @@ uv tool install -e .
 
 ### Initialising an existing project (repo)
 
-Run `maverick init` inside a project directory to detect the technology stack and write a configuration file.
-
-This creates `.maverick/config.json` with the detected language, frameworks, modules and dependencies etc.
-
-It writes a codebase audit report to `docs/maverick-audit.md`. that will let you know how well the project aligns with Maverick workflow and practices.
-
-```sh
-cd /path/to/project
-maverick init
-
-# Preview detection without writing config
-maverick init --dry-run
-
-# Override detected modules
-maverick init --add vitest --remove jest
-
-# Set cloud platform
-maverick init --platform aws
-```
+run `/maverick:init` within Claude CLI
 
 ### Work on GitHub issues
 
@@ -130,23 +112,6 @@ With the plugin loaded, use skills directly in Claude Code:
 
 /maverick:codebase-audit
 # Audit a codebase against Maverick standards
-```
-
-## Trigger work
-
-Add a `maverick-do` label to any GitHub issue. The worker will pick it up, clone the repo, and run Claude Code to complete the issue.
-
-## Development
-
-```sh
-# Install dependencies for local development
-uv sync
-
-# Run from source
-uv run maverick --help
-
-# Load plugin from source for testing
-claude --plugin-dir ./maverick-plugin
 ```
 
 ## License
