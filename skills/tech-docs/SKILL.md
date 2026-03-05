@@ -2,6 +2,7 @@
 name: tech-docs
 description: Create or update technical documentation for a project. Covers architecture, service interactions, data flows, and design decisions. Produces professional markdown with Mermaid diagrams.
 user-invocable: true
+disable-model-invocation: false
 ---
 
 # Technical Documentation
@@ -18,16 +19,19 @@ Avoid documenting business processes or product capabilities.
 digraph docs {
     "Understand the request" [shape=box];
     "Explore the codebase" [shape=box];
+    "Audit existing docs" [shape=diamond];
     "Identify scope" [shape=box];
-    "Write documentation" [shape=box];
+    "Write / update documentation" [shape=box];
     "Validate accuracy" [shape=diamond];
     "Done" [shape=box];
     "Revise" [shape=box];
 
     "Understand the request" -> "Explore the codebase";
-    "Explore the codebase" -> "Identify scope";
-    "Identify scope" -> "Write documentation";
-    "Write documentation" -> "Validate accuracy";
+    "Explore the codebase" -> "Audit existing docs";
+    "Audit existing docs" -> "Identify scope" [label="docs exist"];
+    "Audit existing docs" -> "Identify scope" [label="no docs"];
+    "Identify scope" -> "Write / update documentation";
+    "Write / update documentation" -> "Validate accuracy";
     "Validate accuracy" -> "Done" [label="accurate"];
     "Validate accuracy" -> "Revise" [label="gaps found"];
     "Revise" -> "Validate accuracy";
@@ -48,24 +52,46 @@ Clarify what needs documenting:
 Before writing anything, read the relevant source code:
 
 - Use Glob, Grep, Read, and subagents to understand actual behaviour
-- Check existing documentation to avoid duplication
 - Examine dependency files to understand the technology stack
 - Review configuration and infrastructure files for deployment context
 - Look at test files to understand expected behaviours and edge cases
 
-### 3. Identify Scope
+### 3. Audit Existing Documentation
+
+Check whether a `docs/` directory (or `docs/technical/`) already exists. If it does, read every document in it before writing anything new.
+
+For each existing document, assess:
+
+- **Structure compliance** — does it follow the Document Structure defined in this skill? (frontmatter, Overview, Core Content, Integration Points, Design Decisions)
+- **Accuracy** — do factual claims still match the current source code? Flag anything outdated or incorrect.
+- **Token efficiency** — does it follow the writing style and token budget guidelines? Look for prose padding, narrative filler, or documents exceeding 500 lines.
+- **Diagram coverage** — do documents describing interactions or flows include Mermaid diagrams?
+- **Cross-references** — are `relates-to` links in frontmatter correct and complete?
+
+After auditing, classify each document as:
+
+| Status | Action |
+| --- | --- |
+| Compliant and accurate | Leave unchanged |
+| Accurate but non-compliant | Rewrite to match this skill's structure and standards |
+| Outdated or inaccurate | Update with verified information from the current codebase |
+| Redundant or overlapping | Consolidate into a single document |
+
+Then identify **gaps** — areas of the codebase that have no documentation coverage. Use the codebase exploration from step 2 to determine what is missing.
+
+### 4. Identify Scope
 
 Determine the documentation boundary:
 
 - What is being documented (and what is explicitly out of scope)
 - Where the documentation should live (co-located with code or in a central docs directory)
-- Whether this is a new document or an update to an existing one
+- Whether this is a new document, an update to an existing one, or a rewrite of a non-compliant one
 
-### 4. Write Documentation
+### 5. Write / Update Documentation
 
-Follow the structure and standards below.
+Follow the structure and standards below. When updating existing documents, preserve any accurate content and restructure it to comply with this skill's standards rather than rewriting from scratch.
 
-### 5. Validate Accuracy
+### 6. Validate Accuracy
 
 Cross-reference every factual claim with the source code. If you cannot verify something, say so rather than guessing.
 
@@ -78,16 +104,31 @@ Cross-reference every factual claim with the source code. If you cannot verify s
 - **Integration points**: How components communicate and depend on each other
 - **Data flow**: How data moves through the system
 - **Architectural patterns**: Design patterns employed and their rationale
+- **Accessibility patterns**: ARIA attribute usage, focus management, keyboard navigation, screen reader support, and WCAG compliance level. Especially important for government or public-sector projects.
+- **Validation and business rules**: Form validation logic, required field rules, conditional visibility, and domain constraints that the application enforces
 - **Mermaid diagrams**: Every document describing interactions or flows must include at least one diagram
 
 ### Exclude
 
-- **Code examples**: Describe behaviour in prose, not code snippets
+- **Implementation code**: No function bodies, algorithms, or internal logic as code blocks
 - **Infrastructure configuration**: No CDK, Terraform, Docker Compose, or config file content
-- **CLI commands**: No terminal commands or deployment scripts
+- **CLI commands**: No terminal commands or deployment scripts (see exception below)
 - **API endpoint definitions**: No route paths, request/response schemas, or curl examples
 
-If tempted to include any of the above, describe the concept or behaviour in prose instead.
+### Include as Structured Tables (Not Code Blocks)
+
+- **Component/module public API**: Props, parameters, exported types, and return values — documented as tables, not code snippets
+- **Context/hook API surface**: What a context provider or hook exposes to consumers
+
+### Optional: Developer Onboarding Section
+
+When documenting a full project (not a single component), include a brief onboarding section in `architecture-overview.md` or a dedicated `getting-started.md`:
+
+- Prerequisites (runtime versions, package manager)
+- Install and run commands
+- Key scripts (build, test, lint)
+
+Keep to under 20 lines. This is the one context where CLI commands are acceptable.
 
 ## Document Structure
 
@@ -146,6 +187,17 @@ Docs are loaded into LLM context alongside code, conversation history, and tool 
 | Medium (feature, service)           | Full document structure (200-500 lines)            |
 | Large (cross-cutting, architecture) | Split into multiple focused documents              |
 
+### Within a Document
+
+Scale section depth to component complexity. Indicators that a component needs deeper coverage:
+
+- File exceeds 300 lines
+- Contains business/domain logic (rule engines, calculations, transformations)
+- Has multiple distinct output modes (e.g., screen rendering, PDF export, print view)
+- Serves as an aggregation point for data from multiple sources
+
+For these components, document each distinct responsibility separately rather than summarising the whole.
+
 ## Mermaid Diagram Standards
 
 Use diagrams to visualise:
@@ -175,9 +227,11 @@ Before finalising documentation:
 
 - [ ] All factual claims verified against source code
 - [ ] Mermaid diagrams render correctly (valid syntax)
-- [ ] No code examples, config snippets, or CLI commands included
+- [ ] No implementation code, config snippets, or CLI commands included (API surface tables are acceptable)
 - [ ] Cross-references use correct relative paths
 - [ ] Document is under 500 lines (split if larger)
 - [ ] YAML frontmatter present with title, scope, relates-to, last-verified
 - [ ] `docs/technical/index.md` updated if this is a new document
 - [ ] Bullet points and tables used instead of prose where possible
+- [ ] All public exports from documented modules are covered (check for multiple exports per file)
+- [ ] Numbering, terminology, and facts are consistent across all documents in the set

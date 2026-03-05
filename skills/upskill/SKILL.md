@@ -22,7 +22,7 @@ For each topic entry in `topics.json`:
 3. Run the scan process (below) for that topic
 4. Write the project skill to `docs/maverick/skills/<topic>/SKILL.md`
 
-Use the `subagents` skill or parallel agents to process multiple topics concurrently when possible.
+Use subagents or parallel agents to process multiple topics concurrently when possible.
 
 ## Input
 
@@ -147,7 +147,7 @@ digraph not_found {
 
 ### With a Best-Practice Skill Available
 
-1. **Read the best-practice skill** for the topic (e.g. `skills/logging-bestpractice/SKILL.md`)
+1. **Read the best-practice skill** for the topic (e.g. `skills/mav-bp-logging/SKILL.md`)
 2. **Analyse the codebase context** — identify the language, framework, deployment target (e.g. Node.js + Fastify on AWS Lambda), existing dependencies, and project structure
 3. **Generate a recommended implementation** — apply the best-practice guidance to the specific codebase, choosing concrete technologies and patterns that fit the project's stack
 

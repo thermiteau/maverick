@@ -99,7 +99,7 @@ uv tool install -e .
 
 Run `maverick init` inside a project directory to detect the technology stack and write a configuration file.
 
-This creates `.maverick/config.toml` with the detected language, frameworks, modules and dependencies etc.
+This creates `.maverick/config.json` with the detected language, frameworks, modules and dependencies etc.
 
 It writes a codebase audit report to `docs/maverick-audit.md`. that will let you know how well the project aligns with Maverick workflow and practices.
 

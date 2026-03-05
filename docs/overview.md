@@ -87,7 +87,7 @@ Maverick encodes best practices as machine-readable artefacts that the LLM must 
 
 | Mechanism  | Role                                                            | Example                                                           |
 | ---------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
-| **Skills** | Define what good looks like - standards, conventions, workflows | `logging-bestpractice` defines log levels and structured format   |
+| **Skills** | Define what good looks like - standards, conventions, workflows | `mav-bp-logging` defines log levels and structured format   |
 | **Agents** | Verify compliance autonomously - review, test, document         | `code-reviewer` catches convention violations and security issues |
 | **Hooks**  | Enforce rules automatically at tool-call boundaries             | Block commits to protected branches, prevent secret exposure      |
 

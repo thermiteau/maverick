@@ -1,8 +1,8 @@
 ---
 name: create-implementation-plan
 description: How to break a solution design into granular, verifiable implementation steps with scope control. Used as a dependency from workflow skills.
-disable-model-invocation: false
 user-invocable: true
+disable-model-invocation: false
 ---
 
 # Create Implementation Plan
@@ -142,4 +142,4 @@ digraph scope {
 
 ## Execution
 
-Once the plan is approved, follow the plan-execution skill to execute it step-by-step.
+Once the plan is approved, follow the mav-plan-execution skill to execute it step-by-step.

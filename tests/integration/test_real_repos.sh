@@ -52,18 +52,18 @@ clone_repo() {
     echo "$dest"
 }
 
-# Assert a module appears in the config.toml active list
+# Assert a module appears in the config.json active list
 assert_module_detected() {
     local config_file="$1" module="$2"
     grep -q "\"$module\"" "$config_file" \
-        || fail "expected module '$module' not found in config.toml"
+        || fail "expected module '$module' not found in config.json"
 }
 
-# Assert a module does NOT appear in the config.toml active list
+# Assert a module does NOT appear in the config.json active list
 assert_module_not_detected() {
     local config_file="$1" module="$2"
     if grep -q "\"$module\"" "$config_file"; then
-        fail "unexpected module '$module' found in config.toml"
+        fail "unexpected module '$module' found in config.json"
     fi
 }
 
@@ -77,7 +77,7 @@ test_repo_js_service_manual() {
     echo "── govau/service-manual (JavaScript) ──"
     local project_dir
     project_dir=$(clone_repo "https://github.com/govau/service-manual.git" "service-manual")
-    local config="$project_dir/.maverick/config.toml"
+    local config="$project_dir/.maverick/config.json"
 
     # init --dry-run: no files written
     TEST_COUNT=$((TEST_COUNT + 1))
@@ -85,7 +85,7 @@ test_repo_js_service_manual() {
     (cd "$project_dir" && maverick init --dry-run) \
         || fail "maverick init --dry-run exited non-zero"
     [[ ! -f "$config" ]] \
-        || fail "config.toml created despite --dry-run"
+        || fail "config.json created despite --dry-run"
     pass "init --dry-run"
 
     # init: detect nodejs
@@ -94,7 +94,7 @@ test_repo_js_service_manual() {
     (cd "$project_dir" && maverick init) \
         || fail "maverick init exited non-zero"
     [[ -f "$config" ]] \
-        || fail "config.toml not created"
+        || fail "config.json not created"
     assert_module_detected "$config" "nodejs"
     assert_module_not_detected "$config" "python"
     pass "init (detect nodejs)"
@@ -160,7 +160,7 @@ test_repo_python_sampleproject() {
     echo "── data61/blocklib (Python) ──"
     local project_dir
     project_dir=$(clone_repo "https://github.com/data61/blocklib.git" "blocklib")
-    local config="$project_dir/.maverick/config.toml"
+    local config="$project_dir/.maverick/config.json"
 
     # init: detect python
     TEST_COUNT=$((TEST_COUNT + 1))
@@ -168,7 +168,7 @@ test_repo_python_sampleproject() {
     (cd "$project_dir" && maverick init) \
         || fail "maverick init exited non-zero"
     [[ -f "$config" ]] \
-        || fail "config.toml not created"
+        || fail "config.json not created"
     assert_module_detected "$config" "python"
     assert_module_not_detected "$config" "nodejs"
     pass "init (detect python)"
@@ -197,7 +197,7 @@ test_repo_python_sampleproject() {
     (cd "$project_dir" && maverick init --platform aws) \
         || fail "maverick init --platform exited non-zero"
     grep -q 'name = "aws"' "$config" \
-        || fail "platform aws not found in config.toml"
+        || fail "platform aws not found in config.json"
     pass "init --platform aws"
 
     # clean
@@ -215,7 +215,7 @@ test_repo_typescript_expressjs() {
     echo "── govau/observatory-website (TypeScript / Node.js) ──"
     local project_dir
     project_dir=$(clone_repo "https://github.com/govau/observatory-website.git" "observatory-website")
-    local config="$project_dir/.maverick/config.toml"
+    local config="$project_dir/.maverick/config.json"
 
     # init: detect nodejs (and possibly github-actions)
     TEST_COUNT=$((TEST_COUNT + 1))
@@ -223,7 +223,7 @@ test_repo_typescript_expressjs() {
     (cd "$project_dir" && maverick init) \
         || fail "maverick init exited non-zero"
     [[ -f "$config" ]] \
-        || fail "config.toml not created"
+        || fail "config.json not created"
     assert_module_detected "$config" "nodejs"
     assert_module_not_detected "$config" "python"
     pass "init (detect nodejs)"

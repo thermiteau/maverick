@@ -8,7 +8,7 @@ from pathlib import Path
 
 import boto3
 
-from maverick.config import AMI_STATE, CONFIG_FILE, init_config
+from maverick.config import AMI_STATE, SYSTEM_CONFIG_FILE, init_config
 
 BUNDLED_CLOUD_CONFIG = "cloud-config.yaml"
 
@@ -29,7 +29,7 @@ def _get_cloud_config_path(cfg):
     print("Error: Cloud config not found.")
     if config_value:
         print(f"  Checked: {Path(config_value).resolve()}")
-    print(f"  Checked: bundled package data")
+    print("  Checked: bundled package data")
     sys.exit(1)
 
 
@@ -47,7 +47,7 @@ def validate_config(cfg):
         print("Error: The following config values are empty:")
         for name in missing:
             print(f"  - aws.{name}")
-        print(f"Edit {CONFIG_FILE} and try again.")
+        print(f"Edit {SYSTEM_CONFIG_FILE} and try again.")
         sys.exit(1)
 
     return _get_cloud_config_path(cfg)
@@ -99,7 +99,9 @@ def main():
     )
 
     # Wait for status checks
-    print("==> Waiting for instance status checks to pass (this may take 10-15 minutes)...")
+    print(
+        "==> Waiting for instance status checks to pass (this may take 10-15 minutes)..."
+    )
     ec2.get_waiter("instance_status_ok").wait(InstanceIds=[instance_id])
     print("    Status checks passed.")
 

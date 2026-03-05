@@ -42,7 +42,7 @@ Maverick implements a multi-stage review process that combines autonomous agent 
 
 ```mermaid
 flowchart TD
-    A[LLM generates code] --> B[local-verification skill]
+    A[LLM generates code] --> B[mav-local-verification skill]
     B -->|tests pass| C[code-reviewer agent: Stage 1]
     C -->|spec compliance check| D{matches requirements?}
     D -->|no| E[reject with specific feedback]

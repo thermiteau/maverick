@@ -12,9 +12,9 @@ from botocore.exceptions import ClientError
 from maverick.config import INFRA_STATE, STATE_DIR, init_config, save_config
 
 LAMBDA_FUNCTION_NAME = "maverick-webhook"
-LAMBDA_ROLE_NAME = "maverick-lambda-role"
-LAMBDA_POLICY_NAME = "maverick-lambda-policy"
-EC2_WORKER_POLICY_NAME = "maverick-ec2-worker-policy"
+LAMBDA_ROLE_NAME = "maverick-webhook-role"
+LAMBDA_POLICY_NAME = "maverick-webhook-policy"
+EC2_WORKER_POLICY_NAME = "maverick-worker-policy"
 QUEUE_NAME = "maverick-work"
 DLQ_NAME = "maverick-work-dlq"
 
@@ -78,7 +78,9 @@ def _ensure_iam_policy(iam, policy_name, policy_document, account_id):
         non_default = [v for v in versions if not v["IsDefaultVersion"]]
         if len(non_default) >= 4:
             oldest = sorted(non_default, key=lambda v: v["CreateDate"])[0]
-            iam.delete_policy_version(PolicyArn=policy_arn, VersionId=oldest["VersionId"])
+            iam.delete_policy_version(
+                PolicyArn=policy_arn, VersionId=oldest["VersionId"]
+            )
         iam.create_policy_version(
             PolicyArn=policy_arn,
             PolicyDocument=json.dumps(policy_document),
@@ -155,12 +157,12 @@ def _ensure_function_url(lambda_client, function_name):
     """Create or get a Lambda Function URL. Returns the URL."""
     try:
         resp = lambda_client.get_function_url_config(FunctionName=function_name)
-        print(f"    Function URL already exists.")
+        print("    Function URL already exists.")
         return resp["FunctionUrl"]
     except ClientError as e:
         if e.response["Error"]["Code"] != "ResourceNotFoundException":
             raise
-    print(f"    Creating Function URL...")
+    print("    Creating Function URL...")
     resp = lambda_client.create_function_url_config(
         FunctionName=function_name,
         AuthType="NONE",
@@ -226,19 +228,25 @@ def deploy():
     # 1. SQS queues
     print("==> Setting up SQS queues...")
     dlq_url = _ensure_queue(sqs, DLQ_NAME)
-    dlq_arn = sqs.get_queue_attributes(
-        QueueUrl=dlq_url, AttributeNames=["QueueArn"]
-    )["Attributes"]["QueueArn"]
+    dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+        "Attributes"
+    ]["QueueArn"]
 
     sqs_cfg = cfg["sqs"]
-    queue_url = _ensure_queue(sqs, QUEUE_NAME, attributes={
-        "VisibilityTimeout": str(sqs_cfg["visibility_timeout"]),
-        "MessageRetentionPeriod": str(sqs_cfg["message_retention"]),
-        "RedrivePolicy": json.dumps({
-            "deadLetterTargetArn": dlq_arn,
-            "maxReceiveCount": str(sqs_cfg["max_receive_count"]),
-        }),
-    })
+    queue_url = _ensure_queue(
+        sqs,
+        QUEUE_NAME,
+        attributes={
+            "VisibilityTimeout": str(sqs_cfg["visibility_timeout"]),
+            "MessageRetentionPeriod": str(sqs_cfg["message_retention"]),
+            "RedrivePolicy": json.dumps(
+                {
+                    "deadLetterTargetArn": dlq_arn,
+                    "maxReceiveCount": str(sqs_cfg["max_receive_count"]),
+                }
+            ),
+        },
+    )
     queue_arn = sqs.get_queue_attributes(
         QueueUrl=queue_url, AttributeNames=["QueueArn"]
     )["Attributes"]["QueueArn"]
@@ -251,11 +259,13 @@ def deploy():
     print("==> Setting up Lambda IAM role...")
     lambda_assume_policy = {
         "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {"Service": "lambda.amazonaws.com"},
-            "Action": "sts:AssumeRole",
-        }],
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {"Service": "lambda.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }
+        ],
     }
     lambda_role_arn = _ensure_iam_role(iam, LAMBDA_ROLE_NAME, lambda_assume_policy)
 
@@ -364,10 +374,10 @@ def deploy():
     print(f"  Log Group:      {log_group_name}")
     print(f"  State saved:    {INFRA_STATE}")
     print()
-    print(f"Next: Configure this Function URL as a GitHub webhook")
+    print("Next: Configure this Function URL as a GitHub webhook")
     print(f"  URL:    {function_url}")
-    print(f"  Events: Issues")
-    print(f"  Secret: Set GITHUB_WEBHOOK_SECRET in your Secrets Manager secret")
+    print("  Events: Issues")
+    print("  Secret: Set GITHUB_WEBHOOK_SECRET in your Secrets Manager secret")
 
 
 def status():
@@ -396,7 +406,9 @@ def destroy():
     cfg = init_config()
     region = cfg["aws"]["region"]
 
-    confirm = input("Destroy all maverick infrastructure? This cannot be undone. [y/N] ")
+    confirm = input(
+        "Destroy all maverick infrastructure? This cannot be undone. [y/N] "
+    )
     if confirm.lower() != "y":
         print("Cancelled.")
         return
@@ -429,9 +441,9 @@ def destroy():
     try:
         # Delete all policy versions before deleting policy
         if infra.get("lambda_policy_arn"):
-            versions = iam.list_policy_versions(
-                PolicyArn=infra["lambda_policy_arn"]
-            )["Versions"]
+            versions = iam.list_policy_versions(PolicyArn=infra["lambda_policy_arn"])[
+                "Versions"
+            ]
             for v in versions:
                 if not v["IsDefaultVersion"]:
                     iam.delete_policy_version(
@@ -458,9 +470,9 @@ def destroy():
         pass
     try:
         if infra.get("ec2_policy_arn"):
-            versions = iam.list_policy_versions(
-                PolicyArn=infra["ec2_policy_arn"]
-            )["Versions"]
+            versions = iam.list_policy_versions(PolicyArn=infra["ec2_policy_arn"])[
+                "Versions"
+            ]
             for v in versions:
                 if not v["IsDefaultVersion"]:
                     iam.delete_policy_version(

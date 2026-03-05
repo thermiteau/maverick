@@ -59,8 +59,8 @@ test_init() {
     echo '[project]' > "$project_dir/pyproject.toml"
     (cd "$project_dir" && maverick init) \
         || fail "maverick init exited non-zero"
-    [[ -f "$project_dir/.maverick/config.toml" ]] \
-        || fail ".maverick/config.toml not created"
+    [[ -f "$project_dir/.maverick/config.json" ]] \
+        || fail ".maverick/config.json not created"
     pass "maverick init"
 }
 

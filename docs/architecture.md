@@ -15,10 +15,10 @@ Skills are markdown files with YAML frontmatter that load into the LLM's context
 | ------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | **Best Practices**  | logging, alerting, linting, unit-testing, cicd                                     | Define standards for each practice area                        |
 | **Workflow**        | do-issue-solo, do-issue-guided, create-solution-design, create-implementation-plan | Orchestrate multi-step development workflows                   |
-| **Execution**       | plan-execution, local-verification, subagents                                      | Control how plans are executed and verified                    |
-| **Git & GitHub**    | git-workflow, github-issue-workflow                                                | Define branching, commit, and issue interaction patterns       |
-| **CI/CD Platforms** | cicd-github, cicd-gitlab, cicd-azure                                               | Platform-specific pipeline monitoring                          |
-| **Governance**      | scope-boundaries, claude-code-recovery, systematic-debugging                       | Define hard limits and resilience patterns                     |
+| **Execution**       | mav-plan-execution, mav-local-verification, subagents                              | Control how plans are executed and verified                    |
+| **Git & GitHub**    | mav-git-workflow, mav-github-issue-workflow                                        | Define branching, commit, and issue interaction patterns       |
+| **CI/CD Platforms** | mav-bp-cicd-github, mav-bp-cicd-gitlab, mav-bp-cicd-azure                         | Platform-specific pipeline monitoring                          |
+| **Governance**      | mav-scope-boundaries, mav-claude-code-recovery, mav-systematic-debugging           | Define hard limits and resilience patterns                     |
 | **Project Setup**   | upskill, maverick-alignment, tech-docs, pullrequest-review                         | Generate project skills, audit codebases, manage documentation |
 
 ### The Upskill System

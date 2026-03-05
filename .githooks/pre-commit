@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Only run if source templates or configs changed
+CHANGED=$(git diff --cached --name-only -- 'src/maverick/' 2>/dev/null || true)
+if [ -z "$CHANGED" ]; then
+    exit 0
+fi
+
+echo "Pre-commit: regenerating skills and agents..."
+make build
+
+# Stage any changes to generated output
+git add skills/*/SKILL.md agents/*.md skills/upskill/topics.json 2>/dev/null || true

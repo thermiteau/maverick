@@ -2,6 +2,7 @@
 name: create-solution-design
 description: How to produce a solution design for a GitHub issue or task. Covers codebase exploration, design structure, and validation. Used as a dependency from workflow skills.
 user-invocable: true
+disable-model-invocation: false
 ---
 
 # Create Solution Design

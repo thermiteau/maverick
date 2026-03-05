@@ -44,7 +44,7 @@ Maverick enforces alerting through the same multi-layer pattern used for all bes
 
 ```mermaid
 flowchart TD
-    A[alerting-bestpractice skill] -->|defines standards| B[upskill system]
+    A[mav-bp-alerting skill] -->|defines standards| B[upskill system]
     B -->|generates project-specific guidance| C[project alerting skill]
     C -->|constrains LLM during coding| D[code generation]
     D -->|produces code with alerting| E[code-reviewer agent]
@@ -56,9 +56,9 @@ flowchart TD
     I --> J[merged code with alerting]
 ```
 
-### Layer 1: alerting-bestpractice skill
+### Layer 1: mav-bp-alerting skill
 
-The alerting-bestpractice skill defines universal alerting standards: severity levels, context requirements, deduplication rules, and anti-patterns to avoid. This skill is loaded into every LLM session.
+The mav-bp-alerting skill defines universal alerting standards: severity levels, context requirements, deduplication rules, and anti-patterns to avoid. This skill is loaded into every LLM session.
 
 ### Layer 2: project-specific alerting skill
 
@@ -195,7 +195,7 @@ The output is a project-specific alerting skill that gives the LLM concrete impl
 
 ## Scope Boundaries and Alerting
 
-The scope-boundaries skill interacts with alerting in an important way: when the LLM generates code that handles errors near the boundary of its assigned scope, it must still add appropriate alerting even if the error originates in code outside its scope. The LLM should alert on failures it observes, not only failures it causes. See scope-boundaries.md for details on how scope constraints work.
+The mav-scope-boundaries skill interacts with alerting in an important way: when the LLM generates code that handles errors near the boundary of its assigned scope, it must still add appropriate alerting even if the error originates in code outside its scope. The LLM should alert on failures it observes, not only failures it causes. See scope-boundaries.md for details on how scope constraints work.
 
 ## Further Reading
 

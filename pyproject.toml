@@ -7,7 +7,7 @@ name = "maverick"
 version = "0.1.0"
 description = "Claude Code plugin that enables autonomous AI development while maintaining best practices"
 requires-python = ">=3.10"
-dependencies = ["boto3", "tomli>=2; python_version < '3.11'"]
+dependencies = ["boto3"]
 
 [project.scripts]
 maverick = "maverick.cli:main"

@@ -1,7 +1,7 @@
 ---
 name: pullrequest-review
 description: How to process code review feedback — verify before implementing, push back when wrong, clarify before acting on partial understanding. Applied when receiving review from the code-reviewer agent or human reviewers.
-user-invocable: true
+disable-model-invocation: false
 ---
 
 # Receiving Code Review
@@ -94,7 +94,7 @@ Process items in priority order:
 2. **Important issues** — should fix before merge
 3. **Minor issues** — fix if straightforward, note for later if not
 
-After each fix, run verification (per the verification-before-completion skill). Do not batch multiple fixes without verifying between them.
+After each fix, run verification (per the mav-local-verification skill). Do not batch multiple fixes without verifying between them.
 
 ## Handling Review Sources
 
@@ -122,7 +122,7 @@ Human reviewers may have context the agent does not. However:
 
 ### From CI/Automated Checks
 
-CI failures are not suggestions — they are facts. Fix them. Use the local-verification and ci-awareness skills to diagnose and resolve.
+CI failures are not suggestions — they are facts. Fix them. Use the local-verification and mav-bp-cicd skills to diagnose and resolve.
 
 ## What Not to Do
 
@@ -140,6 +140,6 @@ When receiving review during a do-issue workflow:
 
 1. Process the review per this skill
 2. Implement fixes
-3. Run verification per the verification-before-completion skill
+3. Run verification per the mav-local-verification skill
 4. If the review came from the code-reviewer agent and had spec compliance failures, request a re-review after fixing
 5. Update the plan comment on the issue if fixes changed the implementation approach

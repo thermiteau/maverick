@@ -54,7 +54,7 @@ Bake a Linux (Ubuntu 24.04 LTS by default) AMI pre-configured with Claude Code u
 maverick build-ami
 ```
 
-On first run, a starter config is created at `~/.maverick/config.toml`. Edit it with your AWS values (region, key pair, security group, IAM profile, secret ARN) then re-run.
+On first run, a starter config is created at `~/.maverick/config.json`. Edit it with your AWS values (region, key pair, security group, IAM profile, secret ARN) then re-run.
 
 The script will:
 

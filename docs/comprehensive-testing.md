@@ -54,13 +54,13 @@ Maverick enforces testing through multiple reinforcing mechanisms across the dev
 
 ```mermaid
 flowchart TD
-    A[unit-testing-bestpractice skill] -->|defines standards| B[upskill system]
+    A[mav-bp-unit-testing skill] -->|defines standards| B[upskill system]
     B -->|generates project-specific test guidance| C[project test skill]
     C -->|constrains LLM during coding| D[code generation with tests]
 
     E[TDD skill] -->|test-first workflow| D
 
-    D --> F[local-verification skill]
+    D --> F[mav-local-verification skill]
     F -->|runs tests pre-commit| G{tests pass?}
     G -->|no| H[LLM fixes code or tests]
     H --> D
@@ -82,9 +82,9 @@ flowchart TD
 
 | Skill                                     | Role                                                                                     |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------- |
-| unit-testing-bestpractice                 | Defines universal test standards: strategy, coverage targets, quality criteria           |
+| mav-bp-unit-testing                 | Defines universal test standards: strategy, coverage targets, quality criteria           |
 | TDD skill                                 | Encourages test-first development workflow where tests are written before implementation |
-| local-verification                        | Requires all tests to pass locally before code is committed                              |
+| mav-local-verification                        | Requires all tests to pass locally before code is committed                              |
 | Project-specific test skill (via upskill) | Specifies the project's test framework, conventions, and additional requirements         |
 
 ### Agents that enforce testing
@@ -95,9 +95,9 @@ flowchart TD
 | frontend-tester | Autonomously runs frontend test suites and reports results          |
 | code-reviewer   | Checks that tests exist, are meaningful, and cover the changed code |
 
-### The local-verification gate
+### The mav-local-verification gate
 
-The local-verification skill is a critical enforcement point. It requires that tests pass locally before the LLM commits code. This prevents the pattern where an LLM pushes broken code to CI and waits for remote feedback. By catching failures locally:
+The mav-local-verification skill is a critical enforcement point. It requires that tests pass locally before the LLM commits code. This prevents the pattern where an LLM pushes broken code to CI and waits for remote feedback. By catching failures locally:
 
 - The LLM still has full context to fix the issue
 - Branch history is not polluted with broken commits
@@ -190,7 +190,7 @@ See code-review.md for the full review process.
 
 ### Testing and CI/CD
 
-The CI pipeline runs the full test suite on every push. Tests that pass locally but fail in CI indicate environment-dependent behaviour that must be fixed. The local-verification skill reduces but does not eliminate this gap. See cicd.md for pipeline details.
+The CI pipeline runs the full test suite on every push. Tests that pass locally but fail in CI indicate environment-dependent behaviour that must be fixed. The mav-local-verification skill reduces but does not eliminate this gap. See cicd.md for pipeline details.
 
 ### Testing and the feedback loop
 

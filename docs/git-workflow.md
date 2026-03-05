@@ -28,10 +28,10 @@ Without workflow discipline, an autonomous agent produces a tangle of unattribut
 
 | Skill                   | Responsibility                                                                  |
 | ----------------------- | ------------------------------------------------------------------------------- |
-| `git-workflow`          | Defines the branching strategy, naming conventions, and commit format           |
-| `github-issue-workflow` | Manages issue interaction: reading requirements, posting artefacts, linking PRs |
-| `scope-boundaries`      | Prevents destructive git operations (force push, hard reset, branch deletion)   |
-| `plan-execution`        | Tracks which phase of work is in progress, preventing duplicate branches        |
+| `mav-git-workflow`          | Defines the branching strategy, naming conventions, and commit format           |
+| `mav-github-issue-workflow` | Manages issue interaction: reading requirements, posting artefacts, linking PRs |
+| `mav-scope-boundaries`      | Prevents destructive git operations (force push, hard reset, branch deletion)   |
+| `mav-plan-execution`        | Tracks which phase of work is in progress, preventing duplicate branches        |
 
 These skills work together to constrain the LLM into a disciplined workflow that produces auditable, reversible changes.
 
@@ -157,7 +157,7 @@ Every PR must include `Closes #N` in the body where N is the originating issue n
 - Provides audit trail for why the change was made
 - Enables traceability from requirement to code
 
-An LLM opening a PR without issue linking is producing unaccountable work. The `github-issue-workflow` skill enforces this by requiring the issue number throughout the workflow.
+An LLM opening a PR without issue linking is producing unaccountable work. The `mav-github-issue-workflow` skill enforces this by requiring the issue number throughout the workflow.
 
 ## Branch Lifecycle
 
@@ -224,18 +224,18 @@ The following git operations are prohibited without explicit human instruction:
 | `git rebase` on shared branches | Rewrites history visible to other developers               |
 | `git clean -fd`                 | Deletes untracked files irreversibly                       |
 
-The `scope-boundaries` skill encodes these prohibitions. An LLM operating without this skill will use destructive operations whenever they appear to be the fastest path to completing a task.
+The `mav-scope-boundaries` skill encodes these prohibitions. An LLM operating without this skill will use destructive operations whenever they appear to be the fastest path to completing a task.
 
 ## Workflow Summary
 
 | Phase   | Action                                            | Skill enforcing                         |
 | ------- | ------------------------------------------------- | --------------------------------------- |
-| Start   | Read issue, create branch from `develop`          | `github-issue-workflow`, `git-workflow` |
-| Develop | Commit with conventional messages, push regularly | `git-workflow`                          |
-| Verify  | Run local checks before push                      | `local-verification`                    |
-| PR      | Open PR linking to issue, wait for CI             | `github-issue-workflow`, `git-workflow` |
-| Review  | Address feedback, push fixes                      | `git-workflow`                          |
-| Merge   | Human merges, branch deleted                      | `git-workflow`                          |
+| Start   | Read issue, create branch from `develop`          | `mav-github-issue-workflow`, `mav-git-workflow` |
+| Develop | Commit with conventional messages, push regularly | `mav-git-workflow`                              |
+| Verify  | Run local checks before push                      | `mav-local-verification`                        |
+| PR      | Open PR linking to issue, wait for CI             | `mav-github-issue-workflow`, `mav-git-workflow` |
+| Review  | Address feedback, push fixes                      | `mav-git-workflow`                              |
+| Merge   | Human merges, branch deleted                      | `mav-git-workflow`                              |
 
 ## Key Constraints for LLMs
 

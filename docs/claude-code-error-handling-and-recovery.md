@@ -29,10 +29,10 @@ Without recovery mechanisms, each of these scenarios produces inconsistent state
 
 | Skill                   | Responsibility                                                                 |
 | ----------------------- | ------------------------------------------------------------------------------ |
-| `claude-code-recovery`  | Defines crash recovery patterns, state verification, and diagnostic procedures |
-| `plan-execution`        | Tracks progress via state files, enabling resume from last completed phase     |
-| `github-issue-workflow` | Posts artefacts (designs, plans, progress) to GitHub comments for durability   |
-| `scope-boundaries`      | Prevents destructive operations that would make recovery harder                |
+| `mav-claude-code-recovery`  | Defines crash recovery patterns, state verification, and diagnostic procedures |
+| `mav-plan-execution`        | Tracks progress via state files, enabling resume from last completed phase     |
+| `mav-github-issue-workflow` | Posts artefacts (designs, plans, progress) to GitHub comments for durability   |
+| `mav-scope-boundaries`      | Prevents destructive operations that would make recovery harder                |
 
 These skills create a layered recovery system: state files track progress locally, GitHub comments preserve artefacts durably, and recovery patterns define how to resume safely.
 

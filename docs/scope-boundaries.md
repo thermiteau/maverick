@@ -58,7 +58,7 @@ flowchart TD
     style C fill:#388e3c,color:#fff
 ```
 
-- The scope-boundaries skill is loaded as a dependency of every other skill
+- The mav-scope-boundaries skill is loaded as a dependency of every other skill
 - It defines four hard refusal categories that the LLM must never execute without explicit instruction
 - It distinguishes between "inferred need" (the LLM thinks an action would help) and "explicit instruction" (a human specifically requested it)
 - Refusals are logged with the reason, providing an audit trail of what the LLM chose not to do
@@ -112,7 +112,7 @@ Any interaction with production databases, production APIs, production message q
 
 ## What "Explicit Instruction" Means
 
-The scope-boundaries skill distinguishes between inferred need and explicit instruction. This distinction is critical because LLMs are capable of constructing plausible justifications for any action.
+The mav-scope-boundaries skill distinguishes between inferred need and explicit instruction. This distinction is critical because LLMs are capable of constructing plausible justifications for any action.
 
 **Explicit instruction** must meet all of the following criteria:
 
@@ -179,4 +179,4 @@ Scope boundaries are the first line of defence: they prevent the LLM from attemp
 | **Unambiguous**                | Each boundary category has clear membership -- an action either crosses a boundary or it does not           |
 | **Auditable**                  | Every refusal is logged with the category, the attempted action, and the reason                             |
 | **Overridable only by humans** | Explicit instruction from a human can authorise a boundary-crossing action; the LLM cannot authorise itself |
-| **Loaded by default**          | The scope-boundaries skill is a dependency of every workflow; it cannot be unloaded or bypassed by the LLM  |
+| **Loaded by default**          | The mav-scope-boundaries skill is a dependency of every workflow; it cannot be unloaded or bypassed by the LLM  |

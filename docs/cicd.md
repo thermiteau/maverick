@@ -29,11 +29,11 @@ Without CI, step 3 is absent and the only barrier is the LLM's own judgement abo
 
 | Skill                | Responsibility                                                            |
 | -------------------- | ------------------------------------------------------------------------- |
-| `cicd-bestpractice`  | Defines platform-agnostic pipeline standards and quality gates            |
-| `cicd-github`        | GitHub Actions-specific monitoring, status checks, and workflow awareness |
-| `cicd-gitlab`        | GitLab CI-specific pipeline monitoring and job awareness                  |
-| `cicd-azure`         | Azure DevOps-specific pipeline monitoring and build awareness             |
-| `local-verification` | Runs lint, typecheck, and tests before push (shift-left verification)     |
+| `mav-bp-cicd`              | Defines platform-agnostic pipeline standards and quality gates            |
+| `mav-bp-cicd-github`       | GitHub Actions-specific monitoring, status checks, and workflow awareness |
+| `mav-bp-cicd-gitlab`       | GitLab CI-specific pipeline monitoring and job awareness                  |
+| `mav-bp-cicd-azure`        | Azure DevOps-specific pipeline monitoring and build awareness             |
+| `mav-local-verification`   | Runs lint, typecheck, and tests before push (shift-left verification)     |
 | `upskill`            | Detects the project's CI platform and generates project-specific guidance |
 
 The `upskill` skill is important here: it examines the repository for CI configuration files and generates a project-level skill that tells the LLM how this specific project's pipeline works. This means the LLM knows not just generic CI practices but the actual pipeline stages, required checks, and deployment targets for the project it is working on.
@@ -46,9 +46,9 @@ Maverick supports three CI platforms with dedicated skills and detects several m
 
 | Platform       | Config detection                           | Skill         |
 | -------------- | ------------------------------------------ | ------------- |
-| GitHub Actions | `.github/workflows/*.yml`                  | `cicd-github` |
-| GitLab CI      | `.gitlab-ci.yml`                           | `cicd-gitlab` |
-| Azure DevOps   | `azure-pipelines.yml`, `.azure-pipelines/` | `cicd-azure`  |
+| GitHub Actions | `.github/workflows/*.yml`                  | `mav-bp-cicd-github` |
+| GitLab CI      | `.gitlab-ci.yml`                           | `mav-bp-cicd-gitlab` |
+| Azure DevOps   | `azure-pipelines.yml`, `.azure-pipelines/` | `mav-bp-cicd-azure`  |
 
 ### Auto-detected platforms
 
@@ -148,7 +148,7 @@ flowchart TD
     I --> A
 ```
 
-The `local-verification` skill enforces this sequence. It requires the LLM to run lint, typecheck, and tests before pushing. This means CI runs should be confirmations, not first-pass debugging sessions.
+The `mav-local-verification` skill enforces this sequence. It requires the LLM to run lint, typecheck, and tests before pushing. This means CI runs should be confirmations, not first-pass debugging sessions.
 
 ## Environment Promotion
 
@@ -177,7 +177,7 @@ After pushing code, the LLM must monitor CI status rather than declaring work co
 4. If checks fail, diagnose the failure and fix
 5. Only declare work complete when all checks pass
 
-This is enforced by the platform-specific skills (`cicd-github`, `cicd-gitlab`, `cicd-azure`) which instruct the LLM on how to check pipeline status for each platform.
+This is enforced by the platform-specific skills (`mav-bp-cicd-github`, `mav-bp-cicd-gitlab`, `mav-bp-cicd-azure`) which instruct the LLM on how to check pipeline status for each platform.
 
 ## What LLMs Must Not Do
 
