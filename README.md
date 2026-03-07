@@ -20,7 +20,7 @@
   </p>
 </div>
 
-Maverick is a Claude Code plugin and local application that enables autonomous AI-driven software development while enforcing quality, security, and operational best practices.
+Maverick is a Claude Code ( Cursor and Codex ) plugin and local CLI commands that enables autonomous AI-driven software development while enforcing quality, security, and operational best practices.
 
 It provides skills, agents, and hooks that constrain and guide LLM behaviour - making unattended development safe and reliable.
 
@@ -63,6 +63,13 @@ It falls down when you need to complete multiple features or bug fixes at the sa
 Maverick solves this by deploying Claude Code workers to remote Claude platforms such as Amazon Web Services. Those workers are triggered by creating tickets (issues) in GitHub. The worker will autonomously complete the requirements and keep you up to date with notes in the Github Issue.
 
 This is more complicated than cassual users may need and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
+
+## NOTE: Thiis project is still in Alpha and under rapid change
+
+I use this repo to build my own software and I aim to improve it every day. That means the change rate is pretty high until I get it to v1 release.
+
+- The Claude plugin skills and agents are solid and work well.
+- The CLI tools and Cloud infra deploy are still brittle and need a lot of work. Thats my next issue to fix/build.
 
 ## Install
 
