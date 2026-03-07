@@ -1,8 +1,8 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="docs/media/maverick-logo.png" alt="Logo" width="200" height="200">
+  <a href="https://github.com/thermiteau/maverick">
+    <img src="docs/media/maverick-logo.png" alt="Maverick Logo" width="200" height="200">
   </a>
 
   <h1 align="center">Maverick</h1>
@@ -10,13 +10,13 @@
   <p align="center">
     Claude Code tooling to build software right
     <br />
-    <a href="https://github.com/thermiteau/maverick/docs.overview.md"><strong>Explore the docs</strong></a>
+    <a href="docs/overview.md"><strong>Explore the docs</strong></a>
     <br />
     <br />
     &middot;
-    <a href="https://github.com/thermiteau/maverickissues/new?labels=bug&template=bug-report.md">Report Bug</a>
+    <a href="https://github.com/thermiteau/maverick/issues/new?labels=bug&template=bug-report.md">Report Bug</a>
     &middot;
-    <a href="hhttps://github.com/thermiteau/maverickissues/new?labels=enhancement&template=feature-request.md">Request Feature</a>
+    <a href="https://github.com/thermiteau/maverick/issues/new?labels=enhancement&template=feature-request.md">Request Feature</a>
   </p>
 </div>
 
