@@ -110,10 +110,11 @@ Each link in this chain catches different classes of issues:
 
 ```
 maverick/
-├── skills/                     # Machine-readable guidance (26 skills)
+├── skills/                     # Machine-readable guidance (28 skills)
 │   ├── *-bestpractice/         # Universal standards per topic
 │   ├── cicd-*/                 # Platform-specific CI/CD skills
-│   ├── do-issue-*/             # Workflow entry points
+│   ├── do-issue-*/             # GitHub issue workflow entry points
+│   ├── do-task-*/              # Local task workflow entry points
 │   ├── upskill/                # Project skill generation
 │   └── ...                     # Execution, governance, debugging
 ├── agents/                     # Autonomous verifiers (4 agents)
@@ -135,4 +136,5 @@ maverick/
 - **Upskill generates, humans review**: The upskill system generates recommended implementations automatically, but writes them as version-controlled files with `status: recommended`. The team reviews and adopts on their own schedule.
 - **Agents over inline checks**: Code review in a separate context window avoids the "marking your own homework" problem. The reviewer agent has no memory of writing the code.
 - **Solo + guided workflows**: Some teams trust unattended operation. Others want human checkpoints. Both use the same underlying phases - the difference is where approval gates sit.
+- **GitHub issues + local tasks**: Not every task starts as a GitHub issue. `do-task-solo` provides the same autonomous workflow using local task files under `.maverick/do-tasks/`, so users can describe work interactively in the CLI without needing a GitHub issue first.
 - **Platform-agnostic best practices**: CI/CD, logging, alerting, and testing standards are platform-agnostic. Platform-specific skills (GitHub Actions, GitLab CI, Azure DevOps) implement the standards for each platform.

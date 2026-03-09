@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Maverick is a Claude Code plugin and Python CLI that enables autonomous AI-driven software development with enforced quality, security, and operational best practices. It has three components:
 
-1. **Claude Code Plugin** — 24 markdown skills (in `skills/`) and 2 agents (in `agents/`) that define workflows, best practices, and execution patterns
+1. **Claude Code Plugin** — markdown skills (in `skills/`) and agents (in `agents/`) that define workflows, best practices, and execution patterns
 2. **Python CLI** (`src/maverick/`, aliased from `cli/`) — project initialization, plugin management, and AWS infrastructure provisioning
 3. **Documentation** (`docs/`) — architecture, philosophy, and enforcement mechanisms
 
@@ -45,9 +45,9 @@ bash tests/integration/test_real_repos.sh
 Markdown files with YAML frontmatter that define machine-readable workflows and best practices. Two categories:
 
 - **Best-practice skills** (non-invocable): Universal standards for logging, alerting, linting, testing, CI/CD, git workflow, scope boundaries
-- **Workflow skills** (user-invocable): Orchestrate multi-step processes — `do-issue-solo` (autonomous), `do-issue-guided` (supervised with approval gates), `upskill` (generate project-specific skills), `maverick-alignment` (codebase audit)
+- **Workflow skills** (user-invocable): Orchestrate multi-step processes — `do-issue-solo` (autonomous from GitHub issue), `do-issue-guided` (interactive with checkpoints from GitHub issue), `do-task-solo` (autonomous from user-described task, no GitHub issue), `upskill` (generate project-specific skills), `maverick-alignment` (codebase audit)
 
-Skills compose via a `Depends on:` declaration. The two primary entry points are `do-issue-solo` and `do-issue-guided`, which chain through: understand → design → plan → branch → implement → review → push → PR.
+Skills compose via a `Depends on:` declaration. The three primary entry points are `do-issue-solo`, `do-issue-guided`, and `do-task-solo`, which chain through: understand → design → plan → branch → implement → review → push → PR.
 
 ### Agents (`agents/*.md`)
 
