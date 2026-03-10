@@ -64,7 +64,7 @@ Maverick solves this by deploying Claude Code workers to remote Claude platforms
 
 This is more complicated than cassual users may need and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
 
-## NOTE: Thiis project is still in Alpha and under rapid change
+## NOTE: This project is still in Alpha and under rapid change
 
 I use this repo to build my own software and I aim to improve it every day. That means the change rate is pretty high until I get it to v1 release.
 

@@ -5,7 +5,9 @@
 # ---------------------------------------------------------------------------
 
 DO_DOCS = "do-docs"
+DO_ISSUE_GUIDED = "do-issue-guided"
 DO_ISSUE_SOLO = "do-issue-solo"
+DO_TASK_SOLO = "do-task-solo"
 MAV_BP_ALERTING = "mav-bp-alerting"
 MAV_BP_CICD = "mav-bp-cicd"
 MAV_BP_CICD_AZURE = "mav-bp-cicd-azure"
@@ -33,7 +35,9 @@ UPSKILL = "upskill"
 
 ALL_SKILL_NAMES = {
     DO_DOCS,
+    DO_ISSUE_GUIDED,
     DO_ISSUE_SOLO,
+    DO_TASK_SOLO,
     MAV_BP_ALERTING,
     MAV_BP_CICD,
     MAV_BP_CICD_AZURE,
