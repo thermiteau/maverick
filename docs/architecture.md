@@ -14,7 +14,7 @@ Skills are markdown files with YAML frontmatter that load into the LLM's context
 | Category            | Skills                                                                             | Purpose                                                        |
 | ------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | **Best Practices**  | logging, alerting, linting, unit-testing, cicd                                     | Define standards for each practice area                        |
-| **Workflow**        | do-issue-solo, do-issue-guided, do-task-solo, create-solution-design, create-implementation-plan | Orchestrate multi-step development workflows                   |
+| **Workflow**        | do-issue-solo, do-issue-guided, do-task-solo, create-solution-design, create-implementation-plan, task-breakdown | Orchestrate multi-step development workflows                   |
 | **Execution**       | mav-plan-execution, mav-local-verification, subagents                              | Control how plans are executed and verified                    |
 | **Git & GitHub**    | mav-git-workflow, mav-github-issue-workflow                                        | Define branching, commit, and issue interaction patterns       |
 | **CI/CD Platforms** | mav-bp-cicd-github, mav-bp-cicd-gitlab, mav-bp-cicd-azure                         | Platform-specific pipeline monitoring                          |
@@ -74,19 +74,25 @@ flowchart TD
 
     SOLO --> SD1["Solution Design"]
     SD1 --> IP1["Implementation Plan"]
-    IP1 --> EXEC1["Execute Plan"]
+    IP1 --> SCOPE1{">8 steps?"}
+    SCOPE1 -->|"no"| EXEC1["Execute Plan"]
+    SCOPE1 -->|"yes"| TB1["Task Breakdown"] --> EXEC1
     EXEC1 --> VERIFY1["Verify + Review"]
     VERIFY1 --> PR1["Create PR"]
 
     GUIDED --> SD2["Solution Design"]
     SD2 -->|"checkpoint"| IP2["Implementation Plan"]
-    IP2 -->|"checkpoint"| EXEC2["Execute Plan"]
+    IP2 --> SCOPE2{">8 steps?"}
+    SCOPE2 -->|"no"| EXEC2["Execute Plan"]
+    SCOPE2 -->|"yes"| TB2["Task Breakdown"] -->|"checkpoint"| EXEC2
     EXEC2 --> VERIFY2["Verify + Review"]
     VERIFY2 -->|"checkpoint"| PR2["Create PR"]
 
     TASK --> SD3["Formalise Task → Solution Design"]
     SD3 --> IP3["Implementation Plan"]
-    IP3 --> EXEC3["Execute Plan"]
+    IP3 --> SCOPE3{">8 steps?"}
+    SCOPE3 -->|"no"| EXEC3["Execute Plan"]
+    SCOPE3 -->|"yes"| TB3["Task Breakdown"] --> EXEC3
     EXEC3 --> VERIFY3["Verify + Review"]
     VERIFY3 --> PR3["Create PR"]
 
@@ -101,6 +107,6 @@ flowchart TD
 | **do-issue-guided** | Checkpoints at design, plan, review, and completion   | Supervised development - human validates approach at key decision points      |
 | **do-task-solo**    | Initial request only, then none until PR review       | Local autonomous development - user describes the task in the CLI, no GitHub issue required |
 
-All three workflows follow the same phases: solution design → implementation plan → execution → verification → PR creation. The differences are where work originates and where human checkpoints occur.
+All three workflows follow the same phases: solution design → implementation plan → (optional task breakdown) → execution → verification → PR creation. When a plan exceeds 8 steps, the `task-breakdown` skill decomposes it into independently trackable sub-tasks with dependency ordering, which are then executed in sequence. The differences between workflows are where work originates and where human checkpoints occur.
 
 **do-task-solo** stores all artifacts locally under `.maverick/do-tasks/<TASK-ID>/` (task description, design, plan, completion) instead of GitHub issue comments. Task documents are committed to version control; only the state file is gitignored.

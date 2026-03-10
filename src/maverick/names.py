@@ -29,6 +29,7 @@ INIT = "init"
 INSTALL = "install"
 MAV_SYSTEMATIC_DEBUGGING = "mav-systematic-debugging"
 MAVERICK_ALIGNMENT = "maverick-alignment"
+TASK_BREAKDOWN = "task-breakdown"
 PULLREQUEST_REVIEW = "pullrequest-review"
 TECH_DOCS = "tech-docs"
 UPSKILL = "upskill"
@@ -60,6 +61,7 @@ ALL_SKILL_NAMES = {
     INSTALL,
     MAVERICK_ALIGNMENT,
     PULLREQUEST_REVIEW,
+    TASK_BREAKDOWN,
     TECH_DOCS,
     UPSKILL,
 }

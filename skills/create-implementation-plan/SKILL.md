@@ -107,24 +107,20 @@ Before finalising the plan, assess whether all steps can be completed in a singl
 ```dot
 digraph scope {
     "Count total steps" [shape=box];
-    "More than 8-10 steps?" [shape=diamond];
+    "More than 8 steps?" [shape=diamond];
     "Proceed with plan" [shape=box];
-    "Split into phases" [shape=box];
-    "Phase 1 deliverable on its own?" [shape=diamond];
-    "Adjust phase boundary" [shape=box];
+    "Produce complete plan" [shape=box];
+    "Calling workflow invokes task-breakdown" [shape=box];
 
-    "Count total steps" -> "More than 8-10 steps?";
-    "More than 8-10 steps?" -> "Proceed with plan" [label="no"];
-    "More than 8-10 steps?" -> "Split into phases" [label="yes"];
-    "Split into phases" -> "Phase 1 deliverable on its own?";
-    "Phase 1 deliverable on its own?" -> "Proceed with plan" [label="yes — implement phase 1"];
-    "Phase 1 deliverable on its own?" -> "Adjust phase boundary" [label="no"];
-    "Adjust phase boundary" -> "Phase 1 deliverable on its own?";
+    "Count total steps" -> "More than 8 steps?";
+    "More than 8 steps?" -> "Proceed with plan" [label="no"];
+    "More than 8 steps?" -> "Produce complete plan" [label="yes"];
+    "Produce complete plan" -> "Calling workflow invokes task-breakdown";
 }
 ```
 
-- **8-10 steps or fewer** — proceed as a single plan
-- **More than 10 steps** — split into phases, each deliverable on its own. Implement phase 1, then reassess. Create additional issues for later phases if needed.
+- **8 steps or fewer** — proceed as a single plan
+- **More than 8 steps** — produce the complete plan with all steps. Do not truncate or self-limit. The calling workflow will invoke the `task-breakdown` skill to decompose the plan into independently trackable sub-tasks with dependency ordering.
 
 ### Red Flags: Step is Too Large
 

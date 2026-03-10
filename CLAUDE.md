@@ -47,7 +47,7 @@ Markdown files with YAML frontmatter that define machine-readable workflows and 
 - **Best-practice skills** (non-invocable): Universal standards for logging, alerting, linting, testing, CI/CD, git workflow, scope boundaries
 - **Workflow skills** (user-invocable): Orchestrate multi-step processes — `do-issue-solo` (autonomous from GitHub issue), `do-issue-guided` (interactive with checkpoints from GitHub issue), `do-task-solo` (autonomous from user-described task, no GitHub issue), `upskill` (generate project-specific skills), `maverick-alignment` (codebase audit)
 
-Skills compose via a `Depends on:` declaration. The three primary entry points are `do-issue-solo`, `do-issue-guided`, and `do-task-solo`, which chain through: understand → design → plan → branch → implement → review → push → PR.
+Skills compose via a `Depends on:` declaration. The three primary entry points are `do-issue-solo`, `do-issue-guided`, and `do-task-solo`, which chain through: understand → design → plan → (task breakdown if >8 steps) → branch → implement → review → push → PR. The `task-breakdown` skill decomposes large plans into independently trackable sub-tasks with dependency ordering and file ownership tracking.
 
 ### Agents (`agents/*.md`)
 

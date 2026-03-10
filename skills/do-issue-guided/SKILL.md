@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, create-solution-design, create-implementation-plan, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, create-solution-design, create-implementation-plan, task-breakdown, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, pullrequest-review
 
 # Work on GitHub Issue (Guided)
 
@@ -45,6 +45,20 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 
 **🔲 Checkpoint — Plan review:** Present the implementation plan to the user — the list of steps, their order, and the verification approach. Ask the user to confirm, reorder, add, or remove steps. Do not continue until the user approves.
 
+## Phase 3.5: Evaluate Plan Scope
+
+After receiving the plan from the issue-planner agent:
+
+1. Read the plan comment and count the steps
+2. If steps <= 8: proceed to Phase 4 (no breakdown needed)
+3. If steps > 8: invoke the task-breakdown skill
+   - Input: task ID (issue number), plan comment ID, design comment ID, mode: `issue`
+   - Verify: sub-issues are created and breakdown comment is posted on the parent issue
+   - Update `.claude/issue-state.json`: `has_sub_tasks` = `true`
+4. Continue to Phase 4
+
+**🔲 Checkpoint — Breakdown review:** Present the sub-task groupings, their execution order, and shared file sequencing to the user. Ask the user to confirm before proceeding.
+
 ## Phase 4: Create Branch
 
 1. Derive the branch name per the mav-github-issue-workflow skill (branching conventions).
@@ -54,14 +68,27 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 ## Phase 5: Execute the Plan
 
 1. Check for project-level skills in `docs/maverick/skills/`. For each topic directory that contains a `SKILL.md`, read it. These project skills provide codebase-specific guidance (libraries, patterns, configuration) that supplements the best-practice skills. If none exist, continue without them.
-2. Follow the mav-plan-execution skill to execute each step.
-3. The plan-execution skill handles: step-by-step implementation, verification, failure handling, progress tracking, crash recovery, and acceptance criteria checking.
-4. In guided mode, it will:
+2. Update phase to `implement` in the state file.
+
+**If `.claude/issue-state.json` has `has_sub_tasks: true`:**
+
+1. Read the breakdown comment on the parent issue for `execution_order`
+2. For each sub-issue in `execution_order`:
+   1. Read the sub-issue's plan comment
+   2. Execute the sub-issue's steps using the mav-plan-execution skill
+   3. After all steps complete, update the breakdown comment: set status to `"complete"`
+   4. Close the sub-issue
+3. After all sub-issues complete, run the full verification suite
+
+**Otherwise (no sub-tasks):**
+
+1. Follow the mav-plan-execution skill to execute each step.
+2. The plan-execution skill handles: step-by-step implementation, verification, failure handling, progress tracking, crash recovery, and acceptance criteria checking.
+3. In guided mode, it will:
    - Provide brief progress checkpoints every 3-4 steps.
    - Pause and ask the user when uncertain about an implementation approach.
    - Pause and discuss with the user when a design assumption proves wrong.
    - Ask the user for help immediately when a step fails after 2 fix attempts.
-5. Update phase to `implement` in the state file.
 
 ## Phase 6: Code Review
 

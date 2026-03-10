@@ -64,6 +64,7 @@ digraph execute {
 ### 1. Load the Plan
 
 Read the implementation plan from one of:
+- A sub-task's `plan.md` (if invoked with a sub-task context — see Sub-Task Awareness below)
 - The plan comment on the GitHub issue (if working from do-issue)
 - A TodoWrite task list (if working from a plan file)
 - The plan document directly (if invoked standalone)
@@ -74,6 +75,12 @@ If resuming after a crash or new session, determine where to pick up:
 - Read the plan comment and parse checkboxes (`- [x]` = done, `- [ ]` = pending)
 - Cross-reference with `git log` — if commits exist for steps that aren't checked off, the comment update was lost. Check them off now.
 - Resume from the first genuinely unchecked step.
+
+**Sub-task crash recovery:** If invoked within a sub-task context:
+1. Read `breakdown.json` to find `current_sub_task`
+2. Read the sub-task's `plan.md` for checkbox state
+3. Cross-reference `git log --grep="ST-NNN"` for commits matching the sub-task ID
+4. Resume from the first unchecked step in the current sub-task
 
 ```bash
 # Read plan comment
@@ -187,3 +194,13 @@ After all steps are complete and the full verification suite passes:
 4. Run the full verification suite again after any additions
 
 Do not proceed to code review until every acceptance criterion is met and all checks pass.
+
+## Sub-Task Awareness
+
+When invoked with a sub-task context (i.e., the calling workflow passes a sub-task ID and path):
+
+- **Load the sub-task's plan** — read `sub-tasks/ST-NNN/plan.md`, not the parent `plan.md`
+- **Track progress in the sub-task's state** — update the sub-task's `state.json` and checkboxes
+- **Commit messages reference both parent and sub-task** — use the format `feat: ... (TASK-001/ST-001)` or `fix: ... (#42/ST-001)`
+- **After completing all steps in a sub-task** — update `breakdown.json` to set the sub-task's status to `"complete"` and record the commit hash in `completed_commit`
+- **Do not run the full verification suite after each sub-task** — the calling workflow handles that after all sub-tasks are complete

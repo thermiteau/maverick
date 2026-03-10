@@ -34,6 +34,18 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
    - `.claude/issue-state.json` has `comments.plan` set to a comment ID
 3. If the agent flagged scope concerns, ask the user. Otherwise continue.
 
+## Phase 3.5: Evaluate Plan Scope
+
+After receiving the plan from the issue-planner agent:
+
+1. Read the plan comment and count the steps
+2. If steps <= 8: proceed to Phase 4 (no breakdown needed)
+3. If steps > 8: invoke the task-breakdown skill
+   - Input: task ID (issue number), plan comment ID, design comment ID, mode: `issue`
+   - Verify: sub-issues are created and breakdown comment is posted on the parent issue
+   - Update `.claude/issue-state.json`: `has_sub_tasks` = `true`
+4. Continue to Phase 4
+
 ## Phase 4: Create Branch
 
 1. Derive the branch name per the mav-github-issue-workflow skill (branching conventions).
@@ -43,10 +55,23 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 ## Phase 5: Execute the Plan
 
 1. Check for project-level skills in `docs/maverick/skills/`. For each topic directory that contains a `SKILL.md`, read it. These project skills provide codebase-specific guidance (libraries, patterns, configuration) that supplements the best-practice skills. If none exist, continue without them.
-2. Follow the mav-plan-execution skill to execute each step.
-3. The plan-execution skill handles: step-by-step implementation, verification, failure handling, progress tracking, crash recovery, and acceptance criteria checking.
-4. In solo mode, it will work autonomously — only pausing when genuinely blocked.
-5. Update phase to `implement` in the state file.
+2. Update phase to `implement` in the state file.
+
+**If `.claude/issue-state.json` has `has_sub_tasks: true`:**
+
+1. Read the breakdown comment on the parent issue for `execution_order`
+2. For each sub-issue in `execution_order`:
+   1. Read the sub-issue's plan comment
+   2. Execute the sub-issue's steps using the mav-plan-execution skill
+   3. After all steps complete, update the breakdown comment: set status to `"complete"`
+   4. Close the sub-issue
+3. After all sub-issues complete, run the full verification suite
+
+**Otherwise (no sub-tasks):**
+
+1. Follow the mav-plan-execution skill to execute each step.
+2. The plan-execution skill handles: step-by-step implementation, verification, failure handling, progress tracking, crash recovery, and acceptance criteria checking.
+3. In solo mode, it will work autonomously — only pausing when genuinely blocked.
 
 ## Phase 6: Code Review
 

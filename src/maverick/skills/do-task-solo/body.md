@@ -121,6 +121,18 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 
 The plan document follows the same structure as the create-implementation-plan skill, written to `plan.md` instead of a GitHub comment.
 
+## Phase 3.5: Evaluate Plan Scope
+
+After receiving the plan from the issue-planner agent:
+
+1. Count the steps in `plan.md`
+2. If steps <= 8: proceed to Phase 4 (no breakdown needed)
+3. If steps > 8: invoke the task-breakdown skill
+   - Input: task ID, `plan.md` path, `design.md` path, mode: `local`
+   - Verify: `breakdown.json` exists and `sub-tasks/` directory is populated
+   - Update `state.json`: `phase` = `"breakdown"`, `has_sub_tasks` = `true`
+4. Continue to Phase 4
+
 ## Phase 4: Create Branch
 
 1. Derive the branch name from the task. Use the format `<type>/<task-id>-<short-desc>` (e.g., `feat/TASK-001-add-export`). Follow the mav-git-workflow skill for type prefixes.
@@ -131,15 +143,29 @@ The plan document follows the same structure as the create-implementation-plan s
 ## Phase 5: Execute the Plan
 
 1. Check for project-level skills in `docs/maverick/skills/`. For each topic directory that contains a `SKILL.md`, read it. These project skills provide codebase-specific guidance (libraries, patterns, configuration) that supplements the best-practice skills. If none exist, continue without them.
-2. Follow the mav-plan-execution skill to execute each step.
-3. The plan-execution skill handles: step-by-step implementation, verification, failure handling, progress tracking, crash recovery, and acceptance criteria checking.
-4. In solo mode, it will work autonomously — only pausing when genuinely blocked.
-5. After completing each step, update the checkbox in `plan.md` (`- [ ]` → `- [x]`) and commit the update.
-6. Update `state.json` phase to `implement`.
+2. Update `state.json` phase to `implement`.
+
+**If `state.json` has `has_sub_tasks: true`:**
+
+1. Read `breakdown.json` for `execution_order`
+2. For each sub-task in `execution_order`:
+   1. Update `state.json`: `current_sub_task` = `ST-NNN`
+   2. Read `sub-tasks/ST-NNN/plan.md`
+   3. Execute the sub-task's steps using the mav-plan-execution skill
+   4. After all steps in the sub-task complete, update `breakdown.json`: set status to `"complete"` and record the commit hash in `completed_commit`
+   5. Update the checkbox in the sub-task's `plan.md` and commit
+3. After all sub-tasks complete, run the full verification suite
+
+**Otherwise (no sub-tasks):**
+
+1. Follow the mav-plan-execution skill to execute each step.
+2. The plan-execution skill handles: step-by-step implementation, verification, failure handling, progress tracking, crash recovery, and acceptance criteria checking.
+3. In solo mode, it will work autonomously — only pausing when genuinely blocked.
+4. After completing each step, update the checkbox in `plan.md` (`- [ ]` → `- [x]`) and commit the update.
 
 ### Progress Tracking (Local)
 
-Instead of updating a GitHub comment, update `plan.md` directly:
+Instead of updating a GitHub comment, update `plan.md` (or sub-task `plan.md`) directly:
 
 ```bash
 # Mark step N as complete in plan.md
@@ -147,6 +173,15 @@ sed -i 's/- \[ \] \*\*Step N:/- [x] **Step N:/' .maverick/do-task/TASK-001/plan.
 ```
 
 This ensures progress survives session failures or crashes.
+
+### Commit Convention for Sub-Tasks
+
+When working within a sub-task, commit messages reference both the parent task and sub-task:
+
+```
+fix: remove process.exit(1) (TASK-001/ST-001)
+feat: add retry logic to API client (TASK-001/ST-003)
+```
 
 ## Phase 6: Code Review
 
@@ -241,9 +276,14 @@ When resuming work on a task (new session, after crash):
 
 1. Check `.maverick/do-task/` for any task with a `state.json` where `phase` is not `complete`.
 2. If found — read the state, read the task artifacts, and resume from the recorded phase.
-3. Cross-reference `plan.md` checkboxes with `git log` to detect progress that wasn't recorded.
-4. If multiple incomplete tasks exist, ask the user which one to resume.
-5. If no incomplete tasks exist and no arguments were given, ask the user what they want to do.
+3. If `state.json` has `has_sub_tasks: true`:
+   - Read `breakdown.json` to find `current_sub_task`
+   - Check the sub-task's `plan.md` for checkbox state
+   - Cross-reference `git log --grep="ST-NNN"` to detect commits for the current sub-task
+   - Resume from the first incomplete sub-task, and within it, from the first unchecked step
+4. Otherwise, cross-reference `plan.md` checkboxes with `git log` to detect progress that wasn't recorded.
+5. If multiple incomplete tasks exist, ask the user which one to resume.
+6. If no incomplete tasks exist and no arguments were given, ask the user what they want to do.
 
 ## Rules
 
