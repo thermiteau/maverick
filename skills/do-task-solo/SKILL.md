@@ -1,5 +1,5 @@
 ---
-name: do-tasks-solo
+name: do-task-solo
 description: Work on a user-described task end-to-end autonomously using local task files instead of GitHub issues. The user describes what they want interactively, and Claude formalises, designs, plans, and implements it.
 argument-hint: short task description (optional — will prompt if missing)
 user-invocable: true
@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 # Work on Task (Autonomous, Local)
 
-Work on a user-described task autonomously. All artifacts (task description, solution design, implementation plan, progress) are stored locally under `.maverick/do-tasks/` instead of on GitHub. Follow every phase in order. Do not skip phases. Only pause to ask the user when you are blocked or need clarification.
+Work on a user-described task autonomously. All artifacts (task description, solution design, implementation plan, progress) are stored locally under `.maverick/do-task/` instead of on GitHub. Follow every phase in order. Do not skip phases. Only pause to ask the user when you are blocked or need clarification.
 
 ## Before You Begin
 
@@ -19,10 +19,10 @@ Work on a user-described task autonomously. All artifacts (task description, sol
 
 ## Task File Structure
 
-All task artifacts live under `.maverick/do-tasks/<TASK-ID>/`. The task ID is a zero-padded sequential number (e.g., `TASK-001`, `TASK-002`).
+All task artifacts live under `.maverick/do-task/<TASK-ID>/`. The task ID is a zero-padded sequential number (e.g., `TASK-001`, `TASK-002`).
 
 ```
-.maverick/do-tasks/
+.maverick/do-task/
   TASK-001/
     task.md            # Formalised task description (the "issue")
     design.md          # Solution design
@@ -34,13 +34,13 @@ All task artifacts live under `.maverick/do-tasks/<TASK-ID>/`. The task ID is a 
 ### Initialise the Task Directory
 
 ```bash
-mkdir -p .maverick/do-tasks
+mkdir -p .maverick/do-task
 
 # Determine next task ID
-LAST=$(ls -1 .maverick/do-tasks/ 2>/dev/null | grep '^TASK-' | sort -V | tail -1 | sed 's/TASK-0*//')
+LAST=$(ls -1 .maverick/do-task/ 2>/dev/null | grep '^TASK-' | sort -V | tail -1 | sed 's/TASK-0*//')
 NEXT=$((${LAST:-0} + 1))
 TASK_ID=$(printf "TASK-%03d" $NEXT)
-TASK_DIR=".maverick/do-tasks/$TASK_ID"
+TASK_DIR=".maverick/do-task/$TASK_ID"
 mkdir -p "$TASK_DIR"
 ```
 
@@ -49,7 +49,7 @@ mkdir -p "$TASK_DIR"
 Before creating any files, ensure the task state file is gitignored (task documents themselves are committed so they survive across sessions):
 
 ```bash
-grep -q '.maverick/do-tasks/*/state.json' .gitignore 2>/dev/null || echo '.maverick/do-tasks/*/state.json' >> .gitignore
+grep -q '.maverick/do-task/*/state.json' .gitignore 2>/dev/null || echo '.maverick/do-task/*/state.json' >> .gitignore
 ```
 
 ### State File
@@ -69,7 +69,7 @@ Maintain `state.json` to track progress across sessions. This file is gitignored
 
 Capture the user's request as a structured task document. This replaces the GitHub issue.
 
-Write `.maverick/do-tasks/<TASK-ID>/task.md`:
+Write `.maverick/do-task/<TASK-ID>/task.md`:
 
 ```markdown
 # <Concise task title>
@@ -106,7 +106,7 @@ Run Phase 2 as a subagent to keep the main context window clean for implementati
 1. Dispatch the **issue-analyst** agent with:
    - Task ID and path to `task.md` (instead of an issue number)
    - Mode: `solo`
-   - Instruction to read the task from the local file and write the design to `.maverick/do-tasks/<TASK-ID>/design.md` instead of posting a GitHub comment
+   - Instruction to read the task from the local file and write the design to `.maverick/do-task/<TASK-ID>/design.md` instead of posting a GitHub comment
 2. When the agent returns, verify:
    - `design.md` exists and follows the solution design structure (Approach, Areas Affected, Key Decisions, Risks, Acceptance Criteria Mapping)
    - `state.json` has `phase` set to `design`
@@ -120,7 +120,7 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 
 1. Dispatch the **issue-planner** agent with:
    - Task ID and path to `design.md`
-   - Instruction to read the design from the local file and write the plan to `.maverick/do-tasks/<TASK-ID>/plan.md` instead of posting a GitHub comment
+   - Instruction to read the design from the local file and write the plan to `.maverick/do-task/<TASK-ID>/plan.md` instead of posting a GitHub comment
 2. When the agent returns, verify:
    - `plan.md` exists and contains checkbox-format steps with files, changes, and verification commands
    - `state.json` has `phase` set to `plan`
@@ -150,7 +150,7 @@ Instead of updating a GitHub comment, update `plan.md` directly:
 
 ```bash
 # Mark step N as complete in plan.md
-sed -i 's/- \[ \] \*\*Step N:/- [x] **Step N:/' .maverick/do-tasks/TASK-001/plan.md
+sed -i 's/- \[ \] \*\*Step N:/- [x] **Step N:/' .maverick/do-task/TASK-001/plan.md
 ```
 
 This ensures progress survives session failures or crashes.
@@ -193,7 +193,7 @@ This ensures progress survives session failures or crashes.
 
 ## Phase 9: Complete the Task
 
-1. Write `.maverick/do-tasks/<TASK-ID>/completion.md`:
+1. Write `.maverick/do-task/<TASK-ID>/completion.md`:
 
 ```markdown
 # Completion: <Task title>
@@ -229,7 +229,7 @@ gh pr create --title "<concise title>" --body "$(cat <<PR_EOF
 ## Summary
 <1-3 bullet points>
 
-Task: $TASK_ID (see \`.maverick/do-tasks/$TASK_ID/\`)
+Task: $TASK_ID (see \`.maverick/do-task/$TASK_ID/\`)
 
 ## Test Plan
 - [ ] <verification steps>
@@ -246,7 +246,7 @@ PR_EOF
 
 When resuming work on a task (new session, after crash):
 
-1. Check `.maverick/do-tasks/` for any task with a `state.json` where `phase` is not `complete`.
+1. Check `.maverick/do-task/` for any task with a `state.json` where `phase` is not `complete`.
 2. If found — read the state, read the task artifacts, and resume from the recorded phase.
 3. Cross-reference `plan.md` checkboxes with `git log` to detect progress that wasn't recorded.
 4. If multiple incomplete tasks exist, ask the user which one to resume.
