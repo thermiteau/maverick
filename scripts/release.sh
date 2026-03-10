@@ -72,7 +72,15 @@ if $DRY_RUN; then
 fi
 
 # Update pyproject.toml
-sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+python3 -c "
+import re, sys
+path = 'pyproject.toml'
+with open(path) as f:
+    content = f.read()
+content = re.sub(r'^version = \".*\"', 'version = \"' + sys.argv[1] + '\"', content, count=1, flags=re.MULTILINE)
+with open(path, 'w') as f:
+    f.write(content)
+" "$VERSION"
 
 # Update JSON files using Python (safer than sed for JSON)
 python3 -c "
