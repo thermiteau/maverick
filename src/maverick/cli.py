@@ -1,7 +1,6 @@
 """Unified CLI entry point for claude-maverick."""
 
 import argparse
-import sys
 
 
 def main():
@@ -125,7 +124,7 @@ def main():
         instance_main(args.action)
 
     elif args.command == "infra":
-        from maverick.infra import deploy, status, destroy
+        from maverick.infra import deploy, destroy, status
 
         actions = {"deploy": deploy, "status": status, "destroy": destroy}
         actions[args.action]()

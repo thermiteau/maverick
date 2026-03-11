@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** tech-docs, mav-scope-boundaries
+**Depends on:** do-tech-docs, mav-scope-boundaries
 
 # Documentation Workflow
 
@@ -14,7 +14,7 @@ Create, restructure, or update technical documentation. Operates in three modes 
 
 ## Task Detection
 
-If `$ARGUMENTS` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:
+If `` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:
 
 ```dot
 digraph detect {
@@ -32,7 +32,7 @@ digraph detect {
 ```
 
 1. If `docs/` does not exist or contains no technical documentation -> **Greenfield**
-2. If `docs/` exists, audit against tech-docs standards. If documents are non-compliant or significant gaps exist -> **Refactor**
+2. If `docs/` exists, audit against do-tech-docs standards. If documents are non-compliant or significant gaps exist -> **Refactor**
 3. If documentation is compliant and the task is scoped to recent changes -> **Update**
 
 ## Greenfield Mode
@@ -41,7 +41,7 @@ Start from scratch for an undocumented project.
 
 ### 0. Detect Repository Type
 
-Determine whether the project is a mono-repo or single-repo per the tech-docs skill (mono-repo indicators: `workspaces` in `package.json`, `pnpm-workspace.yaml`, `lerna.json`, `Cargo.toml` with `[workspace]`, `go.work`, multiple `pyproject.toml` files, `nx.json`, `rush.json`). This controls documentation placement.
+Determine whether the project is a mono-repo or single-repo per the do-tech-docs skill (mono-repo indicators: `workspaces` in `package.json`, `pnpm-workspace.yaml`, `lerna.json`, `Cargo.toml` with `[workspace]`, `go.work`, multiple `pyproject.toml` files, `nx.json`, `rush.json`). This controls documentation placement.
 
 ### 1. Explore the Codebase
 
@@ -62,7 +62,7 @@ Enumerate all components, services, subsystems, and cross-cutting concerns. Prio
 
 ### 3. Write Documentation
 
-For each identified area, write documentation following the tech-docs skill standards (document structure, writing style, token budget, Mermaid diagrams).
+For each identified area, write documentation following the do-tech-docs skill standards (document structure, writing style, token budget, Mermaid diagrams).
 
 ### 4. Create Index
 
@@ -70,7 +70,7 @@ Create `docs/technical/index.md` listing all documents with one-line description
 
 ### 5. Validate
 
-Run the tech-docs validation checklist against every document produced.
+Run the do-tech-docs validation checklist against every document produced.
 
 ## Refactor Mode
 
@@ -98,7 +98,7 @@ Classify each document:
 | Status | Action |
 | --- | --- |
 | Compliant and accurate | Leave unchanged |
-| Accurate but non-compliant | Rewrite to match tech-docs structure and standards |
+| Accurate but non-compliant | Rewrite to match do-tech-docs structure and standards |
 | Outdated or inaccurate | Update with verified information from current codebase |
 | Redundant or overlapping | Consolidate into a single document |
 
@@ -106,7 +106,7 @@ Identify **gaps** — areas of the codebase with no documentation coverage.
 
 ### 3. Execute Changes
 
-- Rewrite non-compliant documents to match tech-docs standards
+- Rewrite non-compliant documents to match do-tech-docs standards
 - Update outdated documents with verified information
 - Consolidate redundant documents
 - Write new documents for identified gaps
@@ -117,7 +117,7 @@ Update or create `docs/technical/index.md` (and package-level indexes for mono-r
 
 ### 5. Validate
 
-Run the tech-docs validation checklist against every document changed or created.
+Run the do-tech-docs validation checklist against every document changed or created.
 
 ## Update Mode
 
@@ -143,11 +143,11 @@ Update `docs/technical/index.md` only if new documents were created.
 
 ### 4. Validate
 
-Run the tech-docs validation checklist against every document changed or created.
+Run the do-tech-docs validation checklist against every document changed or created.
 
 ## Rules
 
-- Defer to the **tech-docs** skill for all documentation standards (structure, writing style, file organisation, diagrams, validation)
+- Defer to the **do-tech-docs** skill for all documentation standards (structure, writing style, file organisation, diagrams, validation)
 - Follow the **mav-scope-boundaries** skill at all times
 - In **update** mode, scope narrowly to the diff — do not refactor surrounding documentation
 - Verify every factual claim against the source code before writing it

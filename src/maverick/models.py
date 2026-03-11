@@ -43,9 +43,9 @@ class AgentConfig:
     tools: list[str] = field(default_factory=list)
     disallowed_tools: list[str] = field(default_factory=list)
     model: Literal["sonnet", "opus", "haiku", "inherit"] | None = None
-    permission_mode: Literal[
-        "default", "acceptEdits", "dontAsk", "bypassPermissions", "plan"
-    ] | None = None
+    permission_mode: (
+        Literal["default", "acceptEdits", "dontAsk", "bypassPermissions", "plan"] | None
+    ) = None
     max_turns: int | None = None
     skills: list[str] = field(default_factory=list)
     mcp_servers: dict[str, Any] | None = None
@@ -54,6 +54,7 @@ class AgentConfig:
     background: bool = False
     isolation: Literal["worktree"] | None = None
     color: str | None = None
+    extra_context: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

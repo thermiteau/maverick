@@ -16,10 +16,18 @@ import sys
 from pathlib import Path
 
 # Common English words that match 'the <word> skill' but aren't skill references.
-_IGNORE_INLINE = frozenset({
-    "best-practice", "calling", "generated", "project", "relevant",
-    "required", "same", "specific",
-})
+_IGNORE_INLINE = frozenset(
+    {
+        "best-practice",
+        "calling",
+        "generated",
+        "project",
+        "relevant",
+        "required",
+        "same",
+        "specific",
+    }
+)
 
 
 def find_skill_ids(skills_dir: Path) -> set[str]:
@@ -127,17 +135,13 @@ def validate(repo_root: Path) -> list[str]:
             deps = parse_depends_on(line)
             for dep in deps:
                 if dep not in valid_ids:
-                    errors.append(
-                        f"{rel}:{lineno}: broken reference '{dep}' in Depends on"
-                    )
+                    errors.append(f"{rel}:{lineno}: broken reference '{dep}' in Depends on")
 
             # Check inline references
             inline = extract_inline_refs(lines, i)
             for ref in inline:
                 if ref not in valid_ids:
-                    errors.append(
-                        f"{rel}:{lineno}: broken reference '{ref}' in inline text"
-                    )
+                    errors.append(f"{rel}:{lineno}: broken reference '{ref}' in inline text")
 
     # Validate agent files
     agent_files = sorted(agents_dir.glob("*.md")) if agents_dir.is_dir() else []
@@ -173,8 +177,7 @@ def main() -> int:
         return 1
 
     print(
-        f"All skill references are valid "
-        f"(checked {len(valid_ids)} skills, {agent_count} agents)."
+        f"All skill references are valid (checked {len(valid_ids)} skills, {agent_count} agents)."
     )
     return 0
 

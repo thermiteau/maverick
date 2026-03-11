@@ -87,7 +87,7 @@ def _process_message(message, cfg, sqs, logs_client):
         # Run Claude Code
         prompt_template = cfg["worker"]["prompt_template"]
         prompt = prompt_template.format(issue_number=issue_number)
-        cw.log(f"Running: claude -p \"{prompt}\"")
+        cw.log(f'Running: claude -p "{prompt}"')
 
         proc = subprocess.Popen(
             ["claude", "-p", prompt],
@@ -97,10 +97,11 @@ def _process_message(message, cfg, sqs, logs_client):
             text=True,
         )
 
-        for line in proc.stdout:
-            line = line.rstrip("\n")
-            if line:
-                cw.log(line)
+        if proc.stdout is not None:
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                if line:
+                    cw.log(line)
 
         proc.wait()
 
@@ -152,7 +153,7 @@ def _poll_loop(cfg):
 
             try:
                 _process_message(message, cfg, sqs, logs_client)
-                print(f"  Done.")
+                print("  Done.")
             except Exception as e:
                 print(f"  Failed: {e}")
 
@@ -171,7 +172,7 @@ def run_once(cfg):
     logs_client = boto3.client("logs", region_name=region)
     queue_url = cfg["aws"]["sqs_queue_url"]
 
-    print(f"Checking queue for one message...")
+    print("Checking queue for one message...")
     resp = sqs.receive_message(
         QueueUrl=queue_url,
         MaxNumberOfMessages=1,

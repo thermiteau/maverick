@@ -20,6 +20,7 @@ def lambda_handler(event, context):
     body = event.get("body", "")
     if event.get("isBase64Encoded"):
         import base64
+
         body = base64.b64decode(body).decode("utf-8")
 
     # Verify webhook signature
@@ -28,14 +29,12 @@ def lambda_handler(event, context):
         return {"statusCode": 401, "body": "Missing signature"}
 
     sm = boto3.client("secretsmanager")
-    secret_value = json.loads(
-        sm.get_secret_value(SecretId=secret_arn)["SecretString"]
-    )
+    secret_value = json.loads(sm.get_secret_value(SecretId=secret_arn)["SecretString"])
     webhook_secret = secret_value["GITHUB_WEBHOOK_SECRET"]
 
-    expected = "sha256=" + hmac.new(
-        webhook_secret.encode(), body.encode(), hashlib.sha256
-    ).hexdigest()
+    expected = (
+        "sha256=" + hmac.new(webhook_secret.encode(), body.encode(), hashlib.sha256).hexdigest()
+    )
 
     if not hmac.compare_digest(signature, expected):
         return {"statusCode": 401, "body": "Invalid signature"}

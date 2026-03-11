@@ -3,18 +3,62 @@ title: Maverick Build
 scope: Understanding the maverick build process, release workflow, and the rationale behind them
 relates-to:
   - maverick-install.md
-last-verified: 2026-03-06
+last-verified: 2026-03-11
 ---
 
 # Maverick Build
 
 ## Templating
 
-The maverick plaugin uses tempaltes to create the skills and agents that make up the Claude Code plaugin. While this adds a layer of complexity, it allows the frontmatter to be validated and ensures that references to other sklills can be validated.
+Maverick uses Jinja2 templates to generate the skills and agents that make up the Claude Code plugin. While this adds a layer of complexity, it allows frontmatter to be validated and ensures that cross-references between skills and agents are accurate.
 
-The build process uses the template under a given skills folder `SKILL.md.template` and the config file `config.py` that holds all the variables.
+### Source structure
 
-This way we can be sure that cross references are accurate and that the Claude skill fronmatter schema is adhered to
+Each skill and agent lives under `src/maverick/` with two files:
+
+```
+src/maverick/skills/<skill-name>/
+  ├── config.py        # SkillConfig — declarative metadata (frontmatter fields, dependencies)
+  └── body.md.j2       # Jinja2 template — the skill content
+
+src/maverick/agents/<agent-name>/
+  ├── config.py        # AgentConfig — declarative metadata (frontmatter fields, skills list)
+  └── body.md.j2       # Jinja2 template — the agent prompt
+```
+
+Name constants for all skills and agents are centralised in `src/maverick/names.py` and registered in `ALL_SKILL_NAMES` / `ALL_AGENT_NAMES`.
+
+### Template variables
+
+All templates have access to:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{{ SKILLS.<CONSTANT> }}` | Any skill name by its Python constant | `{{ SKILLS.MAV_BP_LOGGING }}` → `mav-bp-logging` |
+| `{{ AGENTS.<CONSTANT> }}` | Any agent name by its Python constant | `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer` |
+| `{{ ARGUMENTS }}` | User-supplied arguments (skills only) | |
+| `{{ DEPENDS_ON }}` | Comma-separated dependency list (skills only) | |
+
+Custom variables can be passed via `extra_context` on `SkillConfig`, `AgentConfig`, or `GlobalConfig`.
+
+### Build output
+
+The registry (`src/maverick/registry.py`) discovers all `config.py` files, renders Jinja2 templates, generates YAML frontmatter from config objects, and writes the output to root-level directories:
+
+- `skills/<name>/SKILL.md` — rendered skills
+- `agents/<name>.md` — rendered agents
+
+These root-level directories are **build output** and must never be edited directly.
+
+### Build command
+
+```bash
+# Full build (topics + skills + agents)
+make build
+
+# Just render skills and agents
+make generate
+```
 
 ## Releasing
 

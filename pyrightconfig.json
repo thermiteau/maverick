@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/pyright-internal/src/schema/pyrightconfig.schema.json",
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "skills",
+    "agents",
+    "prototyping",
+    "**/__pycache__",
+    ".venv"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": "none"
+}
+

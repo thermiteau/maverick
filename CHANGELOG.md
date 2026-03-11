@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New `task-breakdown` skill — decomposes large implementation plans (>8 steps) into independently trackable sub-tasks with dependency ordering and file ownership tracking. Groups steps by shared file adjacency, enforces a maximum of 4 steps per sub-task, and validates complete coverage with no circular dependencies. Supports two modes: `local` (creates `breakdown.json` and `sub-tasks/` directory for do-task-solo) and `issue` (creates GitHub sub-issues linked to the parent issue for do-issue-solo/guided)
-- New `do-issue-guided` workflow skill — interactive counterpart to `do-issue-solo`. Works through the same phases (understand → design → plan → branch → implement → review → push → PR) but pauses at four checkpoints (design review, plan review, review results, completion) for user confirmation. Proceeds autonomously between checkpoints.
-- New `do-task-solo` workflow skill — autonomous end-to-end task execution without GitHub issues. The user describes what they want interactively, and Claude formalises it as a structured task document, then designs, plans, and implements it. All artifacts (task description, design, plan, completion) are stored locally under `.maverick/do-tasks/<TASK-ID>/` and committed to version control.
+- New `create-tasks` skill — decomposes a solution design into discrete, independently implementable tasks. For fewer than 5 tasks, posts a checklist comment on the issue. For 5 or more, creates GitHub sub-issues with dependency ordering. Replaces the `create-implementation-plan` and `task-breakdown` skills with a single, simpler concept
+- New `do-issue-guided` workflow skill — interactive counterpart to `do-issue-solo`. Works through the same phases (understand → design → create tasks → branch → implement → review → push → PR) but pauses at four checkpoints (design review, tasks review, review results, completion) for user confirmation. Proceeds autonomously between checkpoints.
+- New `do-task-solo` workflow skill — autonomous end-to-end task execution without GitHub issues. The user describes what they want interactively, and Claude formalises it as a structured task document, then designs, creates tasks, and implements them. All artifacts (task description, design, tasks, completion) are stored locally under `.maverick/do-task/<TASK-ID>/` and committed to version control.
 - New `do-docs` workflow skill with three modes: greenfield (undocumented repos), refactor (non-compliant docs), and update (incremental changes after code diffs) — auto-detects mode when not specified
 - Mono-repo support for the `upskill` skill — detects workspace configurations, enumerates packages, and generates per-package project skills at `<package>/docs/maverick/skills/<topic>/SKILL.md`
 - Mono-repo support for `tech-docs` — repository type detection, package-level documentation paths, and mono-repo-aware file organisation rules
@@ -19,16 +19,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `create-implementation-plan` scope threshold simplified from 8-10 steps to a hard 8-step limit. Plans exceeding 8 steps now produce the complete plan and delegate decomposition to the `task-breakdown` skill, replacing the previous manual phase-splitting approach
-- All three workflow skills (`do-issue-solo`, `do-issue-guided`, `do-task-solo`) now include Phase 3.5 (Evaluate Plan Scope) which invokes `task-breakdown` when plans exceed 8 steps, and Phase 5 conditionally executes sub-tasks in dependency order when a breakdown exists
-- `mav-plan-execution` now supports sub-task awareness — loads sub-task-scoped plans, tracks progress per sub-task, uses dual-reference commit messages (e.g., `feat: ... (TASK-001/ST-001)`), and includes sub-task crash recovery
-- `do-task-solo` crash recovery updated to detect and resume from incomplete sub-tasks using `breakdown.json` and sub-task `plan.md` checkboxes
+- **Jinja2 templating** — all skill and agent templates (`.md.j2`) now use Jinja2. Skills and agents reference each other via `{{ SKILLS.<CONSTANT> }}` and `{{ AGENTS.<CONSTANT> }}` variables, replacing static name strings. The full `SKILLS` and `AGENTS` dicts (built from `names.py`) are available in every template.
+- **Simplified workflow pipeline** — replaced the three-layer decomposition (solution design → implementation plan → task breakdown) with a two-layer flow (solution design → create tasks). Removed `create-implementation-plan`, `mav-issue-breakdown`, and `mav-task-breakdown` skills.
+- All three workflow skills (`do-issue-solo`, `do-issue-guided`, `do-task-solo`) now use a single "Create Tasks" phase instead of separate "Implementation Plan" and "Evaluate Plan Scope" phases
+- Planner agents (`github-issue-planner`, `task-planner`) now produce task lists directly from the solution design instead of detailed implementation plans
+- `mav-plan-execution` simplified — removed sub-task awareness section, updated terminology from "steps" to "tasks"
 - Refactored `tech-docs` from user-invocable workflow to non-invocable standards reference skill — process/orchestration logic moved to `do-docs`, standards content (document structure, writing style, file organisation, diagrams, validation) retained
 - Updated `tech-docs-writer` agent to depend on both `do-docs` (task orchestration) and `tech-docs` (standards)
 - `do-issue-solo` Phase 7 now dispatches the `tech-docs-writer` agent with explicit `Mode: update`
 - `init` skill now invokes `/maverick:do-docs` instead of `/maverick:tech-docs`
 - Simplified README — removed outdated CLI examples, fixed typos, updated project init instructions
-- Updated `architecture.md`, `overview.md`, and `claude-code-error-handling-and-recovery.md` to cover the new `do-issue-guided` and `do-task-solo` workflows — added workflow entry point diagram, local task state persistence, and artefact durability patterns for committed task files
+- Updated `architecture.md`, `overview.md`, `maverick-build.md`, and `claude-code-error-handling-and-recovery.md` to reflect the Jinja2 migration and simplified workflow pipeline
+- Makefile `generate-skills` and `generate-agents` targets merged into a single `generate` target
+- Skill and agent source directories renamed to match their config names (e.g., `create-solution-design/` → `mav-create-solution-design/`, agent dirs now include `agent-` prefix)
+
+### Removed
+
+- `create-implementation-plan` skill — replaced by `create-tasks`
+- `mav-issue-breakdown` skill — functionality folded into `create-tasks` (sub-issues for >= 5 tasks)
+- `mav-task-breakdown` skill — functionality folded into `create-tasks`
 
 ## [0.1.0-alpha] - 2026-03-04
 

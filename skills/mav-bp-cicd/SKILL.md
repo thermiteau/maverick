@@ -193,8 +193,8 @@ digraph lookup {
 ```
 
 1. Check for `docs/maverick/skills/cicd/SKILL.md`
-2. If missing, invoke the `upskill` skill with topic: cicd
-3. Read the project skill to determine which platform is in use, then load the corresponding platform skill (`cicd-github`, `cicd-gitlab`, `cicd-azure`)
+2. If missing, invoke the `do-upskill` skill with topic: cicd
+3. Read the project skill to determine which platform is in use, then load the corresponding platform skill (`mav-bp-cicd-github`, `mav-bp-cicd-gitlab`, `mav-bp-cicd-azure`)
 
 ## Detecting CI/CD Issues in Code Review
 

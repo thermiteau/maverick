@@ -1,5 +1,5 @@
 from maverick.models import SkillConfig
-from maverick.names import DO_DOCS, MAV_SCOPE_BOUNDARIES, TECH_DOCS
+from maverick.names import DO_DOCS, DO_TECH_DOCS, MAV_SCOPE_BOUNDARIES
 
 CONFIG = SkillConfig(
     name=DO_DOCS,
@@ -11,5 +11,5 @@ CONFIG = SkillConfig(
     argument_hint="mode: greenfield, refactor, or update (auto-detected if omitted)",
     user_invocable=True,
     disable_model_invocation=False,
-    depends_on=[TECH_DOCS, MAV_SCOPE_BOUNDARIES],
+    depends_on=[DO_TECH_DOCS, MAV_SCOPE_BOUNDARIES],
 )

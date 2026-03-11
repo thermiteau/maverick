@@ -5,10 +5,12 @@ from __future__ import annotations
 import importlib.util
 import shutil
 from pathlib import Path
-from string import Template
 from typing import Any
 
+from jinja2 import Template as Jinja2Template
+
 from maverick.models import AgentConfig, GlobalConfig, SkillConfig
+from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SKILLS_TEMPLATES_DIR = Path(__file__).resolve().parent / "skills"
@@ -19,9 +21,23 @@ AGENTS_OUTPUT_DIR = PROJECT_ROOT / "agents"
 GLOBAL_CONFIG = GlobalConfig()
 
 
+def _build_names_dict(names: set[str]) -> dict[str, str]:
+    """Build a dict mapping UPPER_SNAKE keys to their kebab-case name values.
+
+    For example: {"MAV_BP_CICD": "mav-bp-cicd", "DO_ISSUE_SOLO": "do-issue-solo"}
+    """
+    return {name.upper().replace("-", "_"): name for name in names}
+
+
+# Pre-built dicts available to all templates.
+SKILLS_DICT = _build_names_dict(ALL_SKILL_NAMES)
+AGENTS_DICT = _build_names_dict(ALL_AGENT_NAMES)
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_config(config_path: Path) -> Any:
     """Dynamically load a CONFIG object from a config.py file."""
@@ -35,12 +51,10 @@ def _load_config(config_path: Path) -> Any:
 # Skills
 # ---------------------------------------------------------------------------
 
+
 def discover_skills(templates_dir: Path = SKILLS_TEMPLATES_DIR) -> list[SkillConfig]:
     """Find all skill directories that contain a config.py and load them."""
-    return [
-        _load_config(p)
-        for p in sorted(templates_dir.glob("*/config.py"))
-    ]
+    return [_load_config(p) for p in sorted(templates_dir.glob("*/config.py"))]
 
 
 def _build_skill_frontmatter(skill: SkillConfig) -> str:
@@ -76,15 +90,17 @@ def render_skill(
     output_dir: Path = SKILLS_OUTPUT_DIR,
 ) -> Path:
     """Render a single skill from its config and body template."""
-    body_path = templates_dir / skill.name / "body.md"
+    body_path = templates_dir / skill.name / "body.md.j2"
     body = body_path.read_text()
 
-    # Substitute body-level variables (e.g. $DEPENDS_ON, extra_context)
-    context: dict[str, str] = {**global_config.extra_context, **skill.extra_context}
+    # Build Jinja2 context
+    context: dict[str, Any] = {**global_config.extra_context, **skill.extra_context}
     if skill.depends_on:
         context["DEPENDS_ON"] = ", ".join(skill.depends_on)
-    if context:
-        body = Template(body).safe_substitute(context)
+    context["SKILLS"] = SKILLS_DICT
+    context["AGENTS"] = AGENTS_DICT
+
+    body = Jinja2Template(body).render(**context)
 
     frontmatter = _build_skill_frontmatter(skill)
     skill_output_dir = output_dir / skill.name
@@ -117,6 +133,7 @@ def render_all_skills(
 # ---------------------------------------------------------------------------
 # Agents
 # ---------------------------------------------------------------------------
+
 
 def _build_agent_frontmatter(agent: AgentConfig) -> str:
     """Build YAML frontmatter from an AgentConfig."""
@@ -155,10 +172,7 @@ def discover_agents(
     templates_dir: Path = AGENTS_TEMPLATES_DIR,
 ) -> list[AgentConfig]:
     """Find all agent directories that contain a config.py and load them."""
-    return [
-        _load_config(p)
-        for p in sorted(templates_dir.glob("*/config.py"))
-    ]
+    return [_load_config(p) for p in sorted(templates_dir.glob("*/config.py"))]
 
 
 def render_agent(
@@ -167,8 +181,15 @@ def render_agent(
     output_dir: Path = AGENTS_OUTPUT_DIR,
 ) -> Path:
     """Render a single agent from its config and body template."""
-    body_path = templates_dir / agent.name / "body.md"
+    body_path = templates_dir / agent.name / "body.md.j2"
     body = body_path.read_text()
+
+    # Build Jinja2 context
+    context: dict[str, Any] = {**agent.extra_context}
+    context["SKILLS"] = SKILLS_DICT
+    context["AGENTS"] = AGENTS_DICT
+
+    body = Jinja2Template(body).render(**context)
 
     frontmatter = _build_agent_frontmatter(agent)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -198,6 +219,7 @@ def render_all_agents(
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     for output in render_all_skills():

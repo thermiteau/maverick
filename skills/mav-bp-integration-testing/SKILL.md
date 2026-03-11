@@ -114,7 +114,7 @@ digraph lookup {
 ```
 
 1. Check for `docs/maverick/skills/integration-testing/SKILL.md`
-2. If missing, invoke the `upskill` skill with:
+2. If missing, invoke the `do-upskill` skill with:
    - topic: integration-testing
    - scan hints:
      - dependencies: supertest, testcontainers, docker-compose, pytest, httpx, rest-assured, wiremock, pact, localstack

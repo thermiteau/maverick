@@ -78,9 +78,7 @@ def _ensure_iam_policy(iam, policy_name, policy_document, account_id):
         non_default = [v for v in versions if not v["IsDefaultVersion"]]
         if len(non_default) >= 4:
             oldest = sorted(non_default, key=lambda v: v["CreateDate"])[0]
-            iam.delete_policy_version(
-                PolicyArn=policy_arn, VersionId=oldest["VersionId"]
-            )
+            iam.delete_policy_version(PolicyArn=policy_arn, VersionId=oldest["VersionId"])
         iam.create_policy_version(
             PolicyArn=policy_arn,
             PolicyDocument=json.dumps(policy_document),
@@ -228,9 +226,9 @@ def deploy():
     # 1. SQS queues
     print("==> Setting up SQS queues...")
     dlq_url = _ensure_queue(sqs, DLQ_NAME)
-    dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
-        "Attributes"
-    ]["QueueArn"]
+    dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])["Attributes"][
+        "QueueArn"
+    ]
 
     sqs_cfg = cfg["sqs"]
     queue_url = _ensure_queue(
@@ -247,9 +245,9 @@ def deploy():
             ),
         },
     )
-    queue_arn = sqs.get_queue_attributes(
-        QueueUrl=queue_url, AttributeNames=["QueueArn"]
-    )["Attributes"]["QueueArn"]
+    queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
+        "Attributes"
+    ]["QueueArn"]
 
     # 2. CloudWatch log group
     print("==> Setting up CloudWatch log group...")
@@ -293,9 +291,7 @@ def deploy():
             },
         ],
     }
-    lambda_policy_arn = _ensure_iam_policy(
-        iam, LAMBDA_POLICY_NAME, lambda_policy_doc, account_id
-    )
+    lambda_policy_arn = _ensure_iam_policy(iam, LAMBDA_POLICY_NAME, lambda_policy_doc, account_id)
     _ensure_role_policy_attachment(iam, LAMBDA_ROLE_NAME, lambda_policy_arn)
 
     # 4. Lambda function
@@ -406,9 +402,7 @@ def destroy():
     cfg = init_config()
     region = cfg["aws"]["region"]
 
-    confirm = input(
-        "Destroy all maverick infrastructure? This cannot be undone. [y/N] "
-    )
+    confirm = input("Destroy all maverick infrastructure? This cannot be undone. [y/N] ")
     if confirm.lower() != "y":
         print("Cancelled.")
         return
@@ -441,9 +435,7 @@ def destroy():
     try:
         # Delete all policy versions before deleting policy
         if infra.get("lambda_policy_arn"):
-            versions = iam.list_policy_versions(PolicyArn=infra["lambda_policy_arn"])[
-                "Versions"
-            ]
+            versions = iam.list_policy_versions(PolicyArn=infra["lambda_policy_arn"])["Versions"]
             for v in versions:
                 if not v["IsDefaultVersion"]:
                     iam.delete_policy_version(
@@ -470,9 +462,7 @@ def destroy():
         pass
     try:
         if infra.get("ec2_policy_arn"):
-            versions = iam.list_policy_versions(PolicyArn=infra["ec2_policy_arn"])[
-                "Versions"
-            ]
+            versions = iam.list_policy_versions(PolicyArn=infra["ec2_policy_arn"])["Versions"]
             for v in versions:
                 if not v["IsDefaultVersion"]:
                     iam.delete_policy_version(

@@ -7,10 +7,24 @@ name = "maverick"
 version = "0.1.0"
 description = "Claude Code plugin that enables autonomous AI development while maintaining best practices"
 requires-python = ">=3.10"
-dependencies = ["boto3"]
+dependencies = [
+    "boto3",
+    "jinja2>=3.1",
+    "pyright>=1.1.408",
+    "ruff>=0.8",
+]
 
 [project.scripts]
 maverick = "maverick.cli:main"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4"]
+ignore = ["E501"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
