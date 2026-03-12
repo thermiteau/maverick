@@ -17,6 +17,106 @@ LAMBDA_POLICY_NAME = "maverick-webhook-policy"
 EC2_WORKER_POLICY_NAME = "maverick-worker-policy"
 QUEUE_NAME = "maverick-work"
 DLQ_NAME = "maverick-work-dlq"
+VPC_NAME = "maverick-workers"
+VPC_CIDR = "10.0.0.0/16"
+SUBNET_CIDR = "10.0.1.0/24"
+
+
+def _ensure_vpc(ec2, region):
+    """Find or create the maverick-workers VPC. Returns (vpc_id, subnet_id)."""
+    # Look for existing VPC by name tag
+    resp = ec2.describe_vpcs(
+        Filters=[
+            {"Name": "tag:Name", "Values": [VPC_NAME]},
+        ]
+    )
+    vpcs = resp["Vpcs"]
+    if vpcs:
+        vpc_id = vpcs[0]["VpcId"]
+        print(f"    VPC '{VPC_NAME}' already exists ({vpc_id}).")
+        # Find the subnet we created in this VPC
+        sub_resp = ec2.describe_subnets(
+            Filters=[
+                {"Name": "vpc-id", "Values": [vpc_id]},
+                {"Name": "tag:Name", "Values": [f"{VPC_NAME}-public"]},
+            ]
+        )
+        if sub_resp["Subnets"]:
+            subnet_id = sub_resp["Subnets"][0]["SubnetId"]
+        else:
+            # VPC exists but no tagged subnet — create one
+            subnet_id = _create_subnet(ec2, vpc_id, region)
+        return vpc_id, subnet_id
+
+    # Create new VPC
+    print(f"    Creating VPC '{VPC_NAME}' ({VPC_CIDR})...")
+    vpc_id = ec2.create_vpc(CidrBlock=VPC_CIDR)["Vpc"]["VpcId"]
+    ec2.get_waiter("vpc_available").wait(VpcIds=[vpc_id])
+
+    ec2.create_tags(
+        Resources=[vpc_id],
+        Tags=[{"Key": "Name", "Value": VPC_NAME}],
+    )
+
+    # Enable DNS support and hostnames for public IP resolution
+    ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsSupport={"Value": True})
+    ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={"Value": True})
+
+    # Create internet gateway and attach to VPC
+    igw_id = ec2.create_internet_gateway()["InternetGateway"]["InternetGatewayId"]
+    ec2.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+    ec2.create_tags(
+        Resources=[igw_id],
+        Tags=[{"Key": "Name", "Value": f"{VPC_NAME}-igw"}],
+    )
+    print(f"    Internet gateway: {igw_id}")
+
+    # Create public subnet
+    subnet_id = _create_subnet(ec2, vpc_id, region)
+
+    # Create route table with default route to IGW
+    rt_id = ec2.create_route_table(VpcId=vpc_id)["RouteTable"]["RouteTableId"]
+    ec2.create_route(
+        RouteTableId=rt_id,
+        DestinationCidrBlock="0.0.0.0/0",
+        GatewayId=igw_id,
+    )
+    ec2.associate_route_table(RouteTableId=rt_id, SubnetId=subnet_id)
+    ec2.create_tags(
+        Resources=[rt_id],
+        Tags=[{"Key": "Name", "Value": f"{VPC_NAME}-rt"}],
+    )
+    print(f"    Route table: {rt_id}")
+
+    print(f"    VPC '{VPC_NAME}' created ({vpc_id}).")
+    return vpc_id, subnet_id
+
+
+def _create_subnet(ec2, vpc_id, region):
+    """Create a public subnet in the VPC. Returns subnet ID."""
+    # Use the first AZ in the region
+    azs = ec2.describe_availability_zones(
+        Filters=[{"Name": "state", "Values": ["available"]}]
+    )["AvailabilityZones"]
+    az = azs[0]["ZoneName"]
+
+    subnet_id = ec2.create_subnet(
+        VpcId=vpc_id,
+        CidrBlock=SUBNET_CIDR,
+        AvailabilityZone=az,
+    )["Subnet"]["SubnetId"]
+
+    # Auto-assign public IPs so EC2 instances are reachable
+    ec2.modify_subnet_attribute(
+        SubnetId=subnet_id,
+        MapPublicIpOnLaunch={"Value": True},
+    )
+    ec2.create_tags(
+        Resources=[subnet_id],
+        Tags=[{"Key": "Name", "Value": f"{VPC_NAME}-public"}],
+    )
+    print(f"    Subnet: {subnet_id} ({az})")
+    return subnet_id
 
 
 def _load_infra_state():
@@ -214,6 +314,7 @@ def deploy():
     region = cfg["aws"]["region"]
     account_id = _get_account_id()
 
+    ec2 = boto3.client("ec2", region_name=region)
     sqs = boto3.client("sqs", region_name=region)
     iam = boto3.client("iam")
     lambda_client = boto3.client("lambda", region_name=region)
@@ -223,7 +324,11 @@ def deploy():
     log_group_name = cfg["worker"]["cloudwatch_log_group"]
     webhook_label = cfg["worker"]["webhook_label"]
 
-    # 1. SQS queues
+    # 1. VPC
+    print("==> Setting up VPC...")
+    vpc_id, subnet_id = _ensure_vpc(ec2, region)
+
+    # 2. SQS queues
     print("==> Setting up SQS queues...")
     dlq_url = _ensure_queue(sqs, DLQ_NAME)
     dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])["Attributes"][
@@ -249,11 +354,11 @@ def deploy():
         "Attributes"
     ]["QueueArn"]
 
-    # 2. CloudWatch log group
+    # 3. CloudWatch log group
     print("==> Setting up CloudWatch log group...")
     log_group_arn = _ensure_log_group(logs, log_group_name)
 
-    # 3. Lambda IAM role and policy
+    # 4. Lambda IAM role and policy
     print("==> Setting up Lambda IAM role...")
     lambda_assume_policy = {
         "Version": "2012-10-17",
@@ -294,7 +399,7 @@ def deploy():
     lambda_policy_arn = _ensure_iam_policy(iam, LAMBDA_POLICY_NAME, lambda_policy_doc, account_id)
     _ensure_role_policy_attachment(iam, LAMBDA_ROLE_NAME, lambda_policy_arn)
 
-    # 4. Lambda function
+    # 5. Lambda function
     print("==> Setting up Lambda function...")
     zip_bytes = _build_lambda_zip()
     env_vars = {
@@ -306,10 +411,10 @@ def deploy():
         lambda_client, LAMBDA_FUNCTION_NAME, lambda_role_arn, zip_bytes, env_vars
     )
 
-    # 5. Function URL
+    # 6. Function URL
     function_url = _ensure_function_url(lambda_client, LAMBDA_FUNCTION_NAME)
 
-    # 6. EC2 worker policy
+    # 7. EC2 worker policy
     print("==> Setting up EC2 worker IAM policy...")
     ec2_worker_policy_doc = {
         "Version": "2012-10-17",
@@ -341,8 +446,10 @@ def deploy():
     ec2_role_name = _get_role_name_from_profile(iam, cfg["aws"]["iam_profile"])
     _ensure_role_policy_attachment(iam, ec2_role_name, ec2_policy_arn)
 
-    # 7. Save infra state
+    # 8. Save infra state
     infra = {
+        "vpc_id": vpc_id,
+        "subnet_id": subnet_id,
         "queue_url": queue_url,
         "queue_arn": queue_arn,
         "dlq_url": dlq_url,
@@ -357,12 +464,15 @@ def deploy():
     }
     _save_infra_state(infra)
 
-    # 8. Update config with runtime values
+    # 9. Update config with runtime values
     cfg["aws"]["sqs_queue_url"] = queue_url
+    cfg["aws"]["subnet"] = subnet_id
     save_config(cfg)
 
     print()
     print("=== Infrastructure deployed ===")
+    print(f"  VPC:            {vpc_id}")
+    print(f"  Subnet:         {subnet_id}")
     print(f"  SQS Queue:      {queue_url}")
     print(f"  DLQ:            {dlq_url}")
     print(f"  Lambda:         {lambda_arn}")
@@ -384,6 +494,8 @@ def status():
         sys.exit(1)
 
     print("=== Infrastructure Status ===")
+    print(f"  VPC:          {infra.get('vpc_id', 'N/A')}")
+    print(f"  Subnet:       {infra.get('subnet_id', 'N/A')}")
     print(f"  SQS Queue:    {infra.get('queue_url', 'N/A')}")
     print(f"  DLQ:          {infra.get('dlq_url', 'N/A')}")
     print(f"  Lambda:       {infra.get('lambda_arn', 'N/A')}")
