@@ -88,6 +88,44 @@ def main():
         help="Infrastructure action to perform",
     )
 
+    # maverick review-sessions
+    review_parser = subparsers.add_parser(
+        "review-sessions", help="Review Claude Code session quality"
+    )
+    review_parser.add_argument(
+        "--project",
+        required=True,
+        metavar="PATH",
+        help="Project directory to review sessions for",
+    )
+    review_parser.add_argument(
+        "--session",
+        metavar="ID",
+        help="Review a specific session by ID (prefix match)",
+    )
+    review_parser.add_argument(
+        "--days",
+        type=int,
+        metavar="N",
+        help="Only review sessions from last N days",
+    )
+    review_parser.add_argument(
+        "--mechanical-only",
+        action="store_true",
+        default=True,
+        help="Skip LLM-powered semantic analysis (default)",
+    )
+    review_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Include semantic analysis via agent",
+    )
+    review_parser.add_argument(
+        "--output-dir",
+        metavar="PATH",
+        help="Override report output directory",
+    )
+
     # maverick worker <action>
     worker_parser = subparsers.add_parser("worker", help="Manage worker daemon")
     worker_parser.add_argument(
@@ -128,6 +166,11 @@ def main():
 
         actions = {"deploy": deploy, "status": status, "destroy": destroy}
         actions[args.action]()
+
+    elif args.command == "review-sessions":
+        from maverick.session_review.cli import main as review_main
+
+        review_main(args)
 
     elif args.command == "worker":
         from maverick.worker import main as worker_main
