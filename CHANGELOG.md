@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `mav-issue-breakdown` skill — functionality folded into `create-tasks` (sub-issues for >= 5 tasks)
 - `mav-task-breakdown` skill — functionality folded into `create-tasks`
 
+## [0.3.0] - 2026-03-10
+
+## [0.2.0] - 2026-03-06
+
 ## [0.1.0-alpha] - 2026-03-04
 
 ### Added
@@ -53,5 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/thermiteau/maverick/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/thermiteau/maverick/compare/v0.1.0-alpha...v0.2.0
 [0.1.0-alpha]: https://github.com/thermiteau/maverick/releases/tag/v0.1.0-alpha

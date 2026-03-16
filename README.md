@@ -1,8 +1,8 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/othneildrew/Best-README-Template">
-    <img src="docs/media/maverick-logo.png" alt="Logo" width="200" height="200">
+  <a href="https://github.com/thermiteau/maverick">
+    <img src="docs/media/maverick-logo.png" alt="Maverick Logo" width="200" height="200">
   </a>
 
   <h1 align="center">Maverick</h1>
@@ -10,17 +10,17 @@
   <p align="center">
     Claude Code tooling to build software right
     <br />
-    <a href="https://github.com/thermiteau/maverick/docs.overview.md"><strong>Explore the docs</strong></a>
+    <a href="docs/overview.md"><strong>Explore the docs</strong></a>
     <br />
     <br />
     &middot;
-    <a href="https://github.com/thermiteau/maverickissues/new?labels=bug&template=bug-report.md">Report Bug</a>
+    <a href="https://github.com/thermiteau/maverick/issues/new?labels=bug&template=bug-report.md">Report Bug</a>
     &middot;
-    <a href="hhttps://github.com/thermiteau/maverickissues/new?labels=enhancement&template=feature-request.md">Request Feature</a>
+    <a href="https://github.com/thermiteau/maverick/issues/new?labels=enhancement&template=feature-request.md">Request Feature</a>
   </p>
 </div>
 
-Maverick is a Claude Code plugin and local application that enables autonomous AI-driven software development while enforcing quality, security, and operational best practices.
+Maverick is a Claude Code ( Cursor and Codex ) plugin and local CLI commands that enables autonomous AI-driven software development while enforcing quality, security, and operational best practices.
 
 It provides skills, agents, and hooks that constrain and guide LLM behaviour - making unattended development safe and reliable.
 
@@ -64,6 +64,13 @@ Maverick solves this by deploying Claude Code workers to remote Claude platforms
 
 This is more complicated than cassual users may need and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
 
+## NOTE: This project is still in Alpha and under rapid change
+
+I use this repo to build my own software and I aim to improve it every day. That means the change rate is pretty high until I get it to v1 release.
+
+- The Claude plugin skills and agents are solid and work well.
+- The CLI tools and Cloud infra deploy are still brittle and need a lot of work. Thats my next issue to fix/build.
+
 ## Install
 
 ### Plugin
@@ -71,7 +78,7 @@ This is more complicated than cassual users may need and its not required to use
 ```sh
 # Install the plugin (registers in ~/.claude/settings.json)
 claude plugin marketplace add https://github.com/thermiteau/maverick
-claude plugin install maverick@thermite 
+claude plugin install maverick@thermite
 ```
 
 ### CLI
