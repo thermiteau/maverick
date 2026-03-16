@@ -92,16 +92,21 @@ make release VERSION=0.2.0
 
 ### What the script does
 
-1. Validates the version is valid semver, the branch is `main`, the working tree is clean, and the tag does not already exist
-2. Updates the version in all four manifest files
+The release script follows a develop-first flow: the release is prepared on `develop`, merged to `main`, tagged, and then `develop` is bumped to the next dev version so it always stays ahead of `main`.
+
+1. **Pre-flight checks** — validates the version is valid semver, the branch is `develop`, the working tree is clean, the tag does not already exist, and `main` is an ancestor of `develop`
+2. Bumps the version to `X.Y.Z` in all four manifest files
 3. Updates `CHANGELOG.md` — adds a dated version section below `[Unreleased]` and updates comparison links
 4. Runs `uv lock` to sync the lockfile
-5. Commits all changes: `chore: release X.Y.Z`
-6. Creates an annotated git tag: `vX.Y.Z`
+5. Commits on `develop`: `chore: release X.Y.Z`
+6. Checks out `main` and merges `develop` with `--no-ff`
+7. Creates an annotated git tag `vX.Y.Z` on `main`
+8. Checks out `develop` and bumps the version to `X.(Y+1).0-dev` in all four manifest files
+9. Runs `uv lock` and commits: `chore: begin X.(Y+1).0-dev cycle`
 
-After running the script, push and create a GitHub release:
+After running the script, push both branches and the tag, then create a GitHub release:
 
 ```bash
-git push origin main --tags
+git push origin main develop --tags
 gh release create vX.Y.Z --generate-notes
 ```

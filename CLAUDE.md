@@ -33,9 +33,10 @@ claude --plugin-dir ./maverick-plugin
 bash tests/integration/test_cli.sh
 bash tests/integration/test_real_repos.sh
 
-# Create a release (bumps version, updates changelog, commits, tags)
-./scripts/release.sh 0.2.0
-# or: make release VERSION=0.2.0
+# Create a release (develop-first: bump, merge to main, tag, dev bump)
+# Must be run from the develop branch
+./scripts/release.sh 0.4.0
+# or: make release VERSION=0.4.0
 ```
 
 ## Architecture
