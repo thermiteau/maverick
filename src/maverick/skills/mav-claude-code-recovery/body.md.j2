@@ -50,7 +50,6 @@ Writing **after** completion means the state file always reflects a consistent, 
 
 ### State File Hygiene
 
-- **Gitignore** — state files are session artefacts, not project code. Always gitignore them.
 - **One file per workflow** — if working on multiple issues concurrently (e.g., in worktrees), use separate state files.
 - **Clean up on completion** — delete the state file after the workflow completes successfully (PR created, issue updated).
 - **Atomic writes** — write to a temp file then rename, to avoid corruption from partial writes:
