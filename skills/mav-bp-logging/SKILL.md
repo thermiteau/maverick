@@ -266,7 +266,7 @@ digraph lookup {
 ```
 
 1. Check for `docs/maverick/skills/logging/SKILL.md`
-2. If missing, invoke the `upskill` skill with:
+2. If missing, invoke the `do-upskill` skill with:
    - topic: logging
    - scan hints:
      - dependencies: pino, winston, bunyan, log4js, morgan, structlog, loguru, slog, tracing

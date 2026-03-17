@@ -150,7 +150,7 @@ digraph lookup {
 ```
 
 1. Check for `docs/maverick/skills/linting/SKILL.md`
-2. If missing, invoke the `upskill` skill with:
+2. If missing, invoke the `do-upskill` skill with:
    - topic: linting
    - scan hints:
      - dependencies: eslint, prettier, ruff, clippy, golangci-lint, rubocop, stylelint, lint-staged, husky

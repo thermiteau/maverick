@@ -108,7 +108,7 @@ digraph lookup {
 ```
 
 1. Check for `docs/maverick/skills/unit-testing/SKILL.md`
-2. If missing, invoke the `upskill` skill with:
+2. If missing, invoke the `do-upskill` skill with:
    - topic: unit-testing
    - scan hints:
      - dependencies: vitest, jest, mocha, pytest, unittest, junit, rspec, go test, testing

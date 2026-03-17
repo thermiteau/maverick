@@ -1,15 +1,19 @@
-.PHONY: generate-skills generate-agents generate-topics build release
+.PHONY: generate generate-topics build release lint format typecheck
 
-generate-skills: ## Render all SKILL.md files from templates
-	cd src && python -m maverick.registry
+lint: ## Run ruff linter
+	uv run ruff check .
 
-generate-agents: ## Render all agent .md files from templates
+typecheck: ## Run pyright type checker
+	uv run pyright
+
+
+generate: ## Render all skill and agent templates
 	cd src && python -m maverick.registry
 
 generate-topics: ## Generate skills/upskill/topics.json from upskill config
 	cd src && python -m maverick.generate_topics
 
-build: generate-topics generate-skills generate-agents
+build: generate-topics generate
 
-release: ## Create a release (usage: make release VERSION=0.2.0)
+release: build ## Create a release (usage: make release VERSION=0.2.0)
 	bash scripts/release.sh $(VERSION)

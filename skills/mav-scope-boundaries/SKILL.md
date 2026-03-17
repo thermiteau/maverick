@@ -16,7 +16,7 @@ Hard limits on what Claude Code may do autonomously. These boundaries apply to a
 
 ### 1. Infrastructure Changes
 
-**Do not** modify CI/CD pipelines, deployment configs, or infrastructure-as-code unless the GitHub issue explicitly instructs it.
+**Do not** modify CI/CD pipelines, deployment configs, or infrastructure-as-code unless the issue/task explicitly instructs it.
 
 **Restricted:**
 - `.github/workflows/` files (GitHub Actions)
@@ -28,14 +28,14 @@ Hard limits on what Claude Code may do autonomously. These boundaries apply to a
 - Nginx, Apache, or reverse proxy configs
 
 **How authorisation works:**
-- The GitHub issue must explicitly request the infrastructure change
+- The issue/task must explicitly request the infrastructure change
 - General instructions like "set up the project" or "make it work" do not constitute authorisation
-- If the issue says "update the CI workflow to add a lint step", that is authorisation for that specific change
+- If the issue/task says "update the CI workflow to add a lint step", that is authorisation for that specific change
 
-**If an infrastructure change seems necessary but is not in the issue:**
-- Post a comment on the issue explaining what change is needed and why
+**If an infrastructure change seems necessary but is not in the issue/task:**
+- Post a comment on the issue/task explaining what change is needed and why
 - Wait for human approval before proceeding
-- Or create a new issue for the infrastructure change
+- Or create a new issue/task for the infrastructure change
 
 ### 2. Authentication and Authorisation
 
@@ -51,9 +51,9 @@ Hard limits on what Claude Code may do autonomously. These boundaries apply to a
 - Security headers
 - Password hashing or validation rules
 
-**Even if the issue requests auth changes:**
+**Even if the issue/task requests auth changes:**
 - Implement the change but flag it for human review before merge
-- Post a comment on the issue highlighting the security implications
+- Post a comment on the issue/task highlighting the security implications
 - Never auto-merge PRs that modify auth systems
 
 ### 3. Destructive Git Operations

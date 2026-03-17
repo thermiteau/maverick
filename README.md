@@ -78,7 +78,7 @@ I use this repo to build my own software and I aim to improve it every day. That
 ```sh
 # Install the plugin (registers in ~/.claude/settings.json)
 claude plugin marketplace add https://github.com/thermiteau/maverick
-claude plugin install maverick@thermite 
+claude plugin install maverick@thermite
 ```
 
 ### CLI

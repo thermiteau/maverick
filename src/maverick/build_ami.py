@@ -99,9 +99,7 @@ def main():
     )
 
     # Wait for status checks
-    print(
-        "==> Waiting for instance status checks to pass (this may take 10-15 minutes)..."
-    )
+    print("==> Waiting for instance status checks to pass (this may take 10-15 minutes)...")
     ec2.get_waiter("instance_status_ok").wait(InstanceIds=[instance_id])
     print("    Status checks passed.")
 

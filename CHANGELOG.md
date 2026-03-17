@@ -7,14 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-03-10
-
-## [0.2.0] - 2026-03-06
+## [0.4.0] - 2026-03-18
 
 ### Added
 
-- New `do-issue-guided` workflow skill — interactive counterpart to `do-issue-solo`. Works through the same phases (understand → design → plan → branch → implement → review → push → PR) but pauses at four checkpoints (design review, plan review, review results, completion) for user confirmation. Proceeds autonomously between checkpoints.
-- New `do-task-solo` workflow skill — autonomous end-to-end task execution without GitHub issues. The user describes what they want interactively, and Claude formalises it as a structured task document, then designs, plans, and implements it. All artifacts (task description, design, plan, completion) are stored locally under `.maverick/do-tasks/<TASK-ID>/` and committed to version control.
+- New `create-tasks` skill — decomposes a solution design into discrete, independently implementable tasks. For fewer than 5 tasks, posts a checklist comment on the issue. For 5 or more, creates GitHub sub-issues with dependency ordering. Replaces the `create-implementation-plan` and `task-breakdown` skills with a single, simpler concept
+- New `do-issue-guided` workflow skill — interactive counterpart to `do-issue-solo`. Works through the same phases (understand → design → create tasks → branch → implement → review → push → PR) but pauses at four checkpoints (design review, tasks review, review results, completion) for user confirmation. Proceeds autonomously between checkpoints.
+- New `do-task-solo` workflow skill — autonomous end-to-end task execution without GitHub issues. The user describes what they want interactively, and Claude formalises it as a structured task document, then designs, creates tasks, and implements them. All artifacts (task description, design, tasks, completion) are stored locally under `.maverick/do-task/<TASK-ID>/` and committed to version control.
 - New `do-docs` workflow skill with three modes: greenfield (undocumented repos), refactor (non-compliant docs), and update (incremental changes after code diffs) — auto-detects mode when not specified
 - Mono-repo support for the `upskill` skill — detects workspace configurations, enumerates packages, and generates per-package project skills at `<package>/docs/maverick/skills/<topic>/SKILL.md`
 - Mono-repo support for `tech-docs` — repository type detection, package-level documentation paths, and mono-repo-aware file organisation rules
@@ -22,12 +21,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Improved repo release workflow** - The release workflow previously involved increasing the semver value in main, then merging back to develop. This caused issues when trying to use a develop version of the plugin in Claude Code. The new process increases the semver in develop and then merges to main when releasing to production.
+- **Jinja2 templating** — all skill and agent templates (`.md.j2`) now use Jinja2. Skills and agents reference each other via `{{ SKILLS.<CONSTANT> }}` and `{{ AGENTS.<CONSTANT> }}` variables, replacing static name strings. The full `SKILLS` and `AGENTS` dicts (built from `names.py`) are available in every template.
+- **Simplified workflow pipeline** — replaced the three-layer decomposition (solution design → implementation plan → task breakdown) with a two-layer flow (solution design → create tasks). Removed `create-implementation-plan`, `mav-issue-breakdown`, and `mav-task-breakdown` skills.
+- All three workflow skills (`do-issue-solo`, `do-issue-guided`, `do-task-solo`) now use a single "Create Tasks" phase instead of separate "Implementation Plan" and "Evaluate Plan Scope" phases
+- Planner agents (`github-issue-planner`, `task-planner`) now produce task lists directly from the solution design instead of detailed implementation plans
+- `mav-plan-execution` simplified — removed sub-task awareness section, updated terminology from "steps" to "tasks"
 - Refactored `tech-docs` from user-invocable workflow to non-invocable standards reference skill — process/orchestration logic moved to `do-docs`, standards content (document structure, writing style, file organisation, diagrams, validation) retained
 - Updated `tech-docs-writer` agent to depend on both `do-docs` (task orchestration) and `tech-docs` (standards)
 - `do-issue-solo` Phase 7 now dispatches the `tech-docs-writer` agent with explicit `Mode: update`
 - `init` skill now invokes `/maverick:do-docs` instead of `/maverick:tech-docs`
 - Simplified README — removed outdated CLI examples, fixed typos, updated project init instructions
-- Updated `architecture.md`, `overview.md`, and `claude-code-error-handling-and-recovery.md` to cover the new `do-issue-guided` and `do-task-solo` workflows — added workflow entry point diagram, local task state persistence, and artefact durability patterns for committed task files
+- Updated `architecture.md`, `overview.md`, `maverick-build.md`, and `claude-code-error-handling-and-recovery.md` to reflect the Jinja2 migration and simplified workflow pipeline
+- Makefile `generate-skills` and `generate-agents` targets merged into a single `generate` target
+- Skill and agent source directories renamed to match their config names (e.g., `create-solution-design/` → `mav-create-solution-design/`, agent dirs now include `agent-` prefix)
+
+### Removed
+
+- `create-implementation-plan` skill — replaced by `create-tasks`
+- `mav-issue-breakdown` skill — functionality folded into `create-tasks` (sub-issues for >= 5 tasks)
+- `mav-task-breakdown` skill — functionality folded into `create-tasks`
+
+## [0.3.0] - 2026-03-10
+
+## [0.2.0] - 2026-03-06
 
 ## [0.1.0-alpha] - 2026-03-04
 
@@ -43,6 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/thermiteau/maverick/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thermiteau/maverick/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/thermiteau/maverick/compare/v0.1.0-alpha...v0.2.0
 [0.1.0-alpha]: https://github.com/thermiteau/maverick/releases/tag/v0.1.0-alpha

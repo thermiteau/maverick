@@ -35,7 +35,7 @@ digraph lookup {
 ```
 
 1. Check for `docs/maverick/skills/alerting/SKILL.md`
-2. If missing, invoke the `upskill` skill with:
+2. If missing, invoke the `do-upskill` skill with:
    - topic: alerting
    - scan hints:
      - dependencies: @aws-sdk/client-sns, @pagerduty, @opsgenie, nodemailer, sentry

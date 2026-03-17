@@ -14,8 +14,8 @@ Skills are markdown files with YAML frontmatter that load into the LLM's context
 | Category            | Skills                                                                             | Purpose                                                        |
 | ------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | **Best Practices**  | logging, alerting, linting, unit-testing, cicd                                     | Define standards for each practice area                        |
-| **Workflow**        | do-issue-solo, do-issue-guided, do-task-solo, create-solution-design, create-implementation-plan | Orchestrate multi-step development workflows                   |
-| **Execution**       | mav-plan-execution, mav-local-verification, subagents                              | Control how plans are executed and verified                    |
+| **Workflow**        | do-issue-solo, do-issue-guided, do-task-solo, create-solution-design, create-tasks | Orchestrate multi-step development workflows                   |
+| **Execution**       | mav-plan-execution, mav-local-verification, subagents                              | Control how tasks are executed and verified                    |
 | **Git & GitHub**    | mav-git-workflow, mav-github-issue-workflow                                        | Define branching, commit, and issue interaction patterns       |
 | **CI/CD Platforms** | mav-bp-cicd-github, mav-bp-cicd-gitlab, mav-bp-cicd-azure                         | Platform-specific pipeline monitoring                          |
 | **Governance**      | mav-scope-boundaries, mav-claude-code-recovery, mav-systematic-debugging           | Define hard limits and resilience patterns                     |
@@ -73,20 +73,20 @@ flowchart TD
     ISSUEMODE -->|"guided"| GUIDED["do-issue-guided"]
 
     SOLO --> SD1["Solution Design"]
-    SD1 --> IP1["Implementation Plan"]
-    IP1 --> EXEC1["Execute Plan"]
+    SD1 --> CT1["Create Tasks"]
+    CT1 --> EXEC1["Execute Tasks"]
     EXEC1 --> VERIFY1["Verify + Review"]
     VERIFY1 --> PR1["Create PR"]
 
     GUIDED --> SD2["Solution Design"]
-    SD2 -->|"checkpoint"| IP2["Implementation Plan"]
-    IP2 -->|"checkpoint"| EXEC2["Execute Plan"]
+    SD2 -->|"checkpoint"| CT2["Create Tasks"]
+    CT2 -->|"checkpoint"| EXEC2["Execute Tasks"]
     EXEC2 --> VERIFY2["Verify + Review"]
     VERIFY2 -->|"checkpoint"| PR2["Create PR"]
 
     TASK --> SD3["Formalise Task → Solution Design"]
-    SD3 --> IP3["Implementation Plan"]
-    IP3 --> EXEC3["Execute Plan"]
+    SD3 --> CT3["Create Tasks"]
+    CT3 --> EXEC3["Execute Tasks"]
     EXEC3 --> VERIFY3["Verify + Review"]
     VERIFY3 --> PR3["Create PR"]
 
@@ -101,6 +101,6 @@ flowchart TD
 | **do-issue-guided** | Checkpoints at design, plan, review, and completion   | Supervised development - human validates approach at key decision points      |
 | **do-task-solo**    | Initial request only, then none until PR review       | Local autonomous development - user describes the task in the CLI, no GitHub issue required |
 
-All three workflows follow the same phases: solution design → implementation plan → execution → verification → PR creation. The differences are where work originates and where human checkpoints occur.
+All three workflows follow the same phases: solution design → create tasks → execution → verification → PR creation. The `create-tasks` skill decomposes a solution design into discrete tasks — posted as a checklist comment for fewer than 5 tasks, or as GitHub sub-issues with dependency ordering for 5 or more. The differences between workflows are where work originates and where human checkpoints occur.
 
-**do-task-solo** stores all artifacts locally under `.maverick/do-tasks/<TASK-ID>/` (task description, design, plan, completion) instead of GitHub issue comments. Task documents are committed to version control; only the state file is gitignored.
+**do-task-solo** stores all artifacts locally under `.maverick/do-task/<TASK-ID>/` (task description, design, tasks, completion) instead of GitHub issue comments. Task documents are committed to version control; only the state file is gitignored.

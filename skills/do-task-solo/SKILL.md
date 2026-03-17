@@ -6,16 +6,16 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-git-workflow, create-solution-design, create-implementation-plan, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-pullrequest-review
 
 # Work on Task (Autonomous, Local)
 
-Work on a user-described task autonomously. All artifacts (task description, solution design, implementation plan, progress) are stored locally under `.maverick/do-task/` instead of on GitHub. Follow every phase in order. Do not skip phases. Only pause to ask the user when you are blocked or need clarification.
+Work on a user-described task autonomously. All artifacts (task description, solution design, tasks, progress) are stored locally under `.maverick/do-task/` instead of on GitHub. Follow every phase in order. Do not skip phases. Only pause to ask the user when you are blocked or need clarification.
 
 ## Before You Begin
 
-1. If `$ARGUMENTS` is empty, ask the user to describe what they want. Gather enough detail to write a clear task description — the outcome, any constraints, and acceptance criteria.
-2. If `$ARGUMENTS` is provided, use it as the starting point. If it is too vague to act on, ask the user for clarification before proceeding.
+1. If `` is empty, ask the user to describe what they want. Gather enough detail to write a clear task description — the outcome, any constraints, and acceptance criteria.
+2. If `` is provided, use it as the starting point. If it is too vague to act on, ask the user for clarification before proceeding.
 
 ## Task File Structure
 
@@ -26,7 +26,7 @@ All task artifacts live under `.maverick/do-task/<TASK-ID>/`. The task ID is a z
   TASK-001/
     task.md            # Formalised task description (the "issue")
     design.md          # Solution design
-    plan.md            # Implementation plan with checkboxes
+    tasks.md           # Task checklist
     state.json         # Phase and progress tracking
     completion.md      # Completion summary
 ```
@@ -60,7 +60,7 @@ Maintain `state.json` to track progress across sessions. This file is gitignored
 {
   "task_id": "TASK-001",
   "branch": null,
-  "phase": "understand|design|plan|branch|implement|review|complete",
+  "phase": "understand|design|tasks|branch|implement|review|complete",
   "created": "2026-03-10T12:00:00Z"
 }
 ```
@@ -103,7 +103,7 @@ Update `state.json` phase to `understand`.
 
 Run Phase 2 as a subagent to keep the main context window clean for implementation.
 
-1. Dispatch the **issue-analyst** agent with:
+1. Dispatch the **agent-issue-analyst** agent with:
    - Task ID and path to `task.md` (instead of an issue number)
    - Mode: `solo`
    - Instruction to read the task from the local file and write the design to `.maverick/do-task/<TASK-ID>/design.md` instead of posting a GitHub comment
@@ -112,61 +112,55 @@ Run Phase 2 as a subagent to keep the main context window clean for implementati
    - `state.json` has `phase` set to `design`
 3. If the agent flagged ambiguities it could not resolve, ask the user. Otherwise continue.
 
-The design document follows the same structure as the create-solution-design skill, written to `design.md` instead of a GitHub comment.
+The design document follows the same structure as the mav-create-solution-design skill, written to `design.md` instead of a GitHub comment.
 
-## Phase 3: Implementation Plan (subagent)
+## Phase 3: Create Tasks (subagent)
 
 Run Phase 3 as a subagent to keep the main context window clean for implementation.
 
-1. Dispatch the **issue-planner** agent with:
+1. Dispatch the **agent-task-planner** agent with:
    - Task ID and path to `design.md`
-   - Instruction to read the design from the local file and write the plan to `.maverick/do-task/<TASK-ID>/plan.md` instead of posting a GitHub comment
+   - Instruction to read the design from the local file and write the task list to `.maverick/do-task/<TASK-ID>/tasks.md`
 2. When the agent returns, verify:
-   - `plan.md` exists and contains checkbox-format steps with files, changes, and verification commands
-   - `state.json` has `phase` set to `plan`
+   - `tasks.md` exists and contains a checkbox-format task list
+   - `state.json` has `phase` set to `tasks`
 3. If the agent flagged scope concerns, ask the user. Otherwise continue.
-
-The plan document follows the same structure as the create-implementation-plan skill, written to `plan.md` instead of a GitHub comment.
 
 ## Phase 4: Create Branch
 
 1. Derive the branch name from the task. Use the format `<type>/<task-id>-<short-desc>` (e.g., `feat/TASK-001-add-export`). Follow the mav-git-workflow skill for type prefixes.
 2. Create the branch from the project's integration branch (typically `develop`).
-3. Commit the task artifacts (`task.md`, `design.md`, `plan.md`) so they are tracked in version control.
+3. Commit the task artifacts (`task.md`, `design.md`, `tasks.md`) so they are tracked in version control.
 4. Update `state.json`: set `branch` and `phase` to `branch`.
 
-## Phase 5: Execute the Plan
+## Phase 5: Execute Tasks
 
 1. Check for project-level skills in `docs/maverick/skills/`. For each topic directory that contains a `SKILL.md`, read it. These project skills provide codebase-specific guidance (libraries, patterns, configuration) that supplements the best-practice skills. If none exist, continue without them.
-2. Follow the mav-plan-execution skill to execute each step.
-3. The plan-execution skill handles: step-by-step implementation, verification, failure handling, progress tracking, crash recovery, and acceptance criteria checking.
-4. In solo mode, it will work autonomously — only pausing when genuinely blocked.
-5. After completing each step, update the checkbox in `plan.md` (`- [ ]` → `- [x]`) and commit the update.
-6. Update `state.json` phase to `implement`.
+2. Update `state.json` phase to `implement`.
 
-### Progress Tracking (Local)
+Read the task list from `tasks.md` and execute each task in order:
 
-Instead of updating a GitHub comment, update `plan.md` directly:
+1. For each task:
+   1. Implement the change described
+   2. Run verification (lint, typecheck, tests) per the mav-local-verification skill
+   3. Commit with a conventional commit referencing the task ID
+   4. Update `tasks.md`: check off the completed task (`- [ ]` to `- [x]`) and commit the update
+2. After all tasks are complete, run the full verification suite
 
-```bash
-# Mark step N as complete in plan.md
-sed -i 's/- \[ \] \*\*Step N:/- [x] **Step N:/' .maverick/do-task/TASK-001/plan.md
-```
-
-This ensures progress survives session failures or crashes.
+Follow the mav-plan-execution skill for the execution loop, verification discipline, failure handling, and crash recovery. In solo mode, it will work autonomously — only pausing when genuinely blocked.
 
 ## Phase 6: Code Review
 
-1. Dispatch the code-reviewer agent with the task requirements (from `task.md`) and the diff (`git diff develop...HEAD`).
+1. Dispatch the agent-code-reviewer agent with the task requirements (from `task.md`) and the diff (`git diff develop...HEAD`).
 2. The reviewer performs two-stage review: spec compliance first, then code quality.
 3. If spec compliance fails, stop — fix the gaps before requesting re-review.
-4. Process code quality feedback per the pullrequest-review skill:
+4. Process code quality feedback per the do-pullrequest-review skill:
    - Read all items before acting.
    - Clarify unclear items before implementing any.
    - Verify each suggestion against the codebase.
    - Push back with reasoning when a suggestion is incorrect.
    - Implement valid fixes one at a time, verifying after each.
-5. If fixes changed the implementation approach, update `design.md` and `plan.md`.
+5. If fixes changed the implementation approach, update `design.md` and `tasks.md`.
 6. Request re-review if there were critical or spec compliance issues. Repeat until approved.
 7. Update `state.json` phase to `review`.
 
@@ -177,7 +171,7 @@ This ensures progress survives session failures or crashes.
    - Changed or added public APIs, components, services, or configuration
    - Altered data flows, integration points, or architectural patterns
    - Modified feature behaviour described in existing docs
-3. If documentation updates are needed, dispatch the **tech-docs-writer** agent with:
+3. If documentation updates are needed, dispatch the **agent-tech-docs-writer** agent with:
    - Mode: **update**
    - The diff (`git diff develop...HEAD`)
    - The list of affected doc files (or a note that new documentation is needed)
@@ -248,15 +242,16 @@ When resuming work on a task (new session, after crash):
 
 1. Check `.maverick/do-task/` for any task with a `state.json` where `phase` is not `complete`.
 2. If found — read the state, read the task artifacts, and resume from the recorded phase.
-3. Cross-reference `plan.md` checkboxes with `git log` to detect progress that wasn't recorded.
-4. If multiple incomplete tasks exist, ask the user which one to resume.
-5. If no incomplete tasks exist and no arguments were given, ask the user what they want to do.
+3. Cross-reference `tasks.md` checkboxes with `git log` to detect progress that wasn't recorded.
+4. Resume from the first unchecked task.
+5. If multiple incomplete tasks exist, ask the user which one to resume.
+6. If no incomplete tasks exist and no arguments were given, ask the user what they want to do.
 
 ## Rules
 
-- **Only pause for user input** when blocked or when the task is ambiguous. Do not ask for approval on design or plan unless you are uncertain.
-- **Run verification** after each step and after all steps. Do not declare success if checks fail.
+- **Only pause for user input** when blocked or when the task is ambiguous. Do not ask for approval on design or tasks unless you are uncertain.
+- **Run verification** after each task and after all tasks. Do not declare success if checks fail.
 - **Never commit directly** to `main` or `develop`.
 - **Use conventional commits** that reference the task ID (e.g., `feat: add rubric export (TASK-001)`).
 - **Always create a PR** at the end — this is the autonomous workflow, so deliver a complete result.
-- **Commit task artifacts** (`task.md`, `design.md`, `plan.md`, `completion.md`) to version control so they are available for review and survive across sessions. Only `state.json` is gitignored.
+- **Commit task artifacts** (`task.md`, `design.md`, `tasks.md`, `completion.md`) to version control so they are available for review and survive across sessions. Only `state.json` is gitignored.

@@ -33,9 +33,10 @@ claude --plugin-dir ./maverick-plugin
 bash tests/integration/test_cli.sh
 bash tests/integration/test_real_repos.sh
 
-# Create a release (bumps version, updates changelog, commits, tags)
-./scripts/release.sh 0.2.0
-# or: make release VERSION=0.2.0
+# Create a release (develop-first: bump, merge to main, tag, dev bump)
+# Must be run from the develop branch
+./scripts/release.sh 0.4.0
+# or: make release VERSION=0.4.0
 ```
 
 ## Architecture
@@ -47,7 +48,7 @@ Markdown files with YAML frontmatter that define machine-readable workflows and 
 - **Best-practice skills** (non-invocable): Universal standards for logging, alerting, linting, testing, CI/CD, git workflow, scope boundaries
 - **Workflow skills** (user-invocable): Orchestrate multi-step processes — `do-issue-solo` (autonomous from GitHub issue), `do-issue-guided` (interactive with checkpoints from GitHub issue), `do-task-solo` (autonomous from user-described task, no GitHub issue), `upskill` (generate project-specific skills), `maverick-alignment` (codebase audit)
 
-Skills compose via a `Depends on:` declaration. The three primary entry points are `do-issue-solo`, `do-issue-guided`, and `do-task-solo`, which chain through: understand → design → plan → branch → implement → review → push → PR.
+Skills compose via a `Depends on:` declaration. The three primary entry points are `do-issue-solo`, `do-issue-guided`, and `do-task-solo`, which chain through: understand → design → create tasks → branch → implement → review → push → PR. The `create-tasks` skill decomposes a solution design into discrete tasks — posted as a checklist comment for < 5 tasks, or as GitHub sub-issues for >= 5 tasks.
 
 ### Agents (`agents/*.md`)
 
@@ -89,7 +90,12 @@ Each skill lives in `src/maverick/skills/<name>/` and requires **two files**:
    )
    ```
 
-2. **`body.md`** — The skill content as markdown (no YAML frontmatter — that is generated from `config.py`). Use `$ARGUMENTS` for user-supplied arguments and `$DEPENDS_ON` for the dependency list. These are replacement variables injected at build time.
+2. **`body.md.j2`** — A Jinja2 template file containing the skill content as markdown (no YAML frontmatter — that is generated from `config.py`). Uses Jinja2 syntax (`{{ variable }}`). The following variables are available:
+   - `{{ ARGUMENTS }}` — user-supplied arguments at runtime
+   - `{{ DEPENDS_ON }}` — comma-separated list of dependency names from `config.py`
+   - `{{ SKILLS.<CONSTANT> }}` — any skill name, where `<CONSTANT>` is the Python constant from `names.py` (e.g., `{{ SKILLS.MAV_BP_LOGGING }}` → `mav-bp-logging`)
+   - `{{ AGENTS.<CONSTANT> }}` — any agent name (e.g., `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer`)
+   - Any key from `extra_context` on the `SkillConfig` or `GlobalConfig`
 
 When adding a new skill, also add a name constant to `src/maverick/names.py` and register it in `ALL_SKILL_NAMES`.
 
@@ -110,13 +116,29 @@ Each agent lives in `src/maverick/agents/<name>/` and requires **two files**:
    )
    ```
 
-2. **`body.md`** — The agent prompt as markdown (no frontmatter).
+2. **`body.md.j2`** — A Jinja2 template file containing the agent prompt as markdown (no frontmatter). Uses Jinja2 syntax (`{{ variable }}`). The following variables are available:
+   - `{{ SKILLS.<CONSTANT> }}` — any skill name (e.g., `{{ SKILLS.MAV_BP_LOGGING }}` → `mav-bp-logging`)
+   - `{{ AGENTS.<CONSTANT> }}` — any agent name (e.g., `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer`)
+   - Any key from `extra_context` on the `AgentConfig`
 
 When adding a new agent, also add a name constant (prefixed `AGENT_`) to `src/maverick/names.py` and register it in `ALL_AGENT_NAMES`.
+
+### Building Skills & Agents
+
+After editing source files, regenerate the build output:
+
+```bash
+# Render all skills and agents to root-level /skills/ and /agents/
+make build
+# or directly:
+cd src && python -m maverick.registry
+```
+
+The registry (`src/maverick/registry.py`) discovers all `config.py` files, renders templates, generates YAML frontmatter, and writes output to the root-level directories.
 
 ## Key Conventions
 
 - **Git workflow**: Simplified Gitflow. `main` and `develop` are protected — never commit directly. Feature branches: `<type>/<issue>-<desc>` (e.g., `feat/42-add-export`). Conventional Commits with issue refs: `feat: add export button (#42)`.
 - **Scope boundaries** (`skills/mav-scope-boundaries/`): Four hard limits — no infrastructure changes without explicit issue authorization, no auth/permissions changes without human review, no destructive git ops without session consent, never touch production systems.
 - **Python**: 3.10+, `uv` package manager, `boto3` for AWS, `argparse` CLI framework.
-- **Skills format**: YAML frontmatter (`name`, `description`, `user-invocable`, `argument-hint`, `disable-model-invocation`) followed by structured markdown with decision flowcharts in Graphviz dot notation.
+- **Skills format**: Source is `config.py` (frontmatter fields) + `body.md.j2` (Jinja2 template). Both skills and agents use `{{ SKILLS.CONSTANT }}` / `{{ AGENTS.CONSTANT }}` to reference other skills/agents. Build output is generated YAML frontmatter + rendered markdown.
