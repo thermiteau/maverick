@@ -37,9 +37,17 @@ TASK_DIR=".maverick/do-task/$TASK_ID"
 mkdir -p "$TASK_DIR"
 ```
 
+### Ensure Gitignore
+
+Before creating any files, ensure the task state file is gitignored (task documents themselves are committed so they survive across sessions):
+
+```bash
+grep -q '.maverick/do-task/*/state.json' .gitignore 2>/dev/null || echo '.maverick/do-task/*/state.json' >> .gitignore
+```
+
 ### State File
 
-Maintain `state.json` to track progress across sessions
+Maintain `state.json` to track progress across sessions. This file is gitignored.
 
 ```json
 {
@@ -239,4 +247,4 @@ When resuming work on a task (new session, after crash):
 - **Never commit directly** to `main` or `develop`.
 - **Use conventional commits** that reference the task ID (e.g., `feat: add rubric export (TASK-001)`).
 - **Always create a PR** at the end — this is the autonomous workflow, so deliver a complete result.
-- **Commit task artifacts** (`task.md`, `design.md`, `tasks.md`, `completion.md`) to version control so they are available for review and survive across sessions.
+- **Commit task artifacts** (`task.md`, `design.md`, `tasks.md`, `completion.md`) to version control so they are available for review and survive across sessions. Only `state.json` is gitignored.

@@ -7,7 +7,7 @@ Reusable patterns for GitHub issue interactions. Workflow skills (e.g., do-issue
 
 ## Issue State File
 
-Maintain a local state file at `.claude/issue-state.json` to track progress across sessions and subagents.
+Maintain a local state file at `.claude/issue-state.json` to track progress across sessions and subagents. This file MUST be gitignored.
 
 ### Structure
 
@@ -63,6 +63,14 @@ jq '.phase = "design"' .claude/issue-state.json > .claude/issue-state.tmp && mv 
 
 # Update branch
 jq '.branch = "feat/42-add-export"' .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
+```
+
+### Ensure Gitignore
+
+Before creating the state file, ensure it is gitignored:
+
+```bash
+grep -q 'issue-state.json' .gitignore 2>/dev/null || echo '.claude/issue-state.json' >> .gitignore
 ```
 
 ## Reading an Issue
