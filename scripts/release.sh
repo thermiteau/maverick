@@ -157,7 +157,7 @@ with open('CHANGELOG.md') as f:
 # Insert new version section after ## [Unreleased]
 content = content.replace(
     '## [Unreleased]',
-    '## [Unreleased]\n\n## [${v}] - ${d}'.replace('\${v}', version).replace('\${d}', today),
+    '## [Unreleased]\n\n## [\${v}] - \${d}'.replace('\${v}', version).replace('\${d}', today),
     1
 )
 

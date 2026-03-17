@@ -15,5 +15,5 @@ generate-topics: ## Generate skills/upskill/topics.json from upskill config
 
 build: generate-topics generate
 
-release: ## Create a release (usage: make release VERSION=0.2.0)
+release: build ## Create a release (usage: make release VERSION=0.2.0)
 	bash scripts/release.sh $(VERSION)

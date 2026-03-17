@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Improved repo release workflow** - The release workflow previously involved increasing the semver value in main, then merging back to develop. This caused issues when trying to use a develop version of the plugin in Claude Code. The new process increases the semver in develop and then merges to main when releasing to production.
 - **Jinja2 templating** — all skill and agent templates (`.md.j2`) now use Jinja2. Skills and agents reference each other via `{{ SKILLS.<CONSTANT> }}` and `{{ AGENTS.<CONSTANT> }}` variables, replacing static name strings. The full `SKILLS` and `AGENTS` dicts (built from `names.py`) are available in every template.
 - **Simplified workflow pipeline** — replaced the three-layer decomposition (solution design → implementation plan → task breakdown) with a two-layer flow (solution design → create tasks). Removed `create-implementation-plan`, `mav-issue-breakdown`, and `mav-task-breakdown` skills.
 - All three workflow skills (`do-issue-solo`, `do-issue-guided`, `do-task-solo`) now use a single "Create Tasks" phase instead of separate "Implementation Plan" and "Evaluate Plan Scope" phases
