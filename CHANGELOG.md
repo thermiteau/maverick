@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-18
+
 ### Added
 
 - New `create-tasks` skill — decomposes a solution design into discrete, independently implementable tasks. For fewer than 5 tasks, posts a checklist comment on the issue. For 5 or more, creates GitHub sub-issues with dependency ordering. Replaces the `create-implementation-plan` and `task-breakdown` skills with a single, simpler concept
@@ -58,7 +60,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/thermiteau/maverick/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thermiteau/maverick/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/thermiteau/maverick/compare/v0.1.0-alpha...v0.2.0
 [0.1.0-alpha]: https://github.com/thermiteau/maverick/releases/tag/v0.1.0-alpha
