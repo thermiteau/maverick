@@ -1,0 +1,19 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - run: uv sync --extra test
+
+      - run: uv run pytest tests/unit/ -v
