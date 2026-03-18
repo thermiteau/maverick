@@ -35,8 +35,8 @@ bash tests/integration/test_real_repos.sh
 
 # Create a release (develop-first: bump, merge to main, tag, dev bump)
 # Must be run from the develop branch
-./scripts/release.sh 0.4.0
-# or: make release VERSION=0.4.0
+./scripts/release.sh patch   # or: minor, major
+# or: make release VERSION=patch
 ```
 
 ## Architecture
