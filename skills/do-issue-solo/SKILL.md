@@ -128,4 +128,4 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 - **Use conventional commits** that reference the issue number (e.g., `feat: add rubric export (#42)`).
 - **Always create a PR** at the end — this is the autonomous workflow, so deliver a complete result.
 
-<!-- maverick-plugin-version: 0.5.3 -->
+<!-- maverick-plugin-version: 0.5.5 -->
