@@ -299,4 +299,4 @@ When no scan hints are provided by the calling skill, use these defaults:
 - **grep**: `eslint|prettier|ruff|lint-staged|formatOnSave|"lint":|"format":`
 - **files**: `eslint.config.*`, `.eslintrc*`, `.prettierrc*`, `prettier.config.*`, `ruff.toml`, `.golangci.yml`, `.stylelintrc*`
 
-<!-- maverick-plugin-version: 0.5.2-dev -->
+<!-- maverick-plugin-version: 0.5.3 -->
