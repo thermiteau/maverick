@@ -9,6 +9,40 @@ from pathlib import Path
 
 from maverick.session_review.parser import SessionData, ToolCall
 
+
+def get_current_version() -> str:
+    """Get the installed Maverick version."""
+    # Prefer pyproject.toml — always up-to-date in the source tree.
+    # importlib.metadata caches the version from install time, which
+    # can be stale after a version bump without reinstalling.
+    _project_root = Path(__file__).resolve().parent.parent.parent.parent
+    pyproject = _project_root / "pyproject.toml"
+    if pyproject.is_file():
+        match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(), re.MULTILINE)
+        if match:
+            return match.group(1)
+    try:
+        from importlib.metadata import version
+
+        return version("maverick")
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _versions_compatible(session_version: str, current_version: str) -> bool:
+    """Check if session and current Maverick versions are compatible for gap analysis.
+
+    Compares base versions (stripping pre-release suffixes like -dev).
+    """
+    if not session_version:
+        return False
+
+    def _base(v: str) -> str:
+        return v.split("-")[0].split("+")[0]
+
+    return _base(session_version) == _base(current_version)
+
 # Finding categories
 MAVERICK_GAP = "maverick_gap"
 USER_BEHAVIOR = "user_behavior"
@@ -527,8 +561,14 @@ _MECHANICAL_ANALYZERS = [
 def run_mechanical_analyzers(
     session: SessionData,
     project_skill_paths: list[str] | None = None,
+    current_version: str | None = None,
 ) -> list[Finding]:
-    """Run all mechanical (non-LLM) analyzers and return combined findings."""
+    """Run all mechanical (non-LLM) analyzers and return combined findings.
+
+    When *current_version* is provided and Maverick was loaded in the session,
+    MAVERICK_GAP findings are suppressed if the session used a different (or
+    unknown) version — comparing against a different skill/agent set is invalid.
+    """
     findings: list[Finding] = []
     for analyzer in _MECHANICAL_ANALYZERS:
         findings.extend(analyzer(session))
@@ -536,6 +576,36 @@ def run_mechanical_analyzers(
     # Project skills analyzer needs the on-disk paths
     if project_skill_paths is not None:
         findings.extend(analyze_project_skills_ignored(session, project_skill_paths))
+
+    # Version compatibility gate — filter MAVERICK_GAP findings when the
+    # session used a different (or unknown) Maverick version.
+    mav_loaded = _maverick_loaded(session)
+    if current_version and mav_loaded:
+        compatible = _versions_compatible(session.maverick_version, current_version)
+        if not compatible:
+            gap_count = sum(1 for f in findings if f.category == MAVERICK_GAP)
+            findings = [f for f in findings if f.category != MAVERICK_GAP]
+            session_ver = session.maverick_version or "unknown (pre-version plugin)"
+            findings.insert(
+                0,
+                Finding(
+                    analyzer="VersionMismatch",
+                    severity="warning",
+                    category=USER_BEHAVIOR,
+                    title="Maverick version mismatch — plugin gap analysis skipped",
+                    detail=(
+                        f"Session used Maverick {session_ver} but the current "
+                        f"version is {current_version}. {gap_count} plugin gap "
+                        f"finding(s) were suppressed because the skills and agents "
+                        f"may have been different in the version used during the session."
+                    ),
+                    recommendation=(
+                        "Review sessions with the matching Maverick version for "
+                        "valid plugin gap analysis, or focus on user behavior "
+                        "findings only."
+                    ),
+                ),
+            )
 
     # Sort: maverick_gap first, then by severity
     severity_order = {"critical": 0, "warning": 1, "info": 2}

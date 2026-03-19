@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,27 @@ from maverick.models import AgentConfig, GlobalConfig, SkillConfig
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _get_version() -> str:
+    """Get the Maverick version for embedding in build output."""
+    # Prefer pyproject.toml — always up-to-date in the source tree.
+    # importlib.metadata caches the version from install time, which
+    # can be stale after a version bump without reinstalling.
+    pyproject = PROJECT_ROOT / "pyproject.toml"
+    if pyproject.is_file():
+        match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(), re.MULTILINE)
+        if match:
+            return match.group(1)
+    try:
+        from importlib.metadata import version
+
+        return version("maverick")
+    except Exception:
+        pass
+    return "unknown"
+
+
 SKILLS_TEMPLATES_DIR = Path(__file__).resolve().parent / "skills"
 AGENTS_TEMPLATES_DIR = Path(__file__).resolve().parent / "agents"
 SKILLS_OUTPUT_DIR = PROJECT_ROOT / "skills"
@@ -103,10 +125,11 @@ def render_skill(
     body = Jinja2Template(body).render(**context)
 
     frontmatter = _build_skill_frontmatter(skill)
+    version_marker = f"\n\n<!-- maverick-plugin-version: {_get_version()} -->\n"
     skill_output_dir = output_dir / skill.name
     skill_output_dir.mkdir(parents=True, exist_ok=True)
     output_path = skill_output_dir / "SKILL.md"
-    output_path.write_text(frontmatter + "\n" + body)
+    output_path.write_text(frontmatter + "\n" + body + version_marker)
     return output_path
 
 
@@ -192,9 +215,10 @@ def render_agent(
     body = Jinja2Template(body).render(**context)
 
     frontmatter = _build_agent_frontmatter(agent)
+    version_marker = f"\n\n<!-- maverick-plugin-version: {_get_version()} -->\n"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{agent.name}.md"
-    output_path.write_text(frontmatter + body)
+    output_path.write_text(frontmatter + body + version_marker)
     return output_path
 
 

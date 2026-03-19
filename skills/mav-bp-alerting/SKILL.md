@@ -141,3 +141,5 @@ Alerting and logging are complementary but separate concerns:
 | Different alerting mechanisms in different files | Inconsistency               | Use single alerter module                  |
 | Alert but no log                                 | Missing investigation trail | Always log before alerting                 |
 | Frontend calling alerting service directly       | Security risk               | Route through backend API                  |
+
+<!-- maverick-plugin-version: 0.5.1 -->

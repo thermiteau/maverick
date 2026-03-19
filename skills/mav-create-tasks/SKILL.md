@@ -148,3 +148,5 @@ Before the task list is considered complete:
 - [ ] No task is so vague that it requires a design of its own
 - [ ] Dependencies between tasks are minimal and explicitly stated
 - [ ] The sum of all tasks fully implements the solution design
+
+<!-- maverick-plugin-version: 0.5.1 -->

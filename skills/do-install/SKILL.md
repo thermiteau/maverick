@@ -20,3 +20,5 @@ Dispatch the **maverick** agent with task `install` and any user-provided argume
 3. The script will install the CLI, update Claude permissions, and create the default system config at `~/.maverick/settings.json` if it doesn't already exist
 4. Verify the installation by running `maverick --help`
 5. Report the result to the user — success or failure with any error output
+
+<!-- maverick-plugin-version: 0.5.1 -->

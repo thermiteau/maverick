@@ -73,3 +73,5 @@ Return a structured message containing:
 - **Scope boundaries** — follow the mav-scope-boundaries skill. Flag anything that touches infrastructure, auth, or destructive operations.
 - **Right-sized design** — scale design depth to the task per the mav-create-solution-design skill's sizing table.
 - **Durable output** — always post the design comment and update the state file before returning, so work is not lost if the caller's session crashes.
+
+<!-- maverick-plugin-version: 0.5.1 -->

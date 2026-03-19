@@ -121,6 +121,15 @@ With the plugin loaded, use skills directly in Claude Code:
 # Audit a codebase against Maverick standards
 ```
 
+## Development
+
+```sh
+# Run unit tests
+uv sync --extra test && uv run pytest tests/unit/ -v
+```
+
+CI runs automatically on push to `develop` via GitHub Actions.
+
 ## License
 
 Apache License 2.0
