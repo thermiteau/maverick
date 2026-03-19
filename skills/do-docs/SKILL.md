@@ -152,4 +152,4 @@ Run the do-tech-docs validation checklist against every document changed or crea
 - In **update** mode, scope narrowly to the diff — do not refactor surrounding documentation
 - Verify every factual claim against the source code before writing it
 
-<!-- maverick-plugin-version: 0.5.4-dev -->
+<!-- maverick-plugin-version: 0.5.5 -->
