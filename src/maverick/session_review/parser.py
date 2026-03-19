@@ -36,6 +36,7 @@ class SessionData:
     commits: list[dict] = field(default_factory=list)
     files_modified: set[str] = field(default_factory=set)
     errors: list[dict] = field(default_factory=list)
+    maverick_version: str = ""
 
 
 def encode_project_path(project_path: str) -> str:
@@ -82,6 +83,7 @@ def _extract_file_path(tool_name: str, input_data: dict) -> str | None:
 _GIT_COMMIT_RE = re.compile(r"\bgit\s+commit\b")
 _PROJECT_SKILL_RE = re.compile(r"docs/maverick/skills/[^/]+/SKILL\.md")
 _MAVERICK_SKILL_RE = re.compile(r"maverick:(\S+)")
+_MAVERICK_VERSION_RE = re.compile(r"maverick-plugin-version:\s*(\S+)")
 
 
 def parse_session(path: Path) -> SessionData:
@@ -254,6 +256,16 @@ def parse_session(path: Path) -> SessionData:
         created = timestamps[0]
         modified = timestamps[-1]
 
+    # Scan events for Maverick plugin version marker
+    maverick_version = ""
+    for event in events:
+        raw = json.dumps(event)
+        if "maverick-plugin-version:" in raw:
+            vm = _MAVERICK_VERSION_RE.search(raw)
+            if vm:
+                maverick_version = vm.group(1)
+                break
+
     return SessionData(
         session_id=session_id,
         project_path=project_path,
@@ -270,4 +282,5 @@ def parse_session(path: Path) -> SessionData:
         commits=commits,
         files_modified=files_modified,
         errors=errors,
+        maverick_version=maverick_version,
     )

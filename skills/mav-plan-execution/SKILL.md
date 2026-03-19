@@ -192,3 +192,6 @@ After all steps are complete and the full verification suite passes:
 4. Run the full verification suite again after any additions
 
 Do not proceed to code review until every acceptance criterion is met and all checks pass.
+
+
+<!-- maverick-plugin-version: 0.5.1 -->

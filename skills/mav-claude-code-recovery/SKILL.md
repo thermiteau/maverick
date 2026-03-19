@@ -224,3 +224,5 @@ digraph subagent_failure {
 - **Provide corrective context** — when dispatching a fix subagent, include what the previous subagent did, what it got wrong, and what specifically needs to be fixed.
 - **Reduce scope on repeated failure** — if a subagent fails twice on the same task, split the task into smaller pieces and dispatch subagents for each piece.
 - **Never silently swallow failures** — if a subagent fails and you cannot recover, report the failure clearly to the user.
+
+<!-- maverick-plugin-version: 0.5.1 -->

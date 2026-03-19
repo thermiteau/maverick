@@ -6,7 +6,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from maverick.session_review.analyzers import Finding, run_mechanical_analyzers
+from maverick.session_review.analyzers import (
+    Finding,
+    get_current_version,
+    run_mechanical_analyzers,
+)
 from maverick.session_review.parser import (
     SessionData,
     find_sessions,
@@ -64,7 +68,9 @@ def main(args) -> None:
             print(f"No sessions found within the last {args.days} days")
             sys.exit(1)
 
+    current_version = get_current_version()
     print(f"Reviewing {len(sessions)} session(s) for {project_path}...")
+    print(f"Current Maverick version: {current_version}")
 
     # Discover project skills on disk
     project_skill_paths = [str(p) for p in find_project_skills(project_path)]
@@ -76,7 +82,7 @@ def main(args) -> None:
         session = parse_session(session_path)
 
         # Run mechanical analyzers
-        findings = run_mechanical_analyzers(session, project_skill_paths)
+        findings = run_mechanical_analyzers(session, project_skill_paths, current_version)
 
         # Snapshot project skills into the report directory
         session_prefix = session.session_id[:8]

@@ -68,6 +68,10 @@ def generate_report(
     lines.append("")
     has_plugin = bool(session.skills_available)
     lines.append(f"**Plugin available:** {'Yes' if has_plugin else 'No'}")
+    if session.maverick_version:
+        lines.append(f"**Plugin version:** {session.maverick_version}")
+    elif has_plugin:
+        lines.append("**Plugin version:** unknown (pre-version plugin)")
     lines.append(
         f"**Skills invoked:** {', '.join(session.skills_invoked) or 'none'}"
     )

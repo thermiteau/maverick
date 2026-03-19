@@ -62,6 +62,10 @@ Maverick supports three CI platforms with dedicated skills and detects several m
 
 When `upskill` detects a CI platform, it generates a project-level skill describing the pipeline configuration, stages, and any platform-specific requirements the LLM must respect.
 
+### Maverick's own CI
+
+Maverick itself uses GitHub Actions for CI (`.github/workflows/unit-tests.yml`), running its unit test suite on push to `develop`.
+
 ## Pipeline Stages
 
 A well-structured CI pipeline progresses through ordered stages. Each stage gates the next - failure at any stage halts the pipeline.

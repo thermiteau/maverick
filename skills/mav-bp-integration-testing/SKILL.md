@@ -134,3 +134,5 @@ digraph lookup {
 | No timeout set | Hanging test blocks CI | Set explicit per-test timeout |
 | Hard-coded connection strings | Breaks in different environments | Use environment variables or config |
 | Test requires manual environment setup | Not reproducible | Automate with containers or scripts |
+
+<!-- maverick-plugin-version: 0.5.1 -->

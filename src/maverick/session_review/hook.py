@@ -19,7 +19,7 @@ import os
 import sys
 from pathlib import Path
 
-from maverick.session_review.analyzers import run_mechanical_analyzers
+from maverick.session_review.analyzers import get_current_version, run_mechanical_analyzers
 from maverick.session_review.parser import encode_project_path, parse_session
 from maverick.session_review.reporter import REVIEWS_DIR, generate_report, write_report
 from maverick.session_review.skills import find_project_skills, snapshot_skills
@@ -63,8 +63,9 @@ def main() -> None:
     session = parse_session(session_file)
 
     # Run mechanical analysis
+    current_version = get_current_version()
     project_skill_paths = [str(p) for p in find_project_skills(project_path)]
-    findings = run_mechanical_analyzers(session, project_skill_paths)
+    findings = run_mechanical_analyzers(session, project_skill_paths, current_version)
 
     if not findings:
         print("[session-review] No issues detected.")

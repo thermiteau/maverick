@@ -100,3 +100,5 @@ Return a structured review with both stages (or Stage 1 only if it failed). Be s
 - **Acknowledge quality** — note what was done well, not just problems
 - **Stay in scope** — review what changed, not the entire codebase
 - **Do not suggest over-engineering** — if the code works and is readable, do not request abstractions for hypothetical future requirements
+
+<!-- maverick-plugin-version: 0.5.1 -->

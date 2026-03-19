@@ -225,3 +225,5 @@ After writing the report, print a brief summary:
 - The score (e.g. "3/5 passing")
 - Which categories are WARN or FAIL
 - The path to the full report
+
+<!-- maverick-plugin-version: 0.5.1 -->

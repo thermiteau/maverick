@@ -1,4 +1,4 @@
-.PHONY: generate generate-topics build release lint format typecheck
+.PHONY: generate generate-topics build release lint format typecheck test
 
 lint: ## Run ruff linter
 	uv run ruff check .
@@ -15,5 +15,14 @@ generate-topics: ## Generate skills/upskill/topics.json from upskill config
 
 build: generate-topics generate
 
-release: build ## Create a release (usage: make release VERSION=0.2.0)
-	bash scripts/release.sh $(VERSION)
+test: ## Run unit tests
+	uv run pytest tests/unit/ -v
+
+release: ## Create a patch release (bump patch version, tag, merge to main)
+	./scripts/release.sh patch
+
+release-minor: ## Create a minor release (bump minor version, tag, merge to main)
+	./scripts/release.sh minor
+
+release-major: ## Create a major release (bump major version, tag, merge to main)
+	./scripts/release.sh major
