@@ -133,3 +133,5 @@ digraph ci {
 - Monitor pipeline status after pushing
 - Fix CI failures before declaring work complete
 - Report CI failures clearly if you cannot fix them
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->

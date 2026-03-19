@@ -14,6 +14,14 @@ You will be provided with:
 2. **Git diff** — the code changes produced during the session
 3. **Project skills snapshot** — the project-level skills that were available during the session
 
+## Version Compatibility Check
+
+Before performing analysis, check the mechanical analysis summary for a **VersionMismatch** finding. If present, the session used a different Maverick version than the current one. In that case:
+
+- **Skip the Skill Gaps analysis entirely** — the skills and agents were different in the version used during the session, so comparing against current definitions is invalid
+- **Still perform** Duplicated Utilities, Bug Oscillation, and Over-Engineering analyses — these compare code against the codebase, not against Maverick skills
+- **Note the version mismatch** in your Summary
+
 ## Semantic Analyses
 
 Perform each of the following analyses:
@@ -79,3 +87,5 @@ Return your findings as structured markdown:
 - **Be proportionate** — a small utility duplication is minor, a duplicated auth flow is critical
 - **Consider context** — prototyping code has different standards than production code
 - **Focus on actionable findings** — each finding should suggest what to do differently
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->

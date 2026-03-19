@@ -190,3 +190,5 @@ Before finalising documentation:
 - [ ] Bullet points and tables used instead of prose where possible
 - [ ] All public exports from documented modules are covered (check for multiple exports per file)
 - [ ] Numbering, terminology, and facts are consistent across all documents in the set
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->

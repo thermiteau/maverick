@@ -208,3 +208,5 @@ digraph lookup {
 | No manual gate for production deploy | Risk of unreviewed production changes | Add manual approval step |
 | Pipeline takes >15 minutes | Developer productivity drain | Profile and optimise, add caching |
 | Unpinned action/image versions | Non-reproducible builds | Pin to specific versions/SHAs |
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Python unit test suite (160 tests) covering models, names, config, registry, CLI, lambda handler, and session review modules (parser, analyzers, reporter, skills)
+- GitHub Actions workflow (`unit-tests.yml`) — runs unit tests on push to `develop`
+- `pytest>=8.0` as an optional `test` dependency in `pyproject.toml`
+
 ## [0.4.0] - 2026-03-18
 
 ### Added

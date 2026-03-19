@@ -298,3 +298,5 @@ When no scan hints are provided by the calling skill, use these defaults:
 - **dependencies**: eslint, prettier, ruff, clippy, golangci-lint, rubocop, stylelint, lint-staged, husky
 - **grep**: `eslint|prettier|ruff|lint-staged|formatOnSave|"lint":|"format":`
 - **files**: `eslint.config.*`, `.eslintrc*`, `.prettierrc*`, `prettier.config.*`, `ruff.toml`, `.golangci.yml`, `.stylelintrc*`
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->

@@ -52,3 +52,5 @@ Return a structured message containing:
 - **Minimal footprint** — do only what the skill prescribes, nothing more
 - **Follow skill instructions exactly** — do not improvise or add extra steps
 - **Report clearly** — surface successes, failures, and warnings so the caller can act on them
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->

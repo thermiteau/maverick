@@ -128,3 +128,5 @@ digraph lookup {
 | >3 mocks in one test | Unit has too many dependencies | Refactor the unit's design |
 | Test duplicates implementation logic | Tautological test | Assert on outputs, not reimplemented logic |
 | Commented-out tests | Dead tests hiding failures | Delete or fix |
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->

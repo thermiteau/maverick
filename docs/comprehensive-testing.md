@@ -203,6 +203,10 @@ Tests are the LLM's primary feedback mechanism during development. When a test f
 
 This cycle is how an LLM iterates toward correctness. Without tests, the LLM has no signal that its code is wrong until a human reviews it or users encounter the bug.
 
+## Maverick's Own Tests
+
+Maverick follows its own testing standards with a pytest unit test suite covering the Python codebase under `src/maverick/`. The suite includes tests for models, names, config, registry, CLI, lambda handler, and session review modules (parser, analyzers, reporter, skills). Tests run automatically on push to `develop` via GitHub Actions (`.github/workflows/unit-tests.yml`).
+
 ## Further Reading
 
 - [Software testing](https://en.wikipedia.org/wiki/Software_testing)

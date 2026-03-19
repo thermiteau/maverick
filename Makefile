@@ -1,4 +1,4 @@
-.PHONY: generate generate-topics build release lint format typecheck
+.PHONY: generate generate-topics build release lint format typecheck test
 
 lint: ## Run ruff linter
 	uv run ruff check .
@@ -14,6 +14,9 @@ generate-topics: ## Generate skills/upskill/topics.json from upskill config
 	cd src && python -m maverick.generate_topics
 
 build: generate-topics generate
+
+test: ## Run unit tests
+	uv run pytest tests/unit/ -v
 
 release: ## Create a patch release (bump patch version, tag, merge to main)
 	./scripts/release.sh patch

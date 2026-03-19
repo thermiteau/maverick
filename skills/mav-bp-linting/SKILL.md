@@ -170,3 +170,5 @@ digraph lookup {
 | Lint config uses legacy format | Maintenance burden | Migrate to current format (e.g., ESLint flat config) |
 | No pre-commit formatting | Style inconsistency across commits | Add lint-staged or equivalent |
 | Linter running on generated/vendor code | False positives, slow runs | Update ignore patterns |
+
+<!-- maverick-plugin-version: 0.5.0.dev0 -->
