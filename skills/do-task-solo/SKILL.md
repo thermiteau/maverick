@@ -256,4 +256,4 @@ When resuming work on a task (new session, after crash):
 - **Always create a PR** at the end — this is the autonomous workflow, so deliver a complete result.
 - **Commit task artifacts** (`task.md`, `design.md`, `tasks.md`, `completion.md`) to version control so they are available for review and survive across sessions. Only `state.json` is gitignored.
 
-<!-- maverick-plugin-version: 0.5.1 -->
+<!-- maverick-plugin-version: 0.5.3 -->

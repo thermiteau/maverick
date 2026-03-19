@@ -127,4 +127,51 @@ EOF
 
 git tag -a "$NEW_TAG" -m "Release ${NEW_TAG}"
 
-echo "Release complete"
+# --- Step 4: Merge develop → main ---
+
+echo "Merging develop into main..."
+git checkout main
+git merge --no-ff develop -m "Merge develop for release ${NEW_VERSION}"
+git checkout develop
+git merge main --no-edit
+
+# --- Step 5: Bump develop to next dev version ---
+
+DEV_VERSION="${V_MAJOR}.${V_MINOR}.$((V_PATCH + 1))-dev"
+echo "Bumping develop to ${DEV_VERSION}..."
+
+sed -i "s/^version = \"${NEW_VERSION}\"/version = \"${DEV_VERSION}\"/" "$PYPROJECT"
+python3 "$SCRIPT_DIR/bump_json_versions.py" "$DEV_VERSION"
+
+uv lock
+
+make build
+
+git add pyproject.toml \
+  .claude-plugin/plugin.json \
+  .claude-plugin/marketplace.json \
+  .cursor-plugin/cursor.plugin.json \
+  uv.lock \
+  skills/ \
+  agents/
+
+git commit -m "chore: begin ${DEV_VERSION} cycle"
+
+# --- Step 6: Push everything ---
+
+echo "Pushing develop, main, and tag..."
+git push origin develop
+git push origin main
+git push origin "$NEW_TAG"
+
+# --- Step 7: Create GitHub Release ---
+
+echo "Creating GitHub Release for ${NEW_TAG}..."
+RELEASE_NOTES=$(sed -n "/^## \[${NEW_VERSION}\]/,/^## \[/{ /^## \[${NEW_VERSION}\]/d; /^## \[/d; p; }" CHANGELOG.md)
+
+gh release create "$NEW_TAG" \
+  --title "$NEW_TAG" \
+  --notes "$RELEASE_NOTES" \
+  --target main
+
+echo "Release ${NEW_VERSION} complete — develop is now at ${DEV_VERSION}"
