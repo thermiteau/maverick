@@ -226,4 +226,4 @@ After writing the report, print a brief summary:
 - Which categories are WARN or FAIL
 - The path to the full report
 
-<!-- maverick-plugin-version: 0.5.0.dev0 -->
+<!-- maverick-plugin-version: 0.5.1 -->

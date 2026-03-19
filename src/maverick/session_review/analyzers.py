@@ -12,12 +12,22 @@ from maverick.session_review.parser import SessionData, ToolCall
 
 def get_current_version() -> str:
     """Get the installed Maverick version."""
+    # Prefer pyproject.toml — always up-to-date in the source tree.
+    # importlib.metadata caches the version from install time, which
+    # can be stale after a version bump without reinstalling.
+    _project_root = Path(__file__).resolve().parent.parent.parent.parent
+    pyproject = _project_root / "pyproject.toml"
+    if pyproject.is_file():
+        match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(), re.MULTILINE)
+        if match:
+            return match.group(1)
     try:
         from importlib.metadata import version
 
         return version("maverick")
     except Exception:
-        return "unknown"
+        pass
+    return "unknown"
 
 
 def _versions_compatible(session_version: str, current_version: str) -> bool:

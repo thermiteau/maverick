@@ -209,4 +209,4 @@ digraph lookup {
 | Pipeline takes >15 minutes | Developer productivity drain | Profile and optimise, add caching |
 | Unpinned action/image versions | Non-reproducible builds | Pin to specific versions/SHAs |
 
-<!-- maverick-plugin-version: 0.5.0.dev0 -->
+<!-- maverick-plugin-version: 0.5.1 -->

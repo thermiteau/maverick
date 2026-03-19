@@ -142,4 +142,4 @@ Alerting and logging are complementary but separate concerns:
 | Alert but no log                                 | Missing investigation trail | Always log before alerting                 |
 | Frontend calling alerting service directly       | Security risk               | Route through backend API                  |
 
-<!-- maverick-plugin-version: 0.5.0.dev0 -->
+<!-- maverick-plugin-version: 0.5.1 -->

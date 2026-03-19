@@ -264,4 +264,4 @@ If there are uncommitted changes:
 - **Stash them** if they are unrelated: `git stash push -m "WIP: description"`
 - **Ask the user** if you are unsure what to do with them
 
-<!-- maverick-plugin-version: 0.5.0.dev0 -->
+<!-- maverick-plugin-version: 0.5.1 -->

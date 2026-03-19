@@ -103,17 +103,22 @@ python3 "$SCRIPT_DIR/update_changelog.py" "$NEW_VERSION" "$TODAY" "$CURRENT_TAG"
 
 echo "Updated version files and CHANGELOG.md"
 
-# --- Step 3: Lock and commit release on develop ---
+# --- Step 3: Lock, rebuild, and commit release on develop ---
 
 echo "Running uv lock..."
 uv lock
+
+echo "Rebuilding skills and agents with new version..."
+make build
 
 git add pyproject.toml \
   .claude-plugin/plugin.json \
   .claude-plugin/marketplace.json \
   .cursor-plugin/cursor.plugin.json \
   CHANGELOG.md \
-  uv.lock
+  uv.lock \
+  skills/ \
+  agents/
 
 git commit -m "$(cat <<EOF
 chore: release ${NEW_VERSION}
