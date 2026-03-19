@@ -18,11 +18,11 @@ build: generate-topics generate
 test: ## Run unit tests
 	uv run pytest tests/unit/ -v
 
-release: ## Create a patch release (bump patch version, tag, merge to main)
+release: ## Create a patch release (PR to main, squash merge, tag on main)
 	./scripts/release.sh patch
 
-release-minor: ## Create a minor release (bump minor version, tag, merge to main)
+release-minor: ## Create a minor release (PR to main, squash merge, tag on main)
 	./scripts/release.sh minor
 
-release-major: ## Create a major release (bump major version, tag, merge to main)
+release-major: ## Create a major release (PR to main, squash merge, tag on main)
 	./scripts/release.sh major

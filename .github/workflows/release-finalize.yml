@@ -1,0 +1,107 @@
+name: Release Finalize
+
+# Runs after a release/* PR is squash-merged into main.
+# Tags the merge commit, creates a GitHub Release, syncs develop,
+# and bumps develop to the next -dev version.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Extract version from branch name
+        id: version
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          VERSION="${BRANCH#release/}"
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          # Compute next dev version
+          IFS='.' read -r V_MAJOR V_MINOR V_PATCH <<< "$VERSION"
+          DEV_VERSION="${V_MAJOR}.${V_MINOR}.$((V_PATCH + 1))-dev"
+          echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Tag the merge commit on main
+        run: |
+          git checkout main
+          git pull origin main
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Extract release notes from changelog
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{ /^## \[${VERSION}\]/d; /^## \[/d; p; }" CHANGELOG.md)
+          # Use a file to avoid escaping issues
+          echo "$NOTES" > /tmp/release-notes.md
+          if [[ ! -s /tmp/release-notes.md ]]; then
+            echo "Release ${VERSION}" > /tmp/release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes-file /tmp/release-notes.md \
+            --target main
+
+      - name: Sync develop and bump dev version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DEV_VERSION="${{ steps.version.outputs.dev_version }}"
+
+          git checkout develop
+          git pull origin develop
+          git merge main --no-edit
+
+          # Bump version in pyproject.toml
+          sed -i "s/^version = \"${VERSION}\"/version = \"${DEV_VERSION}\"/" pyproject.toml
+
+          # Bump version in plugin JSON files
+          python3 scripts/bump_json_versions.py "$DEV_VERSION"
+
+          # Lock and rebuild
+          uv sync
+          uv lock
+          make build
+
+          git add pyproject.toml \
+              .claude-plugin/plugin.json \
+              .claude-plugin/marketplace.json \
+              .cursor-plugin/cursor.plugin.json \
+              uv.lock \
+              skills/ \
+              agents/
+
+          git commit -m "chore: begin ${DEV_VERSION} cycle"
+          git push origin develop

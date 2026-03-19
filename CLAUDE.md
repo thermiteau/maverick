@@ -33,10 +33,12 @@ claude --plugin-dir ./maverick-plugin
 bash tests/integration/test_cli.sh
 bash tests/integration/test_real_repos.sh
 
-# Create a release (develop-first: bump, merge to main, tag, dev bump)
-# Must be run from the develop branch
+# Create a release (two-phase: local prep + CI finalize)
+# Phase 1 — run locally from the develop branch:
 ./scripts/release.sh patch   # or: minor, major
-# or: make release VERSION=patch
+# This creates a release/<version> branch, bumps version, and opens a PR.
+# Phase 2 — automatic after squash-merging the PR:
+# CI tags main, creates GitHub Release, syncs develop, bumps -dev version.
 ```
 
 ## Architecture
@@ -138,7 +140,7 @@ The registry (`src/maverick/registry.py`) discovers all `config.py` files, rende
 
 ## Key Conventions
 
-- **Git workflow**: Simplified Gitflow. `main` and `develop` are protected — never commit directly. Feature branches: `<type>/<issue>-<desc>` (e.g., `feat/42-add-export`). Conventional Commits with issue refs: `feat: add export button (#42)`.
+- **Git workflow**: `main` = stable releases only, `develop` = active integration. No direct commits or pushes to `main` — only squash merges via PR. Tags only on `main`. Feature branches: `<type>/<issue>-<desc>` (e.g., `feat/42-add-export`). Release branches: `release/<version>`. Conventional Commits with issue refs: `feat: add export button (#42)`.
 - **Scope boundaries** (`skills/mav-scope-boundaries/`): Four hard limits — no infrastructure changes without explicit issue authorization, no auth/permissions changes without human review, no destructive git ops without session consent, never touch production systems.
 - **Python**: 3.10+, `uv` package manager, `boto3` for AWS, `argparse` CLI framework.
 - **Skills format**: Source is `config.py` (frontmatter fields) + `body.md.j2` (Jinja2 template). Both skills and agents use `{{ SKILLS.CONSTANT }}` / `{{ AGENTS.CONSTANT }}` to reference other skills/agents. Build output is generated YAML frontmatter + rendered markdown.
