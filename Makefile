@@ -8,10 +8,10 @@ typecheck: ## Run pyright type checker
 
 
 generate: ## Render all skill and agent templates
-	cd src && python -m maverick.registry
+	cd src && uv run python -m maverick.registry
 
 generate-topics: ## Generate skills/upskill/topics.json from upskill config
-	cd src && python -m maverick.generate_topics
+	cd src && uv run python -m maverick.generate_topics
 
 build: generate-topics generate
 
