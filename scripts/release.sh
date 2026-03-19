@@ -133,6 +133,7 @@ echo "Merging develop into main..."
 git checkout main
 git merge --no-ff develop -m "Merge develop for release ${NEW_VERSION}"
 git checkout develop
+git merge main --no-edit
 
 # --- Step 5: Bump develop to next dev version ---
 
@@ -162,5 +163,15 @@ echo "Pushing develop, main, and tag..."
 git push origin develop
 git push origin main
 git push origin "$NEW_TAG"
+
+# --- Step 7: Create GitHub Release ---
+
+echo "Creating GitHub Release for ${NEW_TAG}..."
+RELEASE_NOTES=$(sed -n "/^## \[${NEW_VERSION}\]/,/^## \[/{ /^## \[${NEW_VERSION}\]/d; /^## \[/d; p; }" CHANGELOG.md)
+
+gh release create "$NEW_TAG" \
+  --title "$NEW_TAG" \
+  --notes "$RELEASE_NOTES" \
+  --target main
 
 echo "Release ${NEW_VERSION} complete — develop is now at ${DEV_VERSION}"
