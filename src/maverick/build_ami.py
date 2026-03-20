@@ -8,7 +8,8 @@ from pathlib import Path
 
 import boto3
 
-from maverick.config import AMI_STATE, SYSTEM_CONFIG_FILE, init_config
+from maverick.config import AMI_STATE, init_config
+from maverick.infra import InfraError, _validate_key_pair, get_vpc_outputs
 
 BUNDLED_CLOUD_CONFIG = "cloud-config.yaml"
 
@@ -33,33 +34,38 @@ def _get_cloud_config_path(cfg):
     sys.exit(1)
 
 
-def validate_config(cfg):
-    """Check that required AWS fields are non-empty."""
-    required = {
-        "secret_arn": cfg["aws"].get("secret_arn", ""),
-        "iam_profile": cfg["aws"].get("iam_profile", ""),
-        "key_pair": cfg["aws"].get("key_pair", ""),
-        "security_group": cfg["aws"].get("security_group", ""),
-    }
-    missing = [name for name, value in required.items() if not value]
-
-    if missing:
-        print("Error: The following config values are empty:")
-        for name in missing:
-            print(f"  - aws.{name}")
-        print(f"Edit {SYSTEM_CONFIG_FILE} and try again.")
-        sys.exit(1)
-
-    return _get_cloud_config_path(cfg)
-
-
 def main():
     cfg = init_config()
-    cloud_config_path = validate_config(cfg)
+    cloud_config_path = _get_cloud_config_path(cfg)
     region = cfg["aws"]["region"]
 
-    ssm = boto3.client("ssm", region_name=region)
+    # Preflight: VPC stack must exist with prereqs
+    print("==> Checking prerequisites...")
+    try:
+        vpc = get_vpc_outputs(region)
+    except InfraError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        print("Run 'maverick infra deploy' first to create prerequisites.", file=sys.stderr)
+        sys.exit(1)
+
+    key_pair = cfg["aws"]["key_pair"]
+    if not key_pair:
+        print(
+            "Error: aws.key_pair is not set in config.\n"
+            "Create an EC2 key pair and add it to ~/.maverick/config.json:\n"
+            '  "aws": { "key_pair": "your-key-name" }',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     ec2 = boto3.client("ec2", region_name=region)
+    try:
+        _validate_key_pair(ec2, key_pair)
+    except InfraError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    ssm = boto3.client("ssm", region_name=region)
 
     # Look up Ubuntu 24.04 LTS AMI
     ssm_parameter = cfg["ami"]["ssm_parameter"]
@@ -74,9 +80,10 @@ def main():
     run_args = {
         "ImageId": source_ami,
         "InstanceType": cfg["instance"]["type"],
-        "KeyName": cfg["aws"]["key_pair"],
-        "IamInstanceProfile": {"Name": cfg["aws"]["iam_profile"]},
-        "SecurityGroupIds": [cfg["aws"]["security_group"]],
+        "KeyName": key_pair,
+        "IamInstanceProfile": {"Name": vpc["InstanceProfileName"]},
+        "SecurityGroupIds": [vpc["SecurityGroupId"]],
+        "SubnetId": vpc["SubnetId"],
         "UserData": user_data,
         "TagSpecifications": [
             {
@@ -87,9 +94,6 @@ def main():
         "MinCount": 1,
         "MaxCount": 1,
     }
-    subnet = cfg["aws"].get("subnet", "")
-    if subnet:
-        run_args["SubnetId"] = subnet
 
     instance_id = ec2.run_instances(**run_args)["Instances"][0]["InstanceId"]
     print(f"    Instance: {instance_id}")

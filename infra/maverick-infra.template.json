@@ -1,0 +1,339 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Maverick worker infrastructure \u2014 managed by maverick CLI",
+  "Parameters": {
+    "SecretArn": {
+      "Type": "String",
+      "Description": "ARN of the Secrets Manager secret (webhook + instance secrets)"
+    },
+    "WebhookLabel": {
+      "Type": "String",
+      "Default": "claude-do",
+      "Description": "GitHub label that triggers work items"
+    },
+    "LogGroupName": {
+      "Type": "String",
+      "Default": "/maverick/worker",
+      "Description": "CloudWatch log group name for workers"
+    },
+    "VpcSubnetId": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "Subnet ID from the VPC stack"
+    },
+    "AmiId": {
+      "Type": "AWS::EC2::Image::Id",
+      "Description": "AMI ID \u2014 use a maverick-baked AMI or Ubuntu 24.04 LTS"
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.medium",
+      "Description": "EC2 instance type for the worker"
+    },
+    "KeyPairName": {
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Description": "EC2 key pair for SSH access"
+    },
+    "SecurityGroupId": {
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "Description": "Security group ID for the worker instance"
+    },
+    "IamInstanceProfileName": {
+      "Type": "String",
+      "Description": "IAM instance profile name for the worker instance"
+    }
+  },
+  "Resources": {
+    "WorkTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "maverick-work",
+        "BillingMode": "PAY_PER_REQUEST",
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "status",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "created_at",
+            "AttributeType": "S"
+          }
+        ],
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "status-created_at-index",
+            "KeySchema": [
+              {
+                "AttributeName": "status",
+                "KeyType": "HASH"
+              },
+              {
+                "AttributeName": "created_at",
+                "KeyType": "RANGE"
+              }
+            ],
+            "Projection": {
+              "ProjectionType": "ALL"
+            }
+          }
+        ],
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl_expiry",
+          "Enabled": true
+        }
+      }
+    },
+    "WorkerLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Ref": "LogGroupName"
+        }
+      }
+    },
+    "LambdaRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "maverick-webhook-role",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "maverick-webhook-policy",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "dynamodb:PutItem",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "WorkTable",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "secretsmanager:GetSecretValue",
+                  "Resource": {
+                    "Ref": "SecretArn"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "arn:aws:logs:*:*:*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "WebhookFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": "maverick-webhook",
+        "Runtime": "python3.12",
+        "Handler": "index.lambda_handler",
+        "Timeout": 30,
+        "MemorySize": 128,
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "ZipFile": "\"\"\"GitHub webhook handler \u2014 validates signature, filters label events, writes to DynamoDB.\"\"\"\n\nimport hashlib\nimport hmac\nimport json\nimport os\nimport uuid\nfrom datetime import datetime, timezone\n\nimport boto3\n\n\ndef lambda_handler(event, context):\n    \"\"\"AWS Lambda entry point for GitHub webhook via Function URL.\"\"\"\n    work_table_name = os.environ[\"WORK_TABLE_NAME\"]\n    secret_arn = os.environ[\"SECRET_ARN\"]\n    webhook_label = os.environ.get(\"WEBHOOK_LABEL\", \"claude-do\")\n\n    # Extract headers and body from Function URL event\n    headers = {k.lower(): v for k, v in event.get(\"headers\", {}).items()}\n    body = event.get(\"body\", \"\")\n    if event.get(\"isBase64Encoded\"):\n        import base64\n\n        body = base64.b64decode(body).decode(\"utf-8\")\n\n    # Verify webhook signature\n    signature = headers.get(\"x-hub-signature-256\", \"\")\n    if not signature:\n        return {\"statusCode\": 401, \"body\": \"Missing signature\"}\n\n    sm = boto3.client(\"secretsmanager\")\n    secret_value = json.loads(sm.get_secret_value(SecretId=secret_arn)[\"SecretString\"])\n    webhook_secret = secret_value[\"GITHUB_WEBHOOK_SECRET\"]\n\n    expected = (\n        \"sha256=\" + hmac.new(webhook_secret.encode(), body.encode(), hashlib.sha256).hexdigest()\n    )\n\n    if not hmac.compare_digest(signature, expected):\n        return {\"statusCode\": 401, \"body\": \"Invalid signature\"}\n\n    # Parse payload\n    payload = json.loads(body)\n    action = payload.get(\"action\")\n    label_name = payload.get(\"label\", {}).get(\"name\")\n\n    # Filter: only \"labeled\" action with the target label\n    if action != \"labeled\" or label_name != webhook_label:\n        return {\"statusCode\": 200, \"body\": \"Ignored\"}\n\n    # Build DynamoDB item\n    repo = payload[\"repository\"][\"full_name\"]\n    issue_number = payload[\"issue\"][\"number\"]\n    clone_url = payload[\"repository\"][\"clone_url\"]\n    now = datetime.now(timezone.utc).strftime(\"%Y-%m-%dT%H:%M:%SZ\")\n\n    item = {\n        \"id\": {\"S\": str(uuid.uuid4())},\n        \"status\": {\"S\": \"PENDING\"},\n        \"repo\": {\"S\": repo},\n        \"issue_number\": {\"N\": str(issue_number)},\n        \"clone_url\": {\"S\": clone_url},\n        \"triggered_at\": {\"S\": now},\n        \"created_at\": {\"S\": now},\n        \"receive_count\": {\"N\": \"0\"},\n    }\n\n    dynamodb = boto3.client(\"dynamodb\")\n    dynamodb.put_item(TableName=work_table_name, Item=item)\n\n    return {\"statusCode\": 200, \"body\": f\"Queued {repo}#{issue_number}\"}\n"
+        },
+        "Environment": {
+          "Variables": {
+            "WORK_TABLE_NAME": {
+              "Ref": "WorkTable"
+            },
+            "SECRET_ARN": {
+              "Ref": "SecretArn"
+            },
+            "WEBHOOK_LABEL": {
+              "Ref": "WebhookLabel"
+            }
+          }
+        }
+      }
+    },
+    "WebhookFunctionUrl": {
+      "Type": "AWS::Lambda::Url",
+      "Properties": {
+        "TargetFunctionArn": {
+          "Ref": "WebhookFunction"
+        },
+        "AuthType": "NONE"
+      }
+    },
+    "WebhookFunctionUrlPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "WebhookFunction"
+        },
+        "Action": "lambda:InvokeFunctionUrl",
+        "Principal": "*",
+        "FunctionUrlAuthType": "NONE"
+      }
+    },
+    "WorkerPolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Properties": {
+        "ManagedPolicyName": "maverick-worker-policy",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "dynamodb:Query",
+                "dynamodb:UpdateItem",
+                "dynamodb:GetItem"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "WorkTable",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${WorkTable.Arn}/index/*"
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": {
+                "Fn::Sub": "${WorkerLogGroup.Arn}:*"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "WorkerInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": {
+          "Ref": "AmiId"
+        },
+        "InstanceType": {
+          "Ref": "InstanceType"
+        },
+        "KeyName": {
+          "Ref": "KeyPairName"
+        },
+        "IamInstanceProfile": {
+          "Ref": "IamInstanceProfileName"
+        },
+        "SecurityGroupIds": [
+          {
+            "Ref": "SecurityGroupId"
+          }
+        ],
+        "SubnetId": {
+          "Ref": "VpcSubnetId"
+        },
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Sub": "#cloud-config\n#\n# claude-vps cloud-init configuration\n#\n# Configuration placeholders \u2014 update before use:\n#   USERNAME:       claude\n#   AGENT_ID:       claude-agent-01\n#   YOUR_DOMAIN:    example.com\n#   AWS_REGION:     us-east-1\n#   SECRET_ARN:     ${SecretArn}\n#   SSH_PUBLIC_KEY: ssh-ed25519 AAAA... user@host\n\nusers:\n  - name: claude\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: [sudo]\n    shell: /bin/bash\n    ssh_authorized_keys:\n      - ssh-ed25519 AAAA... user@host\n\npackage_update: true\npackage_upgrade: true\n\npackages:\n  - git\n  - curl\n  - wget\n  - tmux\n  - jq\n  - unzip\n  - python3-pip\n\nwrite_files:\n  - path: /home/claude/.bashrc.d/claude-vps.sh\n    owner: claude:claude\n    permissions: \"0644\"\n    content: |\n      # claude-vps bashrc additions\n      alias yolo=\"claude --dangerously-skip-permissions --permission-mode bypassPermissions\"\n      export PATH=\"$HOME/.local/bin:$PATH\"\n\n      if [ -n \"$SSH_TTY\" ] && [ -z \"$TMUX\" ]; then\n        tmux attach -t claude || tmux new -s claude\n      fi\n\nruncmd:\n  # --- GitHub CLI ---\n  - |\n    (type -p wget >/dev/null || (apt-get update && apt-get install wget -y)) \\\n    && mkdir -p -m 755 /etc/apt/keyrings \\\n    && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \\\n    && cat $out | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \\\n    && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \\\n    && mkdir -p -m 755 /etc/apt/sources.list.d \\\n    && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\\n    && apt-get update \\\n    && apt-get install gh -y\n\n  # --- Tailscale ---\n  - curl -fsSL https://tailscale.com/install.sh | bash\n\n  # --- NVM + Node.js (as user) ---\n  - su - claude -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash'\n  - su - claude -c 'export NVM_DIR=\"$HOME/.nvm\" && . \"$NVM_DIR/nvm.sh\" && nvm install 22'\n\n  # --- uv (as user) ---\n  - su - claude -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'\n\n  # --- Claude Code (as user) ---\n  - su - claude -c 'curl -fsSL https://claude.ai/install.sh | bash'\n\n  # --- SSH key generation (as user) ---\n  - su - claude -c 'ssh-keygen -t ed25519 -C \"claude-agent-01@example.com\" -f /home/claude/.ssh/id_ed25519 -N \"\"'\n\n  # --- Git config (as user) ---\n  - su - claude -c 'git config --global user.email \"claude-agent-01@example.com\"'\n  - su - claude -c 'git config --global user.name \"claude-agent-01\"'\n\n  # --- Source .bashrc.d from .bashrc ---\n  - |\n    cat >> /home/claude/.bashrc << 'BASHRC_EOF'\n\n    # Source all scripts in .bashrc.d\n    if [ -d \"$HOME/.bashrc.d\" ]; then\n      for f in \"$HOME/.bashrc.d\"/*.sh; do\n        [ -r \"$f\" ] && . \"$f\"\n      done\n    fi\n    BASHRC_EOF\n  - chown claude:claude /home/claude/.bashrc\n\n  # --- Fetch secrets from AWS Secrets Manager ---\n  - |\n    SECRET_JSON=$(aws secretsmanager get-secret-value \\\n      --secret-id \"${SecretArn}\" \\\n      --region ${AWS::Region} \\\n      --query SecretString --output text)\n\n    ANTHROPIC_API_KEY=$(echo \"$SECRET_JSON\" | jq -r '.ANTHROPIC_API_KEY')\n    OPENAI_API_KEY=$(echo \"$SECRET_JSON\" | jq -r '.OPENAI_API_KEY')\n    GH_TOKEN=$(echo \"$SECRET_JSON\" | jq -r '.GH_TOKEN')\n\n    cat > /home/claude/.bashrc.d/secrets.sh <<EOF\n    export ANTHROPIC_API_KEY=\"$ANTHROPIC_API_KEY\"\n    export OPENAI_API_KEY=\"$OPENAI_API_KEY\"\n    export GH_TOKEN=\"$GH_TOKEN\"\n    EOF\n    chmod 600 /home/claude/.bashrc.d/secrets.sh\n    chown claude:claude /home/claude/.bashrc.d/secrets.sh\n\n    # Authenticate GitHub CLI\n    su - claude -c \"echo '$GH_TOKEN' | gh auth login --with-token\"\n\n  # --- Install Claude plugins (as user) ---\n  - |\n    su - claude -c '\n      . $HOME/.bashrc.d/secrets.sh\n      claude plugin install superpowers@claude-plugins-official --scope user\n      claude plugin install claude-code-setup@claude-plugins-official --scope user\n      claude plugin install commit-commands@claude-plugins-official --scope user\n      claude plugin install feature-dev@claude-plugins-official --scope user\n      claude plugin install frontend-design@claude-plugins-official --scope user\n      claude plugin install github@claude-plugins-official --scope user\n      claude plugin install hookify@claude-plugins-official --scope user\n      claude plugin install ralph-loop@claude-plugins-official --scope user\n      claude plugin install security-guidance@claude-plugins-official --scope user\n      claude plugin install stripe@claude-plugins-official --scope user\n      claude plugin install typescript-lsp@claude-plugins-official --scope user\n    '\n"
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "claude-maverick"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "WorkTableName": {
+      "Value": {
+        "Ref": "WorkTable"
+      },
+      "Description": "DynamoDB work table name"
+    },
+    "WorkTableArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "WorkTable",
+          "Arn"
+        ]
+      },
+      "Description": "DynamoDB work table ARN"
+    },
+    "FunctionUrl": {
+      "Value": {
+        "Fn::GetAtt": [
+          "WebhookFunctionUrl",
+          "FunctionUrl"
+        ]
+      },
+      "Description": "Lambda Function URL for GitHub webhook"
+    },
+    "LambdaArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "WebhookFunction",
+          "Arn"
+        ]
+      },
+      "Description": "Lambda function ARN"
+    },
+    "WorkerPolicyArn": {
+      "Value": {
+        "Ref": "WorkerPolicy"
+      },
+      "Description": "IAM policy ARN for EC2 workers"
+    },
+    "LogGroupName": {
+      "Value": {
+        "Ref": "WorkerLogGroup"
+      },
+      "Description": "CloudWatch log group name"
+    },
+    "InstanceId": {
+      "Value": {
+        "Ref": "WorkerInstance"
+      },
+      "Description": "EC2 worker instance ID"
+    }
+  }
+}

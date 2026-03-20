@@ -1,9 +1,10 @@
-"""GitHub webhook handler — validates signature, filters label events, enqueues to SQS."""
+"""GitHub webhook handler — validates signature, filters label events, writes to DynamoDB."""
 
 import hashlib
 import hmac
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 
 import boto3
@@ -11,7 +12,7 @@ import boto3
 
 def lambda_handler(event, context):
     """AWS Lambda entry point for GitHub webhook via Function URL."""
-    sqs_queue_url = os.environ["SQS_QUEUE_URL"]
+    work_table_name = os.environ["WORK_TABLE_NAME"]
     secret_arn = os.environ["SECRET_ARN"]
     webhook_label = os.environ.get("WEBHOOK_LABEL", "claude-do")
 
@@ -48,22 +49,24 @@ def lambda_handler(event, context):
     if action != "labeled" or label_name != webhook_label:
         return {"statusCode": 200, "body": "Ignored"}
 
-    # Build SQS message
+    # Build DynamoDB item
     repo = payload["repository"]["full_name"]
     issue_number = payload["issue"]["number"]
     clone_url = payload["repository"]["clone_url"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    message = {
-        "repo": repo,
-        "issue_number": issue_number,
-        "clone_url": clone_url,
-        "triggered_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    item = {
+        "id": {"S": str(uuid.uuid4())},
+        "status": {"S": "PENDING"},
+        "repo": {"S": repo},
+        "issue_number": {"N": str(issue_number)},
+        "clone_url": {"S": clone_url},
+        "triggered_at": {"S": now},
+        "created_at": {"S": now},
+        "receive_count": {"N": "0"},
     }
 
-    sqs = boto3.client("sqs")
-    sqs.send_message(
-        QueueUrl=sqs_queue_url,
-        MessageBody=json.dumps(message),
-    )
+    dynamodb = boto3.client("dynamodb")
+    dynamodb.put_item(TableName=work_table_name, Item=item)
 
     return {"statusCode": 200, "body": f"Queued {repo}#{issue_number}"}

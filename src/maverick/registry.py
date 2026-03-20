@@ -241,6 +241,46 @@ def render_all_agents(
 
 
 # ---------------------------------------------------------------------------
+# CloudFormation templates
+# ---------------------------------------------------------------------------
+
+INFRA_OUTPUT_DIR = PROJECT_ROOT / "infra"
+
+
+def render_cfn_templates(output_dir: Path = INFRA_OUTPUT_DIR) -> list[Path]:
+    """Render standalone CloudFormation templates for manual upload."""
+    import json
+
+    from maverick.infra import (
+        _build_infra_template,
+        _build_vpc_template,
+        _prepare_user_data,
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Read lambda handler source for inline embedding
+    handler_path = Path(__file__).resolve().parent / "lambda_handler.py"
+    lambda_code = handler_path.read_text()
+
+    # Prepare cloud-init user data with CFN variable references
+    user_data = _prepare_user_data()
+
+    templates = {
+        "maverick-vpc.template.json": _build_vpc_template(),
+        "maverick-infra.template.json": _build_infra_template(lambda_code, user_data),
+    }
+
+    paths = []
+    for filename, template in templates.items():
+        out = output_dir / filename
+        out.write_text(json.dumps(template, indent=2) + "\n")
+        paths.append(out)
+
+    return paths
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -249,6 +289,8 @@ def main() -> None:
     for output in render_all_skills():
         print(f"Generated {output}")
     for output in render_all_agents():
+        print(f"Generated {output}")
+    for output in render_cfn_templates():
         print(f"Generated {output}")
 
 

@@ -73,11 +73,11 @@ def main():
     subparsers.add_parser("build-ami", help="Bake a Claude Code AMI from Ubuntu 24.04 LTS")
 
     # maverick instance <action>
-    instance_parser = subparsers.add_parser("instance", help="Manage EC2 instances")
+    instance_parser = subparsers.add_parser("instance", help="Manage EC2 worker instance")
     instance_parser.add_argument(
         "action",
-        choices=["create", "start", "stop", "status", "terminate"],
-        help="Instance action to perform",
+        choices=["start", "stop", "status"],
+        help="Instance action (lifecycle managed by 'maverick infra deploy/destroy')",
     )
 
     # maverick infra <action>
@@ -86,6 +86,16 @@ def main():
         "action",
         choices=["deploy", "status", "destroy"],
         help="Infrastructure action to perform",
+    )
+    infra_parser.add_argument(
+        "--include-vpc",
+        action="store_true",
+        help="Also destroy the VPC stack (default: VPC is preserved)",
+    )
+    infra_parser.add_argument(
+        "--ssh-cidr",
+        default="0.0.0.0/0",
+        help="CIDR for SSH access to worker instance (default: 0.0.0.0/0)",
     )
 
     # maverick review-sessions
@@ -164,8 +174,12 @@ def main():
     elif args.command == "infra":
         from maverick.infra import deploy, destroy, status
 
-        actions = {"deploy": deploy, "status": status, "destroy": destroy}
-        actions[args.action]()
+        if args.action == "destroy":
+            destroy(include_vpc=args.include_vpc)
+        elif args.action == "deploy":
+            deploy(ssh_cidr=args.ssh_cidr)
+        else:
+            status()
 
     elif args.command == "review-sessions":
         from maverick.session_review.cli import main as review_main

@@ -3,7 +3,7 @@ title: Maverick Build
 scope: Understanding the maverick build process, release workflow, and the rationale behind them
 relates-to:
   - maverick-install.md
-last-verified: 2026-03-11
+last-verified: 2026-03-20
 ---
 
 # Maverick Build
@@ -47,13 +47,17 @@ The registry (`src/maverick/registry.py`) discovers all `config.py` files, rende
 
 - `skills/<name>/SKILL.md` — rendered skills
 - `agents/<name>.md` — rendered agents
+- `infra/maverick-vpc.template.json` — CloudFormation VPC template
+- `infra/maverick-infra.template.json` — CloudFormation infrastructure template
 
-These root-level directories are **build output** and must never be edited directly.
+The `infra/` templates are standalone CloudFormation files that users can upload directly to the AWS Console for manual deployment. They are generated from the same template builders used by the CLI (`_build_vpc_template` and `_build_infra_template` in `src/maverick/infra.py`). The Lambda handler source and cloud-init user data are read from `src/maverick/` and embedded inline during the build.
+
+All root-level output directories (`skills/`, `agents/`, `infra/`) are **build output** and must never be edited directly.
 
 ### Build command
 
 ```bash
-# Full build (topics + skills + agents)
+# Full build (topics + skills + agents + CloudFormation templates)
 make build
 
 # Just render skills and agents

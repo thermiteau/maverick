@@ -1,4 +1,4 @@
-"""Tests for maverick.config — configuration loading and saving."""
+"""Tests for maverick.config — configuration loading, defaults, migration, and validation."""
 
 from __future__ import annotations
 
@@ -34,32 +34,244 @@ class TestLoadJson:
         assert result == {}
 
 
+class TestMigrateLegacy:
+    def test_migrates_ec2_key_pair(self):
+        raw: dict = {"aws": {"region": "us-east-1", "ec2_key_pair": "my-key"}}
+        result = config._migrate_legacy(raw)
+        assert result["aws"]["key_pair"] == "my-key"
+        assert "ec2_key_pair" not in result["aws"]
+
+    def test_migrates_ec2_security_group(self):
+        raw: dict = {"aws": {"ec2_security_group": "sg-123"}}
+        result = config._migrate_legacy(raw)
+        assert result["aws"]["security_group"] == "sg-123"
+
+    def test_migrates_parameter_store_arn_to_secret_arn(self):
+        raw: dict = {"aws": {"parameter_store_arn": "arn:aws:secretsmanager:..."}}
+        result = config._migrate_legacy(raw)
+        assert result["aws"]["secret_arn"] == "arn:aws:secretsmanager:..."
+
+    def test_migrates_ec2_instance_type_to_instance_section(self):
+        raw: dict = {"aws": {"ec2_instance_type": "t3.large"}}
+        result = config._migrate_legacy(raw)
+        assert result["instance"]["type"] == "t3.large"
+        assert "ec2_instance_type" not in result["aws"]
+
+    def test_migrates_ec2_ssm_parameter_to_ami_section(self):
+        raw: dict = {"aws": {"ec2_ssm_parameter": "/custom/param"}}
+        result = config._migrate_legacy(raw)
+        assert result["ami"]["ssm_parameter"] == "/custom/param"
+
+    def test_migrates_ec2_description_to_ami_section(self):
+        raw: dict = {"aws": {"ec2_description": "My AMI"}}
+        result = config._migrate_legacy(raw)
+        assert result["ami"]["description"] == "My AMI"
+
+    def test_does_not_overwrite_existing_new_key(self):
+        raw: dict = {"aws": {"key_pair": "existing", "ec2_key_pair": "legacy"}}
+        result = config._migrate_legacy(raw)
+        assert result["aws"]["key_pair"] == "existing"
+
+    def test_skips_empty_legacy_values(self):
+        raw: dict = {"aws": {"ec2_key_pair": ""}}
+        config._migrate_legacy(raw)
+        assert "key_pair" not in raw["aws"]
+
+    def test_noop_on_current_schema(self):
+        raw: dict = {"aws": {"region": "us-east-1", "key_pair": "my-key"}}
+        original = json.dumps(raw)
+        config._migrate_legacy(raw)
+        assert json.dumps(raw) == original
+
+
+class TestHasUnknownKeys:
+    def test_no_unknowns_on_clean_config(self):
+        cfg = dict(config.CONFIG_DEFAULTS)
+        assert config._has_unknown_keys(cfg) == []
+
+    def test_detects_sqs_keys(self):
+        raw: dict = {"aws": {"region": "us-east-1", "sqs_queue_url": "https://..."}}
+        unknown = config._has_unknown_keys(raw)
+        assert "aws.sqs_queue_url" in unknown
+
+    def test_detects_multiple_unknowns(self):
+        raw: dict = {"aws": {"sqs_queue_url": "", "sqs_visibility_timeout": 3600}}
+        unknown = config._has_unknown_keys(raw)
+        assert len(unknown) == 2
+
+    def test_ignores_extra_top_level_keys(self):
+        raw: dict = {"custom_section": {"anything": True}}
+        unknown = config._has_unknown_keys(raw)
+        assert unknown == []
+
+
+class TestApplyDefaults:
+    def test_empty_input_returns_full_defaults(self):
+        result = config._apply_defaults({})
+        assert result == config.CONFIG_DEFAULTS
+
+    def test_user_values_override_defaults(self):
+        raw: dict = {"aws": {"region": "eu-west-1", "key_pair": "my-key"}}
+        result = config._apply_defaults(raw)
+        assert result["aws"]["region"] == "eu-west-1"
+        assert result["aws"]["key_pair"] == "my-key"
+        assert result["aws"]["security_group"] == ""
+        assert result["aws"]["iam_profile"] == ""
+
+    def test_other_sections_get_defaults(self):
+        raw: dict = {"aws": {"region": "us-west-2"}}
+        result = config._apply_defaults(raw)
+        assert result["worker"]["webhook_label"] == "claude-do"
+        assert result["instance"]["type"] == "t3.medium"
+        assert result["ami"]["ssm_parameter"] == config._DEFAULT_SSM_PARAMETER
+
+    def test_unknown_keys_in_section_are_dropped(self):
+        raw: dict = {"aws": {"region": "us-east-1", "sqs_queue_url": "https://..."}}
+        result = config._apply_defaults(raw)
+        assert "sqs_queue_url" not in result["aws"]
+
+    def test_user_section_values_not_clobbered(self):
+        raw: dict = {"worker": {"webhook_label": "custom-label"}}
+        result = config._apply_defaults(raw)
+        assert result["worker"]["webhook_label"] == "custom-label"
+        assert result["worker"]["cloudwatch_log_group"] == "/maverick/worker"
+
+
+class TestValidateConfig:
+    def test_valid_config_no_errors(self):
+        cfg = config._apply_defaults({"aws": {"region": "us-east-1"}})
+        errors = config.validate_config(cfg)
+        assert errors == []
+
+    def test_missing_region_is_error(self):
+        cfg = config._apply_defaults({"aws": {"region": ""}})
+        errors = config.validate_config(cfg)
+        assert any("aws.region" in e for e in errors)
+
+    def test_skip_aws_validation(self):
+        cfg = config._apply_defaults({})
+        errors = config.validate_config(cfg, require_aws=False)
+        assert errors == []
+
+    def test_invalid_max_attempts_type(self):
+        cfg = config._apply_defaults({})
+        cfg["queue"]["max_attempts"] = "not-an-int"  # type: ignore[typeddict-item]
+        errors = config.validate_config(cfg, require_aws=False)
+        assert any("queue.max_attempts" in e for e in errors)
+
+
+class TestLoadAndHeal:
+    def test_clean_config_unchanged(self, tmp_path: Path):
+        f = tmp_path / "config.json"
+        data = {"aws": {"region": "us-east-1", "key_pair": "my-key"}}
+        f.write_text(json.dumps(data))
+        result = config._load_and_heal(f)
+        assert result["aws"]["region"] == "us-east-1"
+        assert not (tmp_path / "config.json.bak").exists()
+
+    def test_legacy_config_backed_up_and_replaced(self, tmp_path: Path):
+        f = tmp_path / "config.json"
+        legacy = {
+            "aws": {
+                "region": "us-east-1",
+                "ec2_key_pair": "old-key",
+                "ec2_security_group": "sg-old",
+                "sqs_queue_url": "https://sqs...",
+                "sqs_visibility_timeout": 3600,
+            },
+            "worker": {"webhook_label": "custom"},
+        }
+        f.write_text(json.dumps(legacy))
+
+        result = config._load_and_heal(f)
+
+        # Backup created
+        bak = tmp_path / "config.json.bak"
+        assert bak.exists()
+        bak_data = json.loads(bak.read_text())
+        assert "sqs_queue_url" in bak_data["aws"]
+
+        # New file is clean
+        new_data = json.loads(f.read_text())
+        assert "sqs_queue_url" not in new_data["aws"]
+
+        # Migrated values preserved
+        assert result["aws"]["key_pair"] == "old-key"
+        assert result["aws"]["security_group"] == "sg-old"
+        assert result["aws"]["region"] == "us-east-1"
+        assert result["worker"]["webhook_label"] == "custom"
+
+    def test_multiple_backups_dont_clobber(self, tmp_path: Path):
+        f = tmp_path / "config.json"
+        legacy = {"aws": {"sqs_queue_url": "old"}}
+
+        # Create first backup
+        (tmp_path / "config.json.bak").write_text("{}")
+
+        f.write_text(json.dumps(legacy))
+        config._load_and_heal(f)
+
+        assert (tmp_path / "config.json.bak").exists()
+        assert (tmp_path / "config.json.bak.1").exists()
+
+    def test_nonexistent_file_returns_empty(self, tmp_path: Path):
+        result = config._load_and_heal(tmp_path / "missing.json")
+        assert result == {}
+
+
 class TestInitConfig:
     def test_project_config_takes_precedence(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         project_dir = tmp_path / ".maverick"
         project_dir.mkdir()
-        (project_dir / "config.json").write_text('{"source": "project"}')
-
-        monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", project_dir)
-        result = config.init_config()
-        assert result == {"source": "project"}
-
-    def test_falls_back_to_system_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        # No project config
-        monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", tmp_path / ".maverick")
-
+        (project_dir / "config.json").write_text(
+            '{"aws": {"region": "ap-southeast-1", "key_pair": "project-key"}}'
+        )
+        # System config has a different region — should be ignored
         system_cfg = tmp_path / "system_config.json"
-        system_cfg.write_text('{"source": "system"}')
+        system_cfg.write_text('{"aws": {"region": "eu-west-1"}}')
+        monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", project_dir)
         monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", system_cfg)
 
         result = config.init_config()
-        assert result == {"source": "system"}
+        assert result["aws"]["region"] == "ap-southeast-1"
+        assert result["aws"]["key_pair"] == "project-key"
+        assert result["worker"]["webhook_label"] == "claude-do"
 
-    def test_returns_empty_when_no_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def test_falls_back_to_system_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", tmp_path / ".maverick")
+        system_cfg = tmp_path / "system_config.json"
+        system_cfg.write_text('{"aws": {"region": "eu-west-1", "key_pair": "system-key"}}')
+        monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", system_cfg)
+
+        result = config.init_config()
+        assert result["aws"]["region"] == "eu-west-1"
+        assert result["aws"]["key_pair"] == "system-key"
+
+    def test_defaults_when_no_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", tmp_path / "no-project")
         monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", tmp_path / "no-system.json")
         result = config.init_config()
-        assert result == {}
+        assert result == config.CONFIG_DEFAULTS
+
+    def test_legacy_system_config_healed_on_load(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", tmp_path / "no-project")
+        system_cfg = tmp_path / "config.json"
+        legacy = {
+            "aws": {
+                "region": "us-west-2",
+                "ec2_key_pair": "migrated-key",
+                "sqs_queue_url": "https://old",
+            },
+        }
+        system_cfg.write_text(json.dumps(legacy))
+        monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", system_cfg)
+
+        result = config.init_config()
+        assert result["aws"]["region"] == "us-west-2"
+        assert result["aws"]["key_pair"] == "migrated-key"
+        assert "sqs_queue_url" not in result["aws"]
+        # Backup was created
+        assert (tmp_path / "config.json.bak").exists()
 
 
 class TestSaveConfig:
@@ -69,7 +281,7 @@ class TestSaveConfig:
         monkeypatch.setattr(config, "USER_CONFIG_DIR", cfg_dir)
         monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", cfg_file)
 
-        config.save_config({"aws_region": "us-east-1"})
+        config.save_config({"aws_region": "us-east-1"})  # type: ignore[typeddict-item]
 
         assert cfg_file.exists()
         data = json.loads(cfg_file.read_text())
@@ -82,6 +294,6 @@ class TestSaveConfig:
         monkeypatch.setattr(config, "USER_CONFIG_DIR", cfg_dir)
         monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", cfg_file)
 
-        config.save_config({"new": True})
+        config.save_config({"new": True})  # type: ignore[typeddict-item]
         data = json.loads(cfg_file.read_text())
         assert data == {"new": True}

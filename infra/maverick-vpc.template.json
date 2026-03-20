@@ -1,0 +1,235 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Maverick worker VPC - managed by maverick CLI",
+  "Parameters": {
+    "SshCidr": {
+      "Type": "String",
+      "Default": "0.0.0.0/0",
+      "Description": "CIDR block allowed SSH access to the worker instance"
+    }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "maverick-workers"
+          }
+        ]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "maverick-workers-igw"
+          }
+        ]
+      }
+    },
+    "VpcGatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "PublicSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.0.1.0/24",
+        "AvailabilityZone": {
+          "Fn::Select": [
+            "0",
+            {
+              "Fn::GetAZs": {
+                "Ref": "AWS::Region"
+              }
+            }
+          ]
+        },
+        "MapPublicIpOnLaunch": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "maverick-workers-public"
+          }
+        ]
+      }
+    },
+    "RouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "maverick-workers-rt"
+          }
+        ]
+      }
+    },
+    "DefaultRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "VpcGatewayAttachment",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "RouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "SubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicSubnet"
+        },
+        "RouteTableId": {
+          "Ref": "RouteTable"
+        }
+      }
+    },
+    "WorkerSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Maverick worker instance - SSH inbound, all outbound",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 22,
+            "ToPort": 22,
+            "CidrIp": {
+              "Ref": "SshCidr"
+            }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "-1",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "maverick-workers-worker-sg"
+          }
+        ]
+      }
+    },
+    "WorkerSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Description": "Maverick worker secrets (API keys, webhook secret)",
+        "SecretString": "{\"GITHUB_WEBHOOK_SECRET\": \"CHANGE_ME\", \"ANTHROPIC_API_KEY\": \"CHANGE_ME\", \"GITHUB_PERSONAL_ACCESS_TOKEN\": \"CHANGE_ME\"}"
+      }
+    },
+    "WorkerRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "maverick-worker-role",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "maverick-worker-secret-access",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "secretsmanager:GetSecretValue",
+                  "Resource": {
+                    "Ref": "WorkerSecret"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "WorkerInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "InstanceProfileName": "maverick-worker-profile",
+        "Roles": [
+          {
+            "Ref": "WorkerRole"
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "VpcId": {
+      "Value": {
+        "Ref": "Vpc"
+      },
+      "Description": "VPC ID"
+    },
+    "SubnetId": {
+      "Value": {
+        "Ref": "PublicSubnet"
+      },
+      "Description": "Public subnet ID"
+    },
+    "SecurityGroupId": {
+      "Value": {
+        "Ref": "WorkerSecurityGroup"
+      },
+      "Description": "Worker security group ID"
+    },
+    "InstanceProfileName": {
+      "Value": {
+        "Ref": "WorkerInstanceProfile"
+      },
+      "Description": "IAM instance profile name for the worker"
+    },
+    "RoleName": {
+      "Value": {
+        "Ref": "WorkerRole"
+      },
+      "Description": "IAM role name for the worker"
+    },
+    "SecretArn": {
+      "Value": {
+        "Ref": "WorkerSecret"
+      },
+      "Description": "Secrets Manager secret ARN"
+    }
+  }
+}

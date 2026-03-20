@@ -1,4 +1,4 @@
-.PHONY: generate generate-topics build release lint format typecheck test
+.PHONY: generate generate-topics build release lint format typecheck test infra
 
 lint: ## Run ruff linter
 	uv run ruff check .
@@ -26,3 +26,6 @@ release-minor: ## Create a minor release (PR to main, squash merge, tag on main)
 
 release-major: ## Create a major release (PR to main, squash merge, tag on main)
 	./scripts/release.sh major
+
+infra: ## Deploy AWS infrastructure (use ACTION=status or ACTION=destroy to override)
+	uv run maverick infra $(or $(ACTION),deploy)

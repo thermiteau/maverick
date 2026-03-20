@@ -12,7 +12,7 @@ relates-to:
   - scope-boundaries.md
   - llm-containment.md
   - claude-code-error-handling-and-recovery.md
-last-verified: 2026-03-02
+last-verified: 2026-03-20
 ---
 
 ## Overview
@@ -51,17 +51,15 @@ Because every codebase is unique, there is no way to ship defined skills that ar
 - If it cant find any, it reads your codebase and builds technical skills that match your tech stack and align with its best practice skills
 - These become part of your code and you can change them as required
 
-### Infrastructure as Code solution for remote Claude Code instances
+### Infrastructure for remote Claude Code instances
 
-There are multiple ways to run Claude Code, the most obvious being the software runnign locally on your machine.  This works well for interactive development where you ask Claude Code to complete a task, answer any questions as they come up and monitor the progress.
+Running Claude Code locally works well for interactive development but does not scale when you need to complete multiple features or bug fixes concurrently.
 
-It falls down when you need to complete multiple features or bug fixes at the same time. Claude Code on local machines, doesnt scale.
+Maverick resolves this by deploying Claude Code workers to AWS. The infrastructure is managed via CloudFormation stacks, deployed either through the CLI (`maverick infra deploy`) or by uploading the standalone templates from `infra/` directly to the AWS Console. Workers are triggered by labelling GitHub issues, which fires a webhook that writes work items to DynamoDB. An EC2 instance polls the table and processes items autonomously.
 
-Maverick resolves this by deploying Claude Code workers to remote Claude platforms such as Amazon Web Services. Those workers are triggered by creating tickets (issues) in GitHub. The worker will autonomously complete the requirements and keep you up to date by update the ticket.
+This is more involved than many users require and is not necessary to use Maverick. The plugin works on your local machine without any cloud infrastructure.
 
-This is more complicated than many cassual users would require and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
-
-You can read more details about remote workers here [claude-code-workers.md]
+See [claude-code-workers.md](claude-code-workers.md) for full details.
 
 ## Why Each Practice Area Is Central
 
