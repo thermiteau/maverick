@@ -1,6 +1,6 @@
 ---
 name: do-maverick-alignment
-description: Analyze a project's codebase against Maverick standard practices and write a findings report. Checks linting, unit tests, integration tests, documentation, and CI/CD. Run when onboarding an existing project or on demand.
+description: Analyze a project's codebase against Maverick standard practices and write a findings report. Checks linting, unit tests, integration tests, documentation, CI/CD, security, dependency management, observability, source control, and more. Run when onboarding an existing project or on demand.
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -158,6 +158,99 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 
 **Additional detail:** Note which CI/CD platform is used and what steps the pipeline runs.
 
+### 6. Source Control
+
+**Search for:**
+
+| What | Where to look |
+| --- | --- |
+| Remote configured | `git remote -v` output |
+| .gitignore | `.gitignore` at project root |
+| Sensitive files | `.env`, `credentials*`, `*.key`, `*.pem` in tracked files |
+
+**Scoring:**
+
+| Status | Criteria |
+| --- | --- |
+| PASS | Remote configured AND .gitignore exists AND no sensitive files tracked |
+| WARN | Remote configured but .gitignore missing or incomplete |
+| FAIL | No remote configured (local-only repository) |
+
+### 7. Application Security
+
+**Search for:**
+
+| What | Where to look |
+| --- | --- |
+| Security headers | `helmet`, `csp`, `Content-Security-Policy` in code or dependencies |
+| Input validation | Validation libraries in dependencies, sanitisation patterns in code |
+| Auth middleware | Authentication/authorisation middleware or decorators |
+| Secrets scanning | `.github/dependabot.yml`, `.snyk`, `trivy` config, pre-commit hooks |
+| SAST/DAST | Security scanning steps in CI pipeline |
+
+**Scoring:**
+
+| Status | Criteria |
+| --- | --- |
+| PASS | Input validation present AND auth middleware present AND security scanning in CI |
+| WARN | Some security measures present but gaps (e.g., no CI scanning, or no input validation) |
+| FAIL | No security measures found |
+
+### 8. Dependency Management
+
+**Search for:**
+
+| What | Where to look |
+| --- | --- |
+| Lock file | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `Cargo.lock`, `go.sum`, `poetry.lock` |
+| Automated updates | `.github/dependabot.yml`, `renovate.json`, `.renovaterc*` |
+| Vulnerability scanning | `npm audit`, `pip-audit`, `snyk`, `trivy` in CI pipeline |
+
+**Scoring:**
+
+| Status | Criteria |
+| --- | --- |
+| PASS | Lock file committed AND automated updates configured AND vulnerability scanning in CI |
+| WARN | Lock file committed but no automated updates or no vulnerability scanning |
+| FAIL | No lock file committed |
+
+### 9. Database Management
+
+**Search for:**
+
+| What | Where to look |
+| --- | --- |
+| Migration files | `**/migrations/**`, `**/migrate/**`, Prisma/Alembic/Flyway/Knex directories |
+| ORM/query builder | prisma, drizzle, knex, sequelize, typeorm, sqlalchemy, diesel, gorm in dependencies |
+| Seed data | `**/seed*.*`, `**/fixtures/**` |
+
+**Scoring:**
+
+| Status | Criteria |
+| --- | --- |
+| PASS | Migration tool configured AND migration files exist AND seed data present |
+| WARN | Database dependencies present but no migrations or incomplete migration setup |
+| FAIL | Database dependencies present with no migration tooling at all |
+| N/A | No database dependencies found |
+
+### 10. Error Handling
+
+**Search for:**
+
+| What | Where to look |
+| --- | --- |
+| Global error handler | Error middleware, exception filters, error boundaries in code |
+| Custom error classes | Classes extending Error/Exception in source |
+| Retry logic | Retry/backoff patterns in code or dependencies |
+
+**Scoring:**
+
+| Status | Criteria |
+| --- | --- |
+| PASS | Global error handler present AND custom error types defined |
+| WARN | Some error handling present but inconsistent (e.g., mix of try/catch with no global handler) |
+| FAIL | No structured error handling found |
+
 ---
 
 ## Step 3: Write the report
@@ -175,15 +268,20 @@ Create `docs/maverick-audit.md` (create the `docs/` directory if it does not exi
 
 ## Summary
 
-| Category          | Status           | Finding            |
-| ----------------- | ---------------- | ------------------ |
-| Linting           | <PASS/WARN/FAIL> | <one-line summary> |
-| Unit tests        | <PASS/WARN/FAIL> | <one-line summary> |
-| Integration tests | <PASS/WARN/FAIL> | <one-line summary> |
-| Documentation     | <PASS/WARN/FAIL> | <one-line summary> |
-| CI/CD             | <PASS/WARN/FAIL> | <one-line summary> |
+| Category              | Status                | Finding            |
+| --------------------- | --------------------- | ------------------ |
+| Linting               | <PASS/WARN/FAIL>      | <one-line summary> |
+| Unit tests            | <PASS/WARN/FAIL>      | <one-line summary> |
+| Integration tests     | <PASS/WARN/FAIL>      | <one-line summary> |
+| Documentation         | <PASS/WARN/FAIL>      | <one-line summary> |
+| CI/CD                 | <PASS/WARN/FAIL>      | <one-line summary> |
+| Source control        | <PASS/WARN/FAIL>      | <one-line summary> |
+| Application security  | <PASS/WARN/FAIL>      | <one-line summary> |
+| Dependency management | <PASS/WARN/FAIL>      | <one-line summary> |
+| Database management   | <PASS/WARN/FAIL/N/A>  | <one-line summary> |
+| Error handling        | <PASS/WARN/FAIL>      | <one-line summary> |
 
-**Score: <N>/5 passing**
+**Score: <N>/10 passing** (N/A categories excluded from count)
 
 ## Details
 
@@ -210,6 +308,31 @@ Create `docs/maverick-audit.md` (create the `docs/` directory if it does not exi
 ### CI/CD -- <STATUS>
 
 <Evidence: platform, config file, steps found>
+<If WARN/FAIL: one-line recommendation>
+
+### Source Control -- <STATUS>
+
+<Evidence: remote URL, .gitignore presence, sensitive file check>
+<If WARN/FAIL: one-line recommendation>
+
+### Application Security -- <STATUS>
+
+<Evidence: security measures found, gaps identified>
+<If WARN/FAIL: one-line recommendation>
+
+### Dependency Management -- <STATUS>
+
+<Evidence: lock file, update tool, vulnerability scanning>
+<If WARN/FAIL: one-line recommendation>
+
+### Database Management -- <STATUS>
+
+<Evidence: migration tool, migration files, seed data — or N/A if no database>
+<If WARN/FAIL: one-line recommendation>
+
+### Error Handling -- <STATUS>
+
+<Evidence: global handler, error types, retry patterns>
 <If WARN/FAIL: one-line recommendation>
 
 ## Recommendations

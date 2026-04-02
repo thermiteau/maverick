@@ -4,7 +4,7 @@ scope: Why rigorous testing is the primary quality gate for LLM-generated code a
 relates-to:
   - code-review.md
   - cicd.md
-last-verified: 2026-03-02
+last-verified: 2026-04-02
 ---
 
 # Comprehensive Testing
@@ -73,26 +73,21 @@ flowchart TD
     M -->|no| N[LLM investigates failure]
     N --> D
     M -->|yes| O[merge-ready]
-
-    P[backend-tester agent] -->|autonomous test execution| F
-    Q[frontend-tester agent] -->|autonomous test execution| F
 ```
 
 ### Skills that enforce testing
 
 | Skill                                     | Role                                                                                     |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------- |
-| mav-bp-unit-testing                 | Defines universal test standards: strategy, coverage targets, quality criteria           |
-| TDD skill                                 | Encourages test-first development workflow where tests are written before implementation |
-| mav-local-verification                        | Requires all tests to pass locally before code is committed                              |
+| mav-bp-unit-testing                       | Defines universal unit test standards: strategy, coverage targets, quality criteria      |
+| mav-bp-integration-testing                | Defines integration test standards: scope, external dependencies, data isolation         |
+| mav-local-verification                    | Requires all tests to pass locally before code is committed                              |
 | Project-specific test skill (via upskill) | Specifies the project's test framework, conventions, and additional requirements         |
 
 ### Agents that enforce testing
 
 | Agent           | Role                                                                |
 | --------------- | ------------------------------------------------------------------- |
-| backend-tester  | Autonomously runs backend test suites and reports results           |
-| frontend-tester | Autonomously runs frontend test suites and reports results          |
 | code-reviewer   | Checks that tests exist, are meaningful, and cover the changed code |
 
 ### The mav-local-verification gate

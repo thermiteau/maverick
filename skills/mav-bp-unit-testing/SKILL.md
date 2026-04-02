@@ -89,6 +89,33 @@ One act per test. If you need multiple acts, you need multiple tests.
 - **Keep tests fast** — if a unit test takes >100ms, something is wrong (likely hitting real I/O)
 - **Coverage is a signal, not a goal** — high coverage with weak assertions is worse than moderate coverage with strong assertions. Don't write tests just to hit a number.
 
+## Coverage Requirements
+
+### Minimum Threshold
+
+All projects must maintain a **minimum 60% line coverage** for unit tests. This is a floor, not a target — teams should aim higher where it adds value, but 60% ensures a meaningful safety net exists.
+
+### Enforcement
+
+- **CI gate** — configure the test runner to fail the build if coverage drops below 60%. Most test frameworks support this natively:
+  - Jest/Vitest: `coverageThreshold` in config
+  - pytest: `--cov-fail-under=60` flag
+  - Go: parse `go test -cover` output
+  - JUnit/JaCoCo: `minimumCoverageRatio` in build config
+- **PR coverage** — new code in a PR should meet or exceed the project's coverage threshold. Coverage should not decrease with new changes.
+- **Coverage reporting** — generate coverage reports in CI and make them visible in PRs (via comments or status checks)
+
+### What Coverage Measures (and Doesn't)
+
+| Coverage tells you | Coverage does NOT tell you |
+| --- | --- |
+| Which lines were executed during tests | Whether assertions are meaningful |
+| Which branches were taken | Whether edge cases are covered |
+| Which functions were called | Whether the tests would catch real bugs |
+| Where test gaps exist | Whether the tested behaviour matters |
+
+Use coverage to find **untested areas**, not to prove quality. A file at 90% coverage with no assertions is worse than a file at 65% coverage with thorough assertions.
+
 ## Project Implementation Lookup
 
 Before applying these standards, load the project-specific testing implementation:

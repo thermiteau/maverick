@@ -299,4 +299,52 @@ When no scan hints are provided by the calling skill, use these defaults:
 - **grep**: `eslint|prettier|ruff|lint-staged|formatOnSave|"lint":|"format":`
 - **files**: `eslint.config.*`, `.eslintrc*`, `.prettierrc*`, `prettier.config.*`, `ruff.toml`, `.golangci.yml`, `.stylelintrc*`
 
+### application-security
+
+- **dependencies**: helmet, cors, csurf, express-rate-limit, jsonwebtoken, passport, bcrypt, argon2, @auth0, oidc-client, snyk, trivy
+- **grep**: `helmet|csp|Content-Security-Policy|sanitize|escape|parameterized|prepared|xss|csrf|cors|rateLimit|authenticate|authorize`
+- **files**: `**/security.*`, `**/auth*.*`, `**/middleware/auth*`, `**/.snyk`, `**/trivy*`
+
+### dependency-management
+
+- **dependencies**: N/A (check tooling config instead)
+- **grep**: `dependabot|renovate|npm audit|pip-audit|safety check|license-checker|snyk test`
+- **files**: `.github/dependabot.yml`, `renovate.json`, `.renovaterc*`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `Cargo.lock`, `go.sum`, `Pipfile.lock`, `poetry.lock`
+
+### observability
+
+- **dependencies**: @opentelemetry, opentelemetry-sdk, prometheus-client, prom-client, datadog, newrelic, elastic-apm-node, dd-trace
+- **grep**: `trace|span|metric|histogram|counter|gauge|healthCheck|health_check|readiness|liveness|opentelemetry|prometheus`
+- **files**: `**/tracing.*`, `**/metrics.*`, `**/health*.*`, `**/telemetry.*`, `**/instrumentation.*`
+
+### api-design
+
+- **dependencies**: swagger-ui-express, @nestjs/swagger, fastify-swagger, drf-spectacular, openapi, tsoa
+- **grep**: `@Api|@swagger|openapi|ApiResponse|ApiOperation|@route|@controller|router\.|app\.get|app\.post`
+- **files**: `**/openapi.*`, `**/swagger.*`, `**/api-docs*`, `**/routes/**`, `**/controllers/**`
+
+### error-handling
+
+- **dependencies**: http-errors, boom, @hapi/boom, express-async-errors, neverthrow
+- **grep**: `ErrorBoundary|error_handler|errorHandler|globalExceptionFilter|circuit.?breaker|retry|backoff|AppError|HttpException|ApiError`
+- **files**: `**/error*.*`, `**/exception*.*`, `**/middleware/error*`
+
+### infrastructure-as-code
+
+- **dependencies**: N/A (check tooling files instead)
+- **grep**: `resource\s|provider\s|terraform|pulumi|cloudformation|ansible|helm`
+- **files**: `*.tf`, `*.tfvars`, `Pulumi.yaml`, `template.yaml`, `template.json`, `**/ansible/**`, `**/helm/**`, `docker-compose*.yml`, `**/k8s/**`, `**/kubernetes/**`
+
+### accessibility
+
+- **dependencies**: axe-core, @axe-core/react, pa11y, lighthouse, jest-axe, @testing-library/jest-dom, eslint-plugin-jsx-a11y
+- **grep**: `aria-|role=|alt=|tabIndex|focusTrap|skipNav|screen\.getByRole|toBeAccessible|axe`
+- **files**: `**/a11y*.*`, `**/accessibility*.*`, `.pa11yci*`, `lighthouserc*`
+
+### environment-management
+
+- **dependencies**: dotenv, python-dotenv, django-environ, envalid, joi
+- **grep**: `dotenv|process\.env|os\.environ|docker-compose|devcontainer|CONTRIBUTING`
+- **files**: `.env.example`, `.env.sample`, `.env.template`, `.devcontainer/**`, `docker-compose*.yml`, `Vagrantfile`, `flake.nix`, `shell.nix`, `CONTRIBUTING.md`
+
 <!-- maverick-plugin-version: 0.5.4-dev -->

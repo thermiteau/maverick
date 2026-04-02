@@ -2,7 +2,7 @@
 title: Maverick Architecture
 scope: Best practice workflows
 relates-to:
-last-verified: 2026-03-02
+last-verified: 2026-04-02
 ---
 
 # Architecture
@@ -11,15 +11,15 @@ last-verified: 2026-03-02
 
 Skills are markdown files with YAML frontmatter that load into the LLM's context window. They provide machine-readable guidance — dense, factual, and actionable.
 
-| Category            | Skills                                                                             | Purpose                                                        |
-| ------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Best Practices**  | logging, alerting, linting, unit-testing, cicd                                     | Define standards for each practice area                        |
-| **Workflow**        | do-issue-solo, do-issue-guided, do-task-solo, create-solution-design, create-tasks | Orchestrate multi-step development workflows                   |
-| **Execution**       | mav-plan-execution, mav-local-verification, subagents                              | Control how tasks are executed and verified                    |
-| **Git & GitHub**    | mav-git-workflow, mav-github-issue-workflow                                        | Define branching, commit, and issue interaction patterns       |
-| **CI/CD Platforms** | mav-bp-cicd-github, mav-bp-cicd-gitlab, mav-bp-cicd-azure                         | Platform-specific pipeline monitoring                          |
-| **Governance**      | mav-scope-boundaries, mav-claude-code-recovery, mav-systematic-debugging           | Define hard limits and resilience patterns                     |
-| **Project Setup**   | upskill, maverick-alignment, tech-docs, pullrequest-review                         | Generate project skills, audit codebases, manage documentation |
+| Category            | Skills                                                                                                                                                                                                          | Purpose                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Best Practices**  | logging, alerting, observability, linting, unit-testing, integration-testing, error-handling, application-security, code-review, api-design, accessibility, database-management, dependency-management, documentation, environment-management, infrastructure-as-code, solutions-design, source-control, task-tracking, versioning | Define standards for each practice area                        |
+| **Workflow**        | do-issue-solo, do-issue-guided, do-task-solo, create-solution-design, create-tasks                                                                                                                             | Orchestrate multi-step development workflows                   |
+| **Execution**       | mav-plan-execution, mav-local-verification                                                                                                                                                                     | Control how tasks are executed and verified                    |
+| **Git & GitHub**    | mav-git-workflow, mav-github-issue-workflow                                                                                                                                                                    | Define branching, commit, and issue interaction patterns       |
+| **CI/CD Platforms** | mav-bp-cicd, mav-bp-cicd-github, mav-bp-cicd-gitlab, mav-bp-cicd-azure, mav-bp-cicd-bitbucket                                                                                                                | Platform-agnostic standards and platform-specific monitoring   |
+| **Governance**      | mav-scope-boundaries, mav-claude-code-recovery, mav-systematic-debugging                                                                                                                                      | Define hard limits and resilience patterns                     |
+| **Project Setup**   | upskill, maverick-alignment, tech-docs, pullrequest-review                                                                                                                                                     | Generate project skills, audit codebases, manage documentation |
 
 ### The Upskill System
 
@@ -43,18 +43,21 @@ flowchart TD
 - If no implementation exists but a best-practice skill is available, generates a **recommended** implementation tailored to the project's stack
 - Project skills are version-controlled and editable - the team can review and adjust recommendations
 
-Default topics scanned: logging, alerting, unit-testing, integration-testing, linting, CI/CD.
+Default topics scanned: logging, alerting, observability, unit-testing, integration-testing, linting, error-handling, application-security, code-review, api-design, accessibility, database-management, dependency-management, documentation, environment-management, infrastructure-as-code, solutions-design, source-control, task-tracking, versioning, CI/CD.
 
 ### Agents
 
 Agents are autonomous workers that run in isolated context windows. They verify code quality without human involvement.
 
-| Agent                | Purpose                                                   | When it runs                            |
-| -------------------- | --------------------------------------------------------- | --------------------------------------- |
-| **Code Reviewer**    | Two-stage review: spec compliance, then code quality      | After implementation steps or before PR |
-| **Backend Tester**   | Write and verify backend tests (Vitest, Fastify)          | After business logic implementation     |
-| **Frontend Tester**  | Write and verify frontend tests (Vitest, Playwright, RTL) | After component implementation          |
-| **Tech Docs Writer** | Generate technical documentation with Mermaid diagrams    | After significant architecture changes  |
+| Agent                       | Purpose                                                      | When it runs                            |
+| --------------------------- | ------------------------------------------------------------ | --------------------------------------- |
+| **Code Reviewer**           | Two-stage review: spec compliance, then code quality         | After implementation steps or before PR |
+| **Issue Analyst**           | Reads a GitHub issue, explores the codebase, produces a solution design | At the start of issue-driven workflows  |
+| **GitHub Issue Planner**    | Takes a solution design and produces an ordered task list    | After solution design for GitHub issues |
+| **Task Planner**            | Takes a solution design and produces an ordered task list    | After solution design for local tasks   |
+| **Session Reviewer**        | Reviews session activity and git diffs for quality issues    | After development sessions              |
+| **Maverick**                | Handles Maverick plugin and CLI management                   | During plugin installation and setup    |
+| **Tech Docs Writer**        | Generate technical documentation with Mermaid diagrams       | After significant architecture changes  |
 
 Agents reference skills for domain knowledge but operate independently - they don't share the main session's context window.
 
