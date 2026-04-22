@@ -25,7 +25,8 @@ A project with no remote cannot use protected branches, pull requests, or CI/CD 
 ## Branch Strategy
 
 ```
-main (trunk — the only long-lived branch; tagged at each release)
+stable (what end users clone; CI-managed; fast-forwarded to the latest release tag)
+main (trunk — carries -dev between releases; tagged at each release)
   ├── feat/42-add-export
   ├── fix/57-login-crash
   ├── chore/63-update-deps
@@ -36,16 +37,18 @@ main (trunk — the only long-lived branch; tagged at each release)
 
 | Branch | Purpose | Who commits | Protected |
 |---|---|---|---|
+| `stable` | What end users install — always points at the most recent release tag | Fast-forwarded by `release-finalize.yml` only; never by humans | Yes (CI-only) |
 | `main` | Trunk — carries the current `-dev` version between releases; tagged at each release | Merge from feature/fix/release branches via PR only | Yes |
 | Feature/fix/chore branches | Active development | Claude Code and developers | No |
 | `release/<version>` | Short-lived release prep — bumps version, updates CHANGELOG | Created by `scripts/release.sh` | No |
 
 ### Rules
 
-- **Never commit directly to `main`**. All changes reach `main` via pull request.
+- **Never commit directly to `main` or `stable`**. All changes reach `main` via pull request; `stable` is moved exclusively by CI.
 - **All work happens on short-lived branches** created from `main` and PR'd back to `main`.
 - **One branch per issue/task**. Do not combine unrelated work on a single branch.
 - **Release branches are ephemeral**. Created by the release script, deleted after the release PR merges.
+- **Always pass `--base main`** explicitly when creating PRs via `gh pr create` — the repository's default branch is `stable`, so omitting `--base` would target the wrong branch.
 
 ## Branch Naming
 

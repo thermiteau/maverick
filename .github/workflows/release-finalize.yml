@@ -76,6 +76,15 @@ jobs:
             --notes-file /tmp/release-notes.md \
             --target main
 
+      - name: Fast-forward stable branch to the new release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          # `stable` is the branch that end users clone to install a
+          # released version. It is always fast-forwarded to the most
+          # recent tag commit — never moves during -dev cycles.
+          git push origin "refs/tags/${TAG}:refs/heads/stable"
+
       - name: Open PR to bump main to next -dev cycle
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
