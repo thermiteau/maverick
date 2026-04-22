@@ -66,7 +66,7 @@ When `upskill` detects a CI platform, it generates a project-level skill describ
 
 ### Maverick's own CI
 
-Maverick itself uses GitHub Actions for CI (`.github/workflows/unit-tests.yml`), running its unit test suite on push to `develop`.
+Maverick itself uses GitHub Actions for CI (`.github/workflows/unit-tests.yml`), running its unit test suite on pushes and PRs to `main`.
 
 ## Pipeline Stages
 

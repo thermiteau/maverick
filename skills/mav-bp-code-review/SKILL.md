@@ -17,7 +17,7 @@ Ensure all code changes are reviewed before merging. Reviews catch defects, shar
 
 ## Mandatory Review Requirements
 
-- **At least one approval** before merging to any protected branch (`main`, `develop`, `release/*`)
+- **At least one approval** before merging to any protected branch (e.g., `main`)
 - **No self-approvals** — the author cannot approve their own pull request
 - **Stale approvals dismissed on new pushes** — if the author pushes new commits after approval, the approval is invalidated and a re-review is required
 - **All CI checks passing** — do not merge with failing lints, tests, or type checks
@@ -116,4 +116,4 @@ Human review time is expensive. Do not spend it on issues that automated tools h
 | Self-approval on protected branch                  | Missing review gate                | Configure branch protection to disallow self-approval |
 | Skipping CI to merge faster                        | Bypassing quality gates            | CI must pass; fix failures, do not skip them         |
 
-<!-- maverick-plugin-version: 0.5.7 -->
+<!-- maverick-plugin-version: 0.5.8-dev -->

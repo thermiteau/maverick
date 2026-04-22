@@ -6,7 +6,7 @@ disable-model-invocation: false
 
 # Git Workflow
 
-A simplified Gitflow strategy for all development work. This skill defines how branches, commits, and merges are managed.
+A trunk-based strategy for all development work. This skill defines how branches, commits, and merges are managed.
 
 ## Remote Repository Requirement
 
@@ -30,26 +30,27 @@ A project with no remote cannot use protected branches, pull requests, or CI/CD 
 ## Branch Strategy
 
 ```
-main (production — never touched directly)
-  └── develop (integration branch — never committed to directly)
-        ├── feat/42-add-export
-        ├── fix/57-login-crash
-        └── chore/63-update-deps
+main (trunk — the only long-lived branch; tagged at each release)
+  ├── feat/42-add-export
+  ├── fix/57-login-crash
+  ├── chore/63-update-deps
+  └── release/<version> (short-lived; exists only long enough to cut a release)
 ```
 
 ### Branch Roles
 
 | Branch | Purpose | Who commits | Protected |
 |---|---|---|---|
-| `main` | Production releases | Merge from `develop` only (human-gated) | Yes |
-| `develop` | Integration branch | Merge from feature/fix branches via PR only | Yes |
-| Feature/fix branches | Active development | Claude Code and developers | No |
+| `main` | Trunk — carries the current `-dev` version between releases; tagged at each release | Merge from feature/fix/release branches via PR only | Yes |
+| Feature/fix/chore branches | Active development | Claude Code and developers | No |
+| `release/<version>` | Short-lived release prep — bumps version, updates CHANGELOG | Created by `scripts/release.sh` | No |
 
 ### Rules
 
-- **Never commit directly to `main` or `develop`**. All changes reach these branches via pull request.
-- **All work happens on feature/fix branches** created from `develop`.
+- **Never commit directly to `main`**. All changes reach `main` via pull request.
+- **All work happens on short-lived branches** created from `main` and PR'd back to `main`.
 - **One branch per issue/task**. Do not combine unrelated work on a single branch.
+- **Release branches are ephemeral**. Created by the release script, deleted after the release PR merges.
 
 ## Branch Naming
 
@@ -100,18 +101,14 @@ digraph branch {
 
 ### Identify the Base Branch
 
-The base branch is typically `develop`. To confirm, check:
+The base branch is the repository's default branch — typically `main`. To confirm:
 
 ```bash
-# Check default branch
 gh repo view --json defaultBranchRef -q '.defaultBranchRef.name'
-
-# Check if develop exists
-git branch -r | grep -q 'origin/develop'
 ```
 
-- If `develop` exists — branch from `develop`
-- If only `main` exists — branch from `main`
+- If the default branch is `main` — branch from `main`
+- If the project still uses a legacy integration branch (e.g., `develop`) — branch from that and ask the user whether to adopt trunk-based
 - If uncertain — ask the user
 
 ### Create the Branch
@@ -249,11 +246,11 @@ git push origin --delete $BRANCH_NAME
 For cleaning up stale local branches that have been merged:
 
 ```bash
-# List merged branches (excluding main and develop)
-git branch --merged $BASE_BRANCH | grep -vE '^\*|main|develop'
+# List merged branches (excluding main)
+git branch --merged $BASE_BRANCH | grep -vE '^\*|main'
 
 # Delete them
-git branch --merged $BASE_BRANCH | grep -vE '^\*|main|develop' | xargs git branch -d
+git branch --merged $BASE_BRANCH | grep -vE '^\*|main' | xargs git branch -d
 ```
 
 ## Pulling Updates
@@ -283,4 +280,4 @@ If there are uncommitted changes:
 - **Stash them** if they are unrelated: `git stash push -m "WIP: description"`
 - **Ask the user** if you are unsure what to do with them
 
-<!-- maverick-plugin-version: 0.5.7 -->
+<!-- maverick-plugin-version: 0.5.8-dev -->

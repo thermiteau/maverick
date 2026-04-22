@@ -200,7 +200,7 @@ This cycle is how an LLM iterates toward correctness. Without tests, the LLM has
 
 ## Maverick's Own Tests
 
-Maverick follows its own testing standards with a pytest unit test suite covering the Python codebase under `src/maverick/`. The suite includes tests for models, names, config, registry, CLI, lambda handler, and session review modules (parser, analyzers, reporter, skills). Tests run automatically on push to `develop` via GitHub Actions (`.github/workflows/unit-tests.yml`).
+Maverick follows its own testing standards with a pytest unit test suite covering the Python codebase under `src/maverick/`. The suite includes tests for models, names, config, registry, CLI, lambda handler, and session review modules (parser, analyzers, reporter, skills). Tests run automatically on pushes and PRs to `main` via GitHub Actions (`.github/workflows/unit-tests.yml`).
 
 ## Further Reading
 

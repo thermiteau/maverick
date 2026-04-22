@@ -96,7 +96,7 @@ digraph envs {
 | Environment | Trigger | Approval |
 | ----------- | ------- | -------- |
 | Dev/Preview | Push to feature branch or PR | Automatic |
-| Staging | Merge to main/develop | Automatic |
+| Staging | Merge to main (or equivalent trunk) | Automatic |
 | Production | Promotion from staging | Manual approval required |
 
 ### Promotion Rules
@@ -209,4 +209,4 @@ digraph lookup {
 | Pipeline takes >15 minutes | Developer productivity drain | Profile and optimise, add caching |
 | Unpinned action/image versions | Non-reproducible builds | Pin to specific versions/SHAs |
 
-<!-- maverick-plugin-version: 0.5.7 -->
+<!-- maverick-plugin-version: 0.5.8-dev -->

@@ -49,7 +49,7 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 ## Phase 4: Create Branch
 
 1. Derive the branch name per the mav-github-issue-workflow skill (branching conventions).
-2. Create the branch from the project's integration branch (typically `develop`).
+2. Create the branch from the project's default branch (typically `main`).
 3. Update phase to `branch` in the state file.
 
 ## Phase 5: Execute Tasks
@@ -87,7 +87,7 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 
 ## Phase 6: Code Review
 
-1. Dispatch the agent-code-reviewer agent with the issue requirements and the diff (`git diff develop...HEAD`).
+1. Dispatch the agent-code-reviewer agent with the issue requirements and the diff (`git diff main...HEAD`).
 2. The reviewer performs two-stage review: spec compliance first, then code quality.
 3. If spec compliance fails, stop — fix the gaps before requesting re-review.
 4. Process code quality feedback per the do-pullrequest-review skill:
@@ -104,14 +104,14 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 
 ## Phase 7: Documentation Review
 
-1. Run `git diff develop...HEAD --name-only` to identify all changed files.
+1. Run `git diff main...HEAD --name-only` to identify all changed files.
 2. Determine whether the changes affect behaviour that is covered by existing documentation in `docs/`:
    - Changed or added public APIs, components, services, or configuration
    - Altered data flows, integration points, or architectural patterns
    - Modified feature behaviour described in existing docs
 3. If documentation updates are needed, dispatch the **agent-tech-docs-writer** agent with:
    - Mode: **update**
-   - The diff (`git diff develop...HEAD`)
+   - The diff (`git diff main...HEAD`)
    - The list of affected doc files (or a note that new documentation is needed)
    - Instruction to update existing docs to reflect the changes — not to rewrite unrelated sections
 4. Review the agent's output. Verify that updates are accurate and scoped to the changes made.
@@ -137,8 +137,8 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 - **Pause at checkpoints** — every phase marked with 🔲 requires user confirmation before continuing.
 - **Work autonomously between checkpoints** — do not ask for permission on routine implementation work. Only ask when uncertain, blocked, or at a checkpoint.
 - **Run verification** after each task and after all tasks. Do not declare success if checks fail.
-- **Never commit directly** to `main` or `develop`.
+- **Never commit directly** to `main`.
 - **Use conventional commits** that reference the issue number (e.g., `feat: add rubric export (#42)`).
 - **Always create a PR** at the end — deliver a complete result.
 
-<!-- maverick-plugin-version: 0.5.7 -->
+<!-- maverick-plugin-version: 0.5.8-dev -->

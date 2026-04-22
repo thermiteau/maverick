@@ -1,8 +1,8 @@
 name: Release Finalize
 
 # Runs after a release/* PR is squash-merged into main.
-# Tags the merge commit, creates a GitHub Release, syncs develop,
-# and bumps develop to the next -dev version.
+# Tags the merge commit, creates a GitHub Release, and opens a
+# follow-up PR that bumps main to the next -dev version.
 
 on:
   pull_request:
@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   finalize:
@@ -75,14 +76,17 @@ jobs:
             --notes-file /tmp/release-notes.md \
             --target main
 
-      - name: Sync develop and bump dev version
+      - name: Open PR to bump main to next -dev cycle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DEV_VERSION: ${{ steps.version.outputs.dev_version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          DEV_VERSION="${{ steps.version.outputs.dev_version }}"
+          BRANCH="chore/begin-${DEV_VERSION}-cycle"
 
-          git checkout develop
-          git pull origin develop
-          git merge main --no-edit
+          git checkout main
+          git pull origin main
+          git checkout -b "$BRANCH"
 
           # Bump version in pyproject.toml
           sed -i "s/^version = \"${VERSION}\"/version = \"${DEV_VERSION}\"/" pyproject.toml
@@ -104,4 +108,10 @@ jobs:
               agents/
 
           git commit -m "chore: begin ${DEV_VERSION} cycle"
-          git push origin develop
+          git push origin "$BRANCH"
+
+          gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: begin ${DEV_VERSION} cycle" \
+              --body "Automated follow-up to the ${VERSION} release. Bumps main to the next in-development version."

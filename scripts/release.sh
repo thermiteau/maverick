@@ -4,7 +4,7 @@ set -euo pipefail
 # Release script for maverick — LOCAL PREP PHASE
 #
 # This script handles the local portion of the release process:
-#   1. Create release/<version> branch from develop
+#   1. Create release/<version> branch from main
 #   2. Bump version, update changelog, rebuild — commit on release branch
 #   3. Push release branch and create a PR targeting main
 #
@@ -12,8 +12,7 @@ set -euo pipefail
 # workflow automatically handles:
 #   - Tagging the squash commit on main
 #   - Creating the GitHub Release
-#   - Merging main back into develop
-#   - Bumping develop to the next -dev version
+#   - Opening a follow-up PR that bumps main to the next -dev version
 #
 # Usage: ./scripts/release.sh [major|minor|patch]
 # Default: patch
@@ -35,8 +34,8 @@ if [[ ! -f "$PYPROJECT" ]]; then
     exit 1
 fi
 
-if [[ "$CURRENT_BRANCH" != "develop" ]]; then
-    echo "ERROR: Must be on the develop branch. Currently on '$CURRENT_BRANCH'." >&2
+if [[ "$CURRENT_BRANCH" != "main" ]]; then
+    echo "ERROR: Must be on the main branch. Currently on '$CURRENT_BRANCH'." >&2
     exit 1
 fi
 
@@ -93,7 +92,7 @@ fi
 echo "Releasing: $CURRENT_VERSION -> $NEW_VERSION ($BUMP_TYPE)"
 
 # =============================================================================
-# Step 1: Create release branch from develop
+# Step 1: Create release branch from main
 # =============================================================================
 
 echo "Creating release branch: $RELEASE_BRANCH"
@@ -150,8 +149,7 @@ ${RELEASE_NOTES:-No changelog entries for this release.}
 **After squash-merging this PR**, the \`release-finalize\` workflow will automatically:
 1. Tag the merge commit with \`${NEW_TAG}\`
 2. Create a GitHub Release
-3. Merge main back into develop
-4. Bump develop to the next \`-dev\` version
+3. Open a follow-up PR that bumps \`main\` to the next \`-dev\` version
 EOF
 )")
 
@@ -166,5 +164,5 @@ echo "  3. CI will handle tagging, release,"
 echo "     and develop sync automatically"
 echo "========================================="
 
-# Return to develop
-git checkout develop
+# Return to main
+git checkout main
