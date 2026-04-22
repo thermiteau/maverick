@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New `do-recommend` skill — scans a project for missing best-practice areas (currently linting and unit testing) and writes 1–3 ranked technology recommendations per gap to `docs/maverick/recommendations/<topic>.md`. Supports optional single-topic invocation.
+- New `do-adopt` skill — action counterpart to `do-recommend`. Installs and configures the top-recommended tool per gap (packages, config files, ignore patterns, run scripts), verifies the setup, and commits. Reuses an existing recommendation file when present.
+- Full implementation of `maverick init` — auto-detects tech stacks (Node, Python, Go, Rust, JVM, Docker, GitHub Actions, GitLab CI, Azure Pipelines, Terraform, AWS CDK) via marker-file scanning, writes `.maverick/config.json`, and supports `--override`, `--add`, `--remove`, `--dry-run`, and `--platform` flags.
+- Full implementation of `maverick plugin install` / `uninstall` — manages Maverick's entry in the `pluginDirs` list of `~/.claude/settings.json`, with `--dev` for the local plugin path and `--clean` to also remove `.maverick/` on uninstall.
+- Full implementation of `maverick clean` — removes the project `.maverick/` directory with `--dry-run` support.
+
+### Changed
+
+- Renamed `do-task-solo` artifact from `design.md` to `solution-design.md` for consistency with `mav-create-solution-design` terminology. All phase references and the `agent-task-planner` prompt updated to match.
+- `do-upskill` generated-skill frontmatter now includes a required `name: <topic-name>` field across the detected, recommended, and stub templates.
+
 ## [0.5.5] - 2026-03-19
 
 ## [0.5.3] - 2026-03-19

@@ -12,7 +12,7 @@ relates-to:
   - scope-boundaries.md
   - llm-containment.md
   - claude-code-error-handling-and-recovery.md
-last-verified: 2026-03-02
+last-verified: 2026-04-02
 ---
 
 ## Overview
@@ -51,17 +51,15 @@ Because every codebase is unique, there is no way to ship defined skills that ar
 - If it cant find any, it reads your codebase and builds technical skills that match your tech stack and align with its best practice skills
 - These become part of your code and you can change them as required
 
-### Infrastructure as Code solution for remote Claude Code instances
+### Infrastructure for remote Claude Code instances
 
-There are multiple ways to run Claude Code, the most obvious being the software runnign locally on your machine.  This works well for interactive development where you ask Claude Code to complete a task, answer any questions as they come up and monitor the progress.
+Running Claude Code locally works well for interactive development but does not scale when you need to complete multiple features or bug fixes concurrently.
 
-It falls down when you need to complete multiple features or bug fixes at the same time. Claude Code on local machines, doesnt scale.
+Maverick resolves this by deploying Claude Code workers to AWS. The infrastructure is managed via CloudFormation stacks, deployed either through the CLI (`maverick infra deploy`) or by uploading the standalone templates from `infra/` directly to the AWS Console. Workers are triggered by labelling GitHub issues, which fires a webhook that writes work items to DynamoDB. An EC2 instance polls the table and processes items autonomously.
 
-Maverick resolves this by deploying Claude Code workers to remote Claude platforms such as Amazon Web Services. Those workers are triggered by creating tickets (issues) in GitHub. The worker will autonomously complete the requirements and keep you up to date by update the ticket.
+This is more involved than many users require and is not necessary to use Maverick. The plugin works on your local machine without any cloud infrastructure.
 
-This is more complicated than many cassual users would require and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
-
-You can read more details about remote workers here [claude-code-workers.md]
+See [claude-code-workers.md](claude-code-workers.md) for full details.
 
 ## Why Each Practice Area Is Central
 
@@ -69,19 +67,32 @@ Every practice area in maverick exists because it addresses a specific failure m
 
 None are optional - they form an interlocking system where each practice reinforces the others.
 
-| Practice                                                     | Failure mode it prevents                         | Why unattended development needs it                                     |
-| ------------------------------------------------------------ | ------------------------------------------------ | ----------------------------------------------------------------------- |
-| [Logging](logging-standards.md)                              | Silent failures, undiagnosable production issues | No human watching logs - structured logging enables automated diagnosis |
-| [Alerting](alerting-standards.md)                            | Errors swallowed silently, nobody notified       | No human monitoring - alerts are the only way failures reach operations |
-| [Testing](comprehensive-testing.md)                          | Subtle bugs in plausible-looking code            | Tests ARE the human - automated verification that code actually works   |
-| [Linting](code-review.md)                                    | Style drift, inconsistency, detectable bugs      | Automated consistency enforcement without human style policing          |
-| [CI/CD](cicd.md)                                             | Broken builds, untested code reaching main       | Last line of defence - catches what local verification misses           |
-| [Git Workflow](git-workflow.md)                              | Untraceable changes, broken main branch          | Audit trail and reversibility - every change linked to an issue via PR  |
-| [Code Review](code-review.md)                                | Requirement mismatches, convention violations    | Autonomous reviewer catches what the generating LLM missed              |
-| [Security](security-review.md)                               | OWASP vulnerabilities, exposed secrets           | LLMs reproduce vulnerable patterns - review catches them before merge   |
-| [Scope Boundaries](scope-boundaries.md)                      | Infrastructure damage, data loss                 | Hard limits prevent catastrophic actions even when they seem logical    |
-| [LLM Containment](llm-containment.md)                        | Instruction bypass, production access            | Defence-in-depth ensures constraints hold even when instructions fail   |
-| [Error Recovery](claude-code-error-handling-and-recovery.md) | Lost work, inconsistent state after crashes      | Sessions will fail - recovery prevents starting from scratch            |
+| Practice                                                     | Failure mode it prevents                             | Why unattended development needs it                                       |
+| ------------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------- |
+| [Logging](logging-standards.md)                              | Silent failures, undiagnosable production issues     | No human watching logs - structured logging enables automated diagnosis   |
+| [Alerting](alerting-standards.md)                            | Errors swallowed silently, nobody notified           | No human monitoring - alerts are the only way failures reach operations   |
+| Observability                                                | Invisible performance degradation, missing SLOs      | Metrics, tracing, and health checks complete the operational picture      |
+| [Testing](comprehensive-testing.md)                          | Subtle bugs in plausible-looking code                | Tests ARE the human - automated verification that code actually works     |
+| Linting                                                      | Style drift, inconsistency, detectable bugs          | Automated consistency enforcement without human style policing            |
+| Error Handling                                               | Swallowed errors, missing retries, cascade failures  | LLMs skip error paths - enforced patterns prevent silent data loss        |
+| [CI/CD](cicd.md)                                             | Broken builds, untested code reaching main           | Last line of defence - catches what local verification misses             |
+| [Git Workflow](git-workflow.md)                               | Untraceable changes, broken main branch              | Audit trail and reversibility - every change linked to an issue via PR    |
+| Source Control                                               | Missing repos, leaked secrets, poor hygiene          | Foundational requirement - no repo means no traceability                  |
+| [Code Review](code-review.md)                                | Requirement mismatches, convention violations         | Autonomous reviewer catches what the generating LLM missed                |
+| [Security](security-review.md)                               | OWASP vulnerabilities, exposed secrets               | LLMs reproduce vulnerable patterns - review catches them before merge     |
+| API Design                                                   | Inconsistent contracts, breaking changes             | LLMs generate ad-hoc APIs - standards enforce consistency                 |
+| Accessibility                                                | Unusable interfaces, WCAG violations                 | LLMs skip a11y unless constrained - automated checks enforce compliance   |
+| Database Management                                          | Schema drift, missing migrations, data loss          | LLMs modify schemas without considering migration safety                  |
+| Dependency Management                                        | Vulnerable deps, licence violations, bloat           | LLMs add packages freely - review enforces minimal, secure dependencies   |
+| Documentation                                                | Stale docs, undocumented systems                     | LLMs don't update docs unless required - enforced freshness prevents rot  |
+| Environment Management                                       | Works-on-my-machine, onboarding friction             | Reproducible environments prevent environment-specific failures           |
+| Infrastructure as Code                                       | Snowflake servers, unreproducible infra              | IaC ensures infrastructure is versioned and reviewable like application code |
+| Solutions Design                                             | Coding without thinking, requirement mismatches      | Design-before-code forces structured reasoning about approach             |
+| Task Tracking                                                | Untraceable work, lost context                       | Every code change must link to a tracked task for auditability            |
+| Versioning                                                   | Breaking changes without notice, changelog drift     | SemVer and changelogs ensure consumers can adopt changes safely           |
+| [Scope Boundaries](scope-boundaries.md)                      | Infrastructure damage, data loss                     | Hard limits prevent catastrophic actions even when they seem logical      |
+| [LLM Containment](llm-containment.md)                        | Instruction bypass, production access                | Defence-in-depth ensures constraints hold even when instructions fail     |
+| [Error Recovery](claude-code-error-handling-and-recovery.md)  | Lost work, inconsistent state after crashes          | Sessions will fail - recovery prevents starting from scratch              |
 
 Maverick encodes best practices as machine-readable artefacts that the LLM must follow. Three mechanisms work together:
 
@@ -110,18 +121,21 @@ Each link in this chain catches different classes of issues:
 
 ```
 maverick/
-├── skills/                     # Machine-readable guidance (28 skills)
-│   ├── *-bestpractice/         # Universal standards per topic
-│   ├── cicd-*/                 # Platform-specific CI/CD skills
+├── skills/                     # Machine-readable guidance (44 skills)
+│   ├── mav-bp-*/               # Universal best-practice standards (20 skills)
+│   ├── mav-bp-cicd-*/          # Platform-specific CI/CD skills
 │   ├── do-issue-*/             # GitHub issue workflow entry points
 │   ├── do-task-*/              # Local task workflow entry points
-│   ├── upskill/                # Project skill generation
+│   ├── do-upskill/             # Project skill generation
 │   └── ...                     # Execution, governance, debugging
-├── agents/                     # Autonomous verifiers (4 agents)
-│   ├── code-reviewer.md
-│   ├── backend-tester.md
-│   ├── frontend-tester.md
-│   └── tech-docs-writer.md
+├── agents/                     # Autonomous workers (7 agents)
+│   ├── agent-code-reviewer.md
+│   ├── agent-issue-analyst.md
+│   ├── agent-github-issue-planner.md
+│   ├── agent-task-planner.md
+│   ├── agent-session-reviewer.md
+│   ├── agent-maverick.md
+│   └── agent-tech-docs-writer.md
 ├── hooks/                      # Tool-call enforcement rules
 ├── docs/                       # Philosophy and rationale (this directory)
 ├── scripts/                    # Developer tooling (release, validation)

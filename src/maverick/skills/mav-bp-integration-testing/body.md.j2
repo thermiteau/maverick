@@ -83,6 +83,37 @@ Ensure integration tests verify that components work together correctly across r
 - Set explicit timeouts per test — integration tests may wait for external systems
 - Fail fast on dependency unavailability rather than hanging until a global timeout
 
+## Coverage Requirements
+
+### Minimum Threshold
+
+All projects must maintain a **minimum 60% coverage** for integration tests. Integration test coverage measures the percentage of cross-boundary code paths exercised by the test suite.
+
+### What "Coverage" Means for Integration Tests
+
+Integration test coverage is measured differently from unit test coverage:
+
+| Metric | What it measures | How to assess |
+| --- | --- | --- |
+| API endpoint coverage | Percentage of endpoints with at least one integration test | Count tested vs total endpoints |
+| Database operation coverage | Percentage of query/mutation patterns exercised | Review repository/DAO layer coverage |
+| Service boundary coverage | Percentage of external service integrations tested | Count tested vs total integration points |
+| Line coverage during integration runs | Lines executed when integration tests run | Standard coverage tooling with integration test suite |
+
+Use **line coverage during integration test runs** as the primary metric for the 60% threshold, measured the same way as unit test coverage but scoped to the integration test suite.
+
+### Enforcement
+
+- **CI gate** — configure coverage to fail the build if integration test coverage drops below 60%
+- **Separate from unit coverage** — measure integration test coverage independently; do not combine with unit test coverage numbers
+- **Coverage reporting** — generate and publish integration test coverage reports alongside unit test coverage in CI
+
+### Practical Guidance
+
+- Start by ensuring all critical paths have integration tests (authentication flows, payment processing, data persistence)
+- Expand coverage outward from critical paths to secondary features
+- If 60% is not achievable immediately (e.g., legacy codebase), set a ratchet — coverage must not decrease, and each PR should improve it
+
 ## Test Organisation
 
 - Keep integration tests in a dedicated directory (e.g., `tests/integration/`, `__tests__/integration/`)

@@ -19,4 +19,4 @@ Dispatch the **agent-maverick** agent with task `init` and any user-provided arg
 3. Run the skill /maverick:do-docs
 4. Run the skill /maverick:do-upskill
 
-<!-- maverick-plugin-version: 0.5.5 -->
+<!-- maverick-plugin-version: 0.5.4-dev -->

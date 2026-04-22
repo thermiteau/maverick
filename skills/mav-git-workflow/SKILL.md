@@ -8,6 +8,25 @@ disable-model-invocation: false
 
 A simplified Gitflow strategy for all development work. This skill defines how branches, commits, and merges are managed.
 
+## Remote Repository Requirement
+
+A configured remote repository is **mandatory**. Local-only git is a hard fail — all projects must push to a remote hosting service (GitHub, GitLab, Bitbucket, Azure Repos, etc.).
+
+### Validation
+
+Before starting any work, verify a remote exists:
+
+```bash
+git remote -v
+```
+
+If no remote is configured:
+1. **Stop work** — do not proceed with feature branches, commits, or PRs
+2. **Notify the user** — report that no remote repository is configured and that this is a hard requirement
+3. **Do not create a remote autonomously** — the user must set up the remote repository and configure the origin
+
+A project with no remote cannot use protected branches, pull requests, or CI/CD — all of which are foundational to this workflow.
+
 ## Branch Strategy
 
 ```
@@ -264,4 +283,4 @@ If there are uncommitted changes:
 - **Stash them** if they are unrelated: `git stash push -m "WIP: description"`
 - **Ask the user** if you are unsure what to do with them
 
-<!-- maverick-plugin-version: 0.5.5 -->
+<!-- maverick-plugin-version: 0.5.4-dev -->

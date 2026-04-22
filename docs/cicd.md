@@ -5,7 +5,7 @@ relates-to:
   - comprehensive-testing.md
   - git-workflow.md
   - scope-boundaries.md
-last-verified: 2026-03-02
+last-verified: 2026-04-02
 ---
 
 # CI/CD Integration
@@ -27,14 +27,15 @@ Without CI, step 3 is absent and the only barrier is the LLM's own judgement abo
 
 ## How Maverick Enforces It
 
-| Skill                | Responsibility                                                            |
-| -------------------- | ------------------------------------------------------------------------- |
-| `mav-bp-cicd`              | Defines platform-agnostic pipeline standards and quality gates            |
-| `mav-bp-cicd-github`       | GitHub Actions-specific monitoring, status checks, and workflow awareness |
-| `mav-bp-cicd-gitlab`       | GitLab CI-specific pipeline monitoring and job awareness                  |
-| `mav-bp-cicd-azure`        | Azure DevOps-specific pipeline monitoring and build awareness             |
-| `mav-local-verification`   | Runs lint, typecheck, and tests before push (shift-left verification)     |
-| `upskill`            | Detects the project's CI platform and generates project-specific guidance |
+| Skill                    | Responsibility                                                            |
+| ------------------------ | ------------------------------------------------------------------------- |
+| `mav-bp-cicd`            | Defines platform-agnostic pipeline standards and quality gates            |
+| `mav-bp-cicd-github`     | GitHub Actions-specific monitoring, status checks, and workflow awareness |
+| `mav-bp-cicd-gitlab`     | GitLab CI-specific pipeline monitoring and job awareness                  |
+| `mav-bp-cicd-azure`      | Azure DevOps-specific pipeline monitoring and build awareness             |
+| `mav-bp-cicd-bitbucket`  | Bitbucket Pipelines-specific monitoring and build awareness               |
+| `mav-local-verification` | Runs lint, typecheck, and tests before push (shift-left verification)     |
+| `upskill`                | Detects the project's CI platform and generates project-specific guidance |
 
 The `upskill` skill is important here: it examines the repository for CI configuration files and generates a project-level skill that tells the LLM how this specific project's pipeline works. This means the LLM knows not just generic CI practices but the actual pipeline stages, required checks, and deployment targets for the project it is working on.
 
@@ -44,11 +45,12 @@ Maverick supports three CI platforms with dedicated skills and detects several m
 
 ### Dedicated platform skills
 
-| Platform       | Config detection                           | Skill         |
-| -------------- | ------------------------------------------ | ------------- |
-| GitHub Actions | `.github/workflows/*.yml`                  | `mav-bp-cicd-github` |
-| GitLab CI      | `.gitlab-ci.yml`                           | `mav-bp-cicd-gitlab` |
-| Azure DevOps   | `azure-pipelines.yml`, `.azure-pipelines/` | `mav-bp-cicd-azure`  |
+| Platform            | Config detection                           | Skill                  |
+| ------------------- | ------------------------------------------ | ---------------------- |
+| GitHub Actions      | `.github/workflows/*.yml`                  | `mav-bp-cicd-github`   |
+| GitLab CI           | `.gitlab-ci.yml`                           | `mav-bp-cicd-gitlab`   |
+| Azure DevOps        | `azure-pipelines.yml`, `.azure-pipelines/` | `mav-bp-cicd-azure`    |
+| Bitbucket Pipelines | `bitbucket-pipelines.yml`                  | `mav-bp-cicd-bitbucket` |
 
 ### Auto-detected platforms
 
@@ -181,7 +183,7 @@ After pushing code, the LLM must monitor CI status rather than declaring work co
 4. If checks fail, diagnose the failure and fix
 5. Only declare work complete when all checks pass
 
-This is enforced by the platform-specific skills (`mav-bp-cicd-github`, `mav-bp-cicd-gitlab`, `mav-bp-cicd-azure`) which instruct the LLM on how to check pipeline status for each platform.
+This is enforced by the platform-specific skills (`mav-bp-cicd-github`, `mav-bp-cicd-gitlab`, `mav-bp-cicd-azure`, `mav-bp-cicd-bitbucket`) which instruct the LLM on how to check pipeline status for each platform.
 
 ## What LLMs Must Not Do
 

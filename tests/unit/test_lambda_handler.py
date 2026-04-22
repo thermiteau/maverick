@@ -54,7 +54,7 @@ def _labeled_payload(
 
 @pytest.fixture(autouse=True)
 def _env_vars(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("SQS_QUEUE_URL", "https://sqs.us-east-1.amazonaws.com/123/queue")
+    monkeypatch.setenv("WORK_TABLE_NAME", "maverick-work")
     monkeypatch.setenv("SECRET_ARN", "arn:aws:secretsmanager:us-east-1:123:secret:webhook")
 
 
@@ -62,15 +62,15 @@ def _env_vars(monkeypatch: pytest.MonkeyPatch):
 def mock_boto3():
     with patch("maverick.lambda_handler.boto3") as m:
         sm_client = MagicMock()
-        sqs_client = MagicMock()
+        dynamodb_client = MagicMock()
         m.client.side_effect = lambda service: {
             "secretsmanager": sm_client,
-            "sqs": sqs_client,
+            "dynamodb": dynamodb_client,
         }[service]
         sm_client.get_secret_value.return_value = {
             "SecretString": json.dumps({"GITHUB_WEBHOOK_SECRET": "test-secret"})
         }
-        yield {"sm": sm_client, "sqs": sqs_client}
+        yield {"sm": sm_client, "dynamodb": dynamodb_client}
 
 
 class TestLambdaHandler:
@@ -119,12 +119,17 @@ class TestLambdaHandler:
         assert result["statusCode"] == 200
         assert "myorg/myrepo#99" in result["body"]
 
-        # Verify SQS was called
-        mock_boto3["sqs"].send_message.assert_called_once()
-        call_kwargs = mock_boto3["sqs"].send_message.call_args[1]
-        msg = json.loads(call_kwargs["MessageBody"])
-        assert msg["repo"] == "myorg/myrepo"
-        assert msg["issue_number"] == 99
+        # Verify DynamoDB was called
+        mock_boto3["dynamodb"].put_item.assert_called_once()
+        call_kwargs = mock_boto3["dynamodb"].put_item.call_args[1]
+        assert call_kwargs["TableName"] == "maverick-work"
+        item = call_kwargs["Item"]
+        assert item["repo"] == {"S": "myorg/myrepo"}
+        assert item["issue_number"] == {"N": "99"}
+        assert item["status"] == {"S": "PENDING"}
+        assert item["clone_url"] == {"S": "https://github.com/myorg/myrepo.git"}
+        assert "id" in item
+        assert item["receive_count"] == {"N": "0"}
 
     def test_base64_encoded_body(self, mock_boto3):
         from maverick.lambda_handler import lambda_handler

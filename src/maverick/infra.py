@@ -1,199 +1,71 @@
-"""Provision and manage AWS infrastructure for the maverick worker pipeline."""
+"""Provision and manage AWS infrastructure for the maverick worker pipeline.
 
-import io
+Uses CloudFormation stacks instead of imperative boto3 calls.
+Two stacks:
+  - maverick-vpc   — VPC, subnet, IGW, route table, security group, IAM profile, secret
+                     (preserved on destroy by default)
+  - maverick-infra — DynamoDB, Lambda, IAM, CloudWatch log group, EC2 worker instance
+"""
+
 import json
 import sys
-import zipfile
+import time
 from pathlib import Path
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
 
-from maverick.config import INFRA_STATE, STATE_DIR, init_config, save_config
+from maverick.config import (
+    AMI_STATE,
+    INFRA_STATE,
+    INSTANCE_STATE,
+    init_config,
+    save_config,
+)
 
-LAMBDA_FUNCTION_NAME = "maverick-webhook"
-LAMBDA_ROLE_NAME = "maverick-webhook-role"
-LAMBDA_POLICY_NAME = "maverick-webhook-policy"
-EC2_WORKER_POLICY_NAME = "maverick-worker-policy"
-QUEUE_NAME = "maverick-work"
-DLQ_NAME = "maverick-work-dlq"
+STACK_NAME = "maverick-infra"
+VPC_STACK_NAME = "maverick-vpc"
+
 VPC_NAME = "maverick-workers"
 VPC_CIDR = "10.0.0.0/16"
 SUBNET_CIDR = "10.0.1.0/24"
 
 
-def _ensure_vpc(ec2, region):
-    """Find or create the maverick-workers VPC. Returns (vpc_id, subnet_id)."""
-    # Look for existing VPC by name tag
-    resp = ec2.describe_vpcs(
-        Filters=[
-            {"Name": "tag:Name", "Values": [VPC_NAME]},
-        ]
-    )
-    vpcs = resp["Vpcs"]
-    if vpcs:
-        vpc_id = vpcs[0]["VpcId"]
-        print(f"    VPC '{VPC_NAME}' already exists ({vpc_id}).")
-        # Find the subnet we created in this VPC
-        sub_resp = ec2.describe_subnets(
-            Filters=[
-                {"Name": "vpc-id", "Values": [vpc_id]},
-                {"Name": "tag:Name", "Values": [f"{VPC_NAME}-public"]},
-            ]
-        )
-        if sub_resp["Subnets"]:
-            subnet_id = sub_resp["Subnets"][0]["SubnetId"]
-        else:
-            # VPC exists but no tagged subnet — create one
-            subnet_id = _create_subnet(ec2, vpc_id, region)
-        return vpc_id, subnet_id
-
-    # Create new VPC
-    print(f"    Creating VPC '{VPC_NAME}' ({VPC_CIDR})...")
-    vpc_id = ec2.create_vpc(CidrBlock=VPC_CIDR)["Vpc"]["VpcId"]
-    ec2.get_waiter("vpc_available").wait(VpcIds=[vpc_id])
-
-    ec2.create_tags(
-        Resources=[vpc_id],
-        Tags=[{"Key": "Name", "Value": VPC_NAME}],
-    )
-
-    # Enable DNS support and hostnames for public IP resolution
-    ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsSupport={"Value": True})
-    ec2.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={"Value": True})
-
-    # Create internet gateway and attach to VPC
-    igw_id = ec2.create_internet_gateway()["InternetGateway"]["InternetGatewayId"]
-    ec2.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
-    ec2.create_tags(
-        Resources=[igw_id],
-        Tags=[{"Key": "Name", "Value": f"{VPC_NAME}-igw"}],
-    )
-    print(f"    Internet gateway: {igw_id}")
-
-    # Create public subnet
-    subnet_id = _create_subnet(ec2, vpc_id, region)
-
-    # Create route table with default route to IGW
-    rt_id = ec2.create_route_table(VpcId=vpc_id)["RouteTable"]["RouteTableId"]
-    ec2.create_route(
-        RouteTableId=rt_id,
-        DestinationCidrBlock="0.0.0.0/0",
-        GatewayId=igw_id,
-    )
-    ec2.associate_route_table(RouteTableId=rt_id, SubnetId=subnet_id)
-    ec2.create_tags(
-        Resources=[rt_id],
-        Tags=[{"Key": "Name", "Value": f"{VPC_NAME}-rt"}],
-    )
-    print(f"    Route table: {rt_id}")
-
-    print(f"    VPC '{VPC_NAME}' created ({vpc_id}).")
-    return vpc_id, subnet_id
+class InfraError(Exception):
+    """Raised when an infrastructure operation fails."""
 
 
-def _create_subnet(ec2, vpc_id, region):
-    """Create a public subnet in the VPC. Returns subnet ID."""
-    # Use the first AZ in the region
-    azs = ec2.describe_availability_zones(
-        Filters=[{"Name": "state", "Values": ["available"]}]
-    )["AvailabilityZones"]
-    az = azs[0]["ZoneName"]
-
-    subnet_id = ec2.create_subnet(
-        VpcId=vpc_id,
-        CidrBlock=SUBNET_CIDR,
-        AvailabilityZone=az,
-    )["Subnet"]["SubnetId"]
-
-    # Auto-assign public IPs so EC2 instances are reachable
-    ec2.modify_subnet_attribute(
-        SubnetId=subnet_id,
-        MapPublicIpOnLaunch={"Value": True},
-    )
-    ec2.create_tags(
-        Resources=[subnet_id],
-        Tags=[{"Key": "Name", "Value": f"{VPC_NAME}-public"}],
-    )
-    print(f"    Subnet: {subnet_id} ({az})")
-    return subnet_id
-
-
-def _load_infra_state():
-    if INFRA_STATE.exists():
-        return json.loads(INFRA_STATE.read_text())
-    return {}
-
-
-def _save_infra_state(state):
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    INFRA_STATE.write_text(json.dumps(state, indent=2) + "\n")
+# ---------------------------------------------------------------------------
+# AWS helpers
+# ---------------------------------------------------------------------------
 
 
 def _get_account_id():
-    return boto3.client("sts").get_caller_identity()["Account"]
-
-
-def _ensure_queue(sqs, name, attributes=None):
-    """Create or get an SQS queue. Returns queue URL."""
     try:
-        resp = sqs.get_queue_url(QueueName=name)
-        print(f"    Queue '{name}' already exists.")
-        return resp["QueueUrl"]
+        return boto3.client("sts").get_caller_identity()["Account"]
+    except (NoCredentialsError, PartialCredentialsError) as e:
+        raise InfraError(
+            "AWS credentials not found. Configure credentials via:\n"
+            "  - Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)\n"
+            "  - AWS CLI profile (aws configure)\n"
+            "  - IAM instance role (if running on EC2)"
+        ) from e
     except ClientError as e:
-        if e.response["Error"]["Code"] != "AWS.SimpleQueueService.NonExistentQueue":
-            raise
-    print(f"    Creating queue '{name}'...")
-    resp = sqs.create_queue(QueueName=name, Attributes=attributes or {})
-    return resp["QueueUrl"]
+        raise InfraError(f"Failed to verify AWS identity: {e.response['Error']['Message']}") from e
 
 
-def _ensure_iam_role(iam, role_name, assume_role_policy):
-    """Create or get an IAM role. Returns role ARN."""
+def _get_role_name_from_profile(iam, profile_name):
+    """Get the IAM role name from an instance profile name."""
     try:
-        resp = iam.get_role(RoleName=role_name)
-        print(f"    Role '{role_name}' already exists.")
-        return resp["Role"]["Arn"]
+        resp = iam.get_instance_profile(InstanceProfileName=profile_name)
     except ClientError as e:
-        if e.response["Error"]["Code"] != "NoSuchEntity":
-            raise
-    print(f"    Creating role '{role_name}'...")
-    resp = iam.create_role(
-        RoleName=role_name,
-        AssumeRolePolicyDocument=json.dumps(assume_role_policy),
-    )
-    # Wait for role to propagate
-    iam.get_waiter("role_exists").wait(RoleName=role_name)
-    return resp["Role"]["Arn"]
-
-
-def _ensure_iam_policy(iam, policy_name, policy_document, account_id):
-    """Create or update an IAM policy. Returns policy ARN."""
-    policy_arn = f"arn:aws:iam::{account_id}:policy/{policy_name}"
-    try:
-        iam.get_policy(PolicyArn=policy_arn)
-        print(f"    Policy '{policy_name}' already exists, updating...")
-        # Delete oldest non-default version if at limit, then create new
-        versions = iam.list_policy_versions(PolicyArn=policy_arn)["Versions"]
-        non_default = [v for v in versions if not v["IsDefaultVersion"]]
-        if len(non_default) >= 4:
-            oldest = sorted(non_default, key=lambda v: v["CreateDate"])[0]
-            iam.delete_policy_version(PolicyArn=policy_arn, VersionId=oldest["VersionId"])
-        iam.create_policy_version(
-            PolicyArn=policy_arn,
-            PolicyDocument=json.dumps(policy_document),
-            SetAsDefault=True,
-        )
-        return policy_arn
-    except ClientError as e:
-        if e.response["Error"]["Code"] != "NoSuchEntity":
-            raise
-    print(f"    Creating policy '{policy_name}'...")
-    resp = iam.create_policy(
-        PolicyName=policy_name,
-        PolicyDocument=json.dumps(policy_document),
-    )
-    return resp["Policy"]["Arn"]
+        raise InfraError(
+            f"Instance profile '{profile_name}' not found: {e.response['Error']['Message']}"
+        ) from e
+    roles = resp["InstanceProfile"]["Roles"]
+    if not roles:
+        raise InfraError(f"Instance profile '{profile_name}' has no associated IAM role.")
+    return roles[0]["RoleName"]
 
 
 def _ensure_role_policy_attachment(iam, role_name, policy_arn):
@@ -205,410 +77,946 @@ def _ensure_role_policy_attachment(iam, role_name, policy_arn):
     iam.attach_role_policy(RoleName=role_name, PolicyArn=policy_arn)
 
 
-def _build_lambda_zip():
-    """Package lambda_handler.py into an in-memory zip."""
-    handler_path = Path(__file__).parent / "lambda_handler.py"
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(handler_path, "lambda_handler.py")
-    buf.seek(0)
-    return buf.read()
+def _resolve_ami(region, cfg):
+    """Resolve AMI ID: prefer maverick-baked AMI, fall back to Ubuntu 24.04 LTS."""
+    ec2 = boto3.client("ec2", region_name=region)
 
+    # 1. Check for a maverick-baked AMI
+    if AMI_STATE.exists():
+        ami_data = json.loads(AMI_STATE.read_text())
+        ami_id = ami_data.get("ami_id")
+        if ami_id:
+            try:
+                resp = ec2.describe_images(ImageIds=[ami_id])
+                if resp["Images"] and resp["Images"][0]["State"] == "available":
+                    print(f"    Using maverick AMI: {ami_id}")
+                    return ami_id
+            except ClientError:
+                pass
+            print(f"    Maverick AMI {ami_id} not available, falling back to Ubuntu LTS.")
 
-def _ensure_lambda(lambda_client, function_name, role_arn, zip_bytes, env_vars):
-    """Create or update a Lambda function. Returns function ARN."""
+    # 2. Fall back to Ubuntu 24.04 LTS via SSM
+    ssm = boto3.client("ssm", region_name=region)
+    ssm_param = cfg["ami"]["ssm_parameter"]
     try:
-        resp = lambda_client.get_function(FunctionName=function_name)
-        print(f"    Lambda '{function_name}' already exists, updating code...")
-        lambda_client.update_function_code(
-            FunctionName=function_name,
-            ZipFile=zip_bytes,
-        )
-        lambda_client.get_waiter("function_updated_v2").wait(FunctionName=function_name)
-        lambda_client.update_function_configuration(
-            FunctionName=function_name,
-            Environment={"Variables": env_vars},
-            Timeout=30,
-            MemorySize=128,
-        )
-        lambda_client.get_waiter("function_updated_v2").wait(FunctionName=function_name)
-        return resp["Configuration"]["FunctionArn"]
+        resp = ssm.get_parameters(Names=[ssm_param])
+        if resp["Parameters"]:
+            ami_id = resp["Parameters"][0]["Value"]
+            print(f"    Using Ubuntu 24.04 LTS AMI: {ami_id}")
+            return ami_id
     except ClientError as e:
-        if e.response["Error"]["Code"] != "ResourceNotFoundException":
-            raise
-    print(f"    Creating Lambda '{function_name}'...")
-    resp = lambda_client.create_function(
-        FunctionName=function_name,
-        Runtime="python3.12",
-        Role=role_arn,
-        Handler="lambda_handler.lambda_handler",
-        Code={"ZipFile": zip_bytes},
-        Environment={"Variables": env_vars},
-        Timeout=30,
-        MemorySize=128,
+        raise InfraError(f"Failed to look up Ubuntu LTS AMI: {e.response['Error']['Message']}") from e
+
+    raise InfraError(
+        "Could not resolve AMI: no maverick AMI found and Ubuntu LTS SSM lookup failed."
     )
-    lambda_client.get_waiter("function_active_v2").wait(FunctionName=function_name)
-    return resp["FunctionArn"]
 
 
-def _ensure_function_url(lambda_client, function_name):
-    """Create or get a Lambda Function URL. Returns the URL."""
-    try:
-        resp = lambda_client.get_function_url_config(FunctionName=function_name)
-        print("    Function URL already exists.")
-        return resp["FunctionUrl"]
-    except ClientError as e:
-        if e.response["Error"]["Code"] != "ResourceNotFoundException":
-            raise
-    print("    Creating Function URL...")
-    resp = lambda_client.create_function_url_config(
-        FunctionName=function_name,
-        AuthType="NONE",
+def _prepare_user_data():
+    """Read bundled cloud-config and prepare for CloudFormation Fn::Sub embedding.
+
+    Replaces placeholder values with CFN variable references so that
+    Fn::Sub injects the real SecretArn and region at stack creation time.
+    Shell $VAR references are bare (not ${VAR}), so Fn::Sub leaves them alone.
+    """
+    cloud_config_path = Path(__file__).parent / "cloud_init" / "cloud-config.yaml"
+    raw = cloud_config_path.read_text()
+    text = raw.replace(
+        "arn:aws:secretsmanager:us-east-1:123456789:secret:claude-vps/api-keys",
+        "${SecretArn}",
     )
-    # Allow public invoke via Function URL
+    text = text.replace("--region us-east-1", "--region ${AWS::Region}")
+    return text
+
+
+# ---------------------------------------------------------------------------
+# CloudFormation templates
+# ---------------------------------------------------------------------------
+
+
+def _build_vpc_template():
+    """Return a CloudFormation template dict for the VPC stack."""
+    return {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "Maverick worker VPC - managed by maverick CLI",
+        "Parameters": {
+            "SshCidr": {
+                "Type": "String",
+                "Default": "0.0.0.0/0",
+                "Description": "CIDR block allowed SSH access to the worker instance",
+            },
+        },
+        "Resources": {
+            "Vpc": {
+                "Type": "AWS::EC2::VPC",
+                "Properties": {
+                    "CidrBlock": VPC_CIDR,
+                    "EnableDnsSupport": True,
+                    "EnableDnsHostnames": True,
+                    "Tags": [{"Key": "Name", "Value": VPC_NAME}],
+                },
+            },
+            "InternetGateway": {
+                "Type": "AWS::EC2::InternetGateway",
+                "Properties": {
+                    "Tags": [{"Key": "Name", "Value": f"{VPC_NAME}-igw"}],
+                },
+            },
+            "VpcGatewayAttachment": {
+                "Type": "AWS::EC2::VPCGatewayAttachment",
+                "Properties": {
+                    "VpcId": {"Ref": "Vpc"},
+                    "InternetGatewayId": {"Ref": "InternetGateway"},
+                },
+            },
+            "PublicSubnet": {
+                "Type": "AWS::EC2::Subnet",
+                "Properties": {
+                    "VpcId": {"Ref": "Vpc"},
+                    "CidrBlock": SUBNET_CIDR,
+                    "AvailabilityZone": {
+                        "Fn::Select": ["0", {"Fn::GetAZs": {"Ref": "AWS::Region"}}],
+                    },
+                    "MapPublicIpOnLaunch": True,
+                    "Tags": [{"Key": "Name", "Value": f"{VPC_NAME}-public"}],
+                },
+            },
+            "RouteTable": {
+                "Type": "AWS::EC2::RouteTable",
+                "Properties": {
+                    "VpcId": {"Ref": "Vpc"},
+                    "Tags": [{"Key": "Name", "Value": f"{VPC_NAME}-rt"}],
+                },
+            },
+            "DefaultRoute": {
+                "Type": "AWS::EC2::Route",
+                "DependsOn": "VpcGatewayAttachment",
+                "Properties": {
+                    "RouteTableId": {"Ref": "RouteTable"},
+                    "DestinationCidrBlock": "0.0.0.0/0",
+                    "GatewayId": {"Ref": "InternetGateway"},
+                },
+            },
+            "SubnetRouteTableAssociation": {
+                "Type": "AWS::EC2::SubnetRouteTableAssociation",
+                "Properties": {
+                    "SubnetId": {"Ref": "PublicSubnet"},
+                    "RouteTableId": {"Ref": "RouteTable"},
+                },
+            },
+            "WorkerSecurityGroup": {
+                "Type": "AWS::EC2::SecurityGroup",
+                "Properties": {
+                    "GroupDescription": "Maverick worker instance - SSH inbound, all outbound",
+                    "VpcId": {"Ref": "Vpc"},
+                    "SecurityGroupIngress": [
+                        {
+                            "IpProtocol": "tcp",
+                            "FromPort": 22,
+                            "ToPort": 22,
+                            "CidrIp": {"Ref": "SshCidr"},
+                        },
+                    ],
+                    "SecurityGroupEgress": [
+                        {
+                            "IpProtocol": "-1",
+                            "CidrIp": "0.0.0.0/0",
+                        },
+                    ],
+                    "Tags": [{"Key": "Name", "Value": f"{VPC_NAME}-worker-sg"}],
+                },
+            },
+            "WorkerSecret": {
+                "Type": "AWS::SecretsManager::Secret",
+                "Properties": {
+                    "Description": "Maverick worker secrets (API keys, webhook secret)",
+                    "SecretString": json.dumps({
+                        "GITHUB_WEBHOOK_SECRET": "CHANGE_ME",
+                        "ANTHROPIC_API_KEY": "CHANGE_ME",
+                        "GITHUB_PERSONAL_ACCESS_TOKEN": "CHANGE_ME",
+                    }),
+                },
+            },
+            "WorkerRole": {
+                "Type": "AWS::IAM::Role",
+                "Properties": {
+                    "RoleName": "maverick-worker-role",
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "ec2.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            },
+                        ],
+                    },
+                    "Policies": [
+                        {
+                            "PolicyName": "maverick-worker-secret-access",
+                            "PolicyDocument": {
+                                "Version": "2012-10-17",
+                                "Statement": [
+                                    {
+                                        "Effect": "Allow",
+                                        "Action": "secretsmanager:GetSecretValue",
+                                        "Resource": {"Ref": "WorkerSecret"},
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                },
+            },
+            "WorkerInstanceProfile": {
+                "Type": "AWS::IAM::InstanceProfile",
+                "Properties": {
+                    "InstanceProfileName": "maverick-worker-profile",
+                    "Roles": [{"Ref": "WorkerRole"}],
+                },
+            },
+        },
+        "Outputs": {
+            "VpcId": {
+                "Value": {"Ref": "Vpc"},
+                "Description": "VPC ID",
+            },
+            "SubnetId": {
+                "Value": {"Ref": "PublicSubnet"},
+                "Description": "Public subnet ID",
+            },
+            "SecurityGroupId": {
+                "Value": {"Ref": "WorkerSecurityGroup"},
+                "Description": "Worker security group ID",
+            },
+            "InstanceProfileName": {
+                "Value": {"Ref": "WorkerInstanceProfile"},
+                "Description": "IAM instance profile name for the worker",
+            },
+            "RoleName": {
+                "Value": {"Ref": "WorkerRole"},
+                "Description": "IAM role name for the worker",
+            },
+            "SecretArn": {
+                "Value": {"Ref": "WorkerSecret"},
+                "Description": "Secrets Manager secret ARN",
+            },
+        },
+    }
+
+
+def _build_infra_template(lambda_code, user_data):
+    """Return a CloudFormation template dict for the main infrastructure stack."""
+    return {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "Maverick worker infrastructure — managed by maverick CLI",
+        "Parameters": {
+            "SecretArn": {
+                "Type": "String",
+                "Description": "ARN of the Secrets Manager secret (webhook + instance secrets)",
+            },
+            "WebhookLabel": {
+                "Type": "String",
+                "Default": "claude-do",
+                "Description": "GitHub label that triggers work items",
+            },
+            "LogGroupName": {
+                "Type": "String",
+                "Default": "/maverick/worker",
+                "Description": "CloudWatch log group name for workers",
+            },
+            "VpcSubnetId": {
+                "Type": "AWS::EC2::Subnet::Id",
+                "Description": "Subnet ID from the VPC stack",
+            },
+            "AmiId": {
+                "Type": "AWS::EC2::Image::Id",
+                "Description": "AMI ID — use a maverick-baked AMI or Ubuntu 24.04 LTS",
+            },
+            "InstanceType": {
+                "Type": "String",
+                "Default": "t3.medium",
+                "Description": "EC2 instance type for the worker",
+            },
+            "KeyPairName": {
+                "Type": "AWS::EC2::KeyPair::KeyName",
+                "Description": "EC2 key pair for SSH access",
+            },
+            "SecurityGroupId": {
+                "Type": "AWS::EC2::SecurityGroup::Id",
+                "Description": "Security group ID for the worker instance",
+            },
+            "IamInstanceProfileName": {
+                "Type": "String",
+                "Description": "IAM instance profile name for the worker instance",
+            },
+        },
+        "Resources": {
+            "WorkTable": {
+                "Type": "AWS::DynamoDB::Table",
+                "Properties": {
+                    "TableName": "maverick-work",
+                    "BillingMode": "PAY_PER_REQUEST",
+                    "KeySchema": [
+                        {"AttributeName": "id", "KeyType": "HASH"},
+                    ],
+                    "AttributeDefinitions": [
+                        {"AttributeName": "id", "AttributeType": "S"},
+                        {"AttributeName": "status", "AttributeType": "S"},
+                        {"AttributeName": "created_at", "AttributeType": "S"},
+                    ],
+                    "GlobalSecondaryIndexes": [
+                        {
+                            "IndexName": "status-created_at-index",
+                            "KeySchema": [
+                                {"AttributeName": "status", "KeyType": "HASH"},
+                                {"AttributeName": "created_at", "KeyType": "RANGE"},
+                            ],
+                            "Projection": {"ProjectionType": "ALL"},
+                        },
+                    ],
+                    "TimeToLiveSpecification": {
+                        "AttributeName": "ttl_expiry",
+                        "Enabled": True,
+                    },
+                },
+            },
+            "WorkerLogGroup": {
+                "Type": "AWS::Logs::LogGroup",
+                "Properties": {
+                    "LogGroupName": {"Ref": "LogGroupName"},
+                },
+            },
+            "LambdaRole": {
+                "Type": "AWS::IAM::Role",
+                "Properties": {
+                    "RoleName": "maverick-webhook-role",
+                    "AssumeRolePolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Action": "sts:AssumeRole",
+                            },
+                        ],
+                    },
+                    "Policies": [
+                        {
+                            "PolicyName": "maverick-webhook-policy",
+                            "PolicyDocument": {
+                                "Version": "2012-10-17",
+                                "Statement": [
+                                    {
+                                        "Effect": "Allow",
+                                        "Action": "dynamodb:PutItem",
+                                        "Resource": {"Fn::GetAtt": ["WorkTable", "Arn"]},
+                                    },
+                                    {
+                                        "Effect": "Allow",
+                                        "Action": "secretsmanager:GetSecretValue",
+                                        "Resource": {"Ref": "SecretArn"},
+                                    },
+                                    {
+                                        "Effect": "Allow",
+                                        "Action": [
+                                            "logs:CreateLogGroup",
+                                            "logs:CreateLogStream",
+                                            "logs:PutLogEvents",
+                                        ],
+                                        "Resource": "arn:aws:logs:*:*:*",
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                },
+            },
+            "WebhookFunction": {
+                "Type": "AWS::Lambda::Function",
+                "Properties": {
+                    "FunctionName": "maverick-webhook",
+                    "Runtime": "python3.12",
+                    "Handler": "index.lambda_handler",
+                    "Timeout": 30,
+                    "MemorySize": 128,
+                    "Role": {"Fn::GetAtt": ["LambdaRole", "Arn"]},
+                    "Code": {
+                        "ZipFile": lambda_code,
+                    },
+                    "Environment": {
+                        "Variables": {
+                            "WORK_TABLE_NAME": {"Ref": "WorkTable"},
+                            "SECRET_ARN": {"Ref": "SecretArn"},
+                            "WEBHOOK_LABEL": {"Ref": "WebhookLabel"},
+                        },
+                    },
+                },
+            },
+            "WebhookFunctionUrl": {
+                "Type": "AWS::Lambda::Url",
+                "Properties": {
+                    "TargetFunctionArn": {"Ref": "WebhookFunction"},
+                    "AuthType": "NONE",
+                },
+            },
+            "WebhookFunctionUrlPermission": {
+                "Type": "AWS::Lambda::Permission",
+                "Properties": {
+                    "FunctionName": {"Ref": "WebhookFunction"},
+                    "Action": "lambda:InvokeFunctionUrl",
+                    "Principal": "*",
+                    "FunctionUrlAuthType": "NONE",
+                },
+            },
+            "WorkerPolicy": {
+                "Type": "AWS::IAM::ManagedPolicy",
+                "Properties": {
+                    "ManagedPolicyName": "maverick-worker-policy",
+                    "PolicyDocument": {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "dynamodb:Query",
+                                    "dynamodb:UpdateItem",
+                                    "dynamodb:GetItem",
+                                ],
+                                "Resource": [
+                                    {"Fn::GetAtt": ["WorkTable", "Arn"]},
+                                    {"Fn::Sub": "${WorkTable.Arn}/index/*"},
+                                ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "logs:CreateLogStream",
+                                    "logs:PutLogEvents",
+                                ],
+                                "Resource": {"Fn::Sub": "${WorkerLogGroup.Arn}:*"},
+                            },
+                        ],
+                    },
+                },
+            },
+            "WorkerInstance": {
+                "Type": "AWS::EC2::Instance",
+                "Properties": {
+                    "ImageId": {"Ref": "AmiId"},
+                    "InstanceType": {"Ref": "InstanceType"},
+                    "KeyName": {"Ref": "KeyPairName"},
+                    "IamInstanceProfile": {"Ref": "IamInstanceProfileName"},
+                    "SecurityGroupIds": [{"Ref": "SecurityGroupId"}],
+                    "SubnetId": {"Ref": "VpcSubnetId"},
+                    "UserData": {"Fn::Base64": {"Fn::Sub": user_data}},
+                    "Tags": [{"Key": "Name", "Value": "claude-maverick"}],
+                },
+            },
+        },
+        "Outputs": {
+            "WorkTableName": {
+                "Value": {"Ref": "WorkTable"},
+                "Description": "DynamoDB work table name",
+            },
+            "WorkTableArn": {
+                "Value": {"Fn::GetAtt": ["WorkTable", "Arn"]},
+                "Description": "DynamoDB work table ARN",
+            },
+            "FunctionUrl": {
+                "Value": {"Fn::GetAtt": ["WebhookFunctionUrl", "FunctionUrl"]},
+                "Description": "Lambda Function URL for GitHub webhook",
+            },
+            "LambdaArn": {
+                "Value": {"Fn::GetAtt": ["WebhookFunction", "Arn"]},
+                "Description": "Lambda function ARN",
+            },
+            "WorkerPolicyArn": {
+                "Value": {"Ref": "WorkerPolicy"},
+                "Description": "IAM policy ARN for EC2 workers",
+            },
+            "LogGroupName": {
+                "Value": {"Ref": "WorkerLogGroup"},
+                "Description": "CloudWatch log group name",
+            },
+            "InstanceId": {
+                "Value": {"Ref": "WorkerInstance"},
+                "Description": "EC2 worker instance ID",
+            },
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# CloudFormation operations
+# ---------------------------------------------------------------------------
+
+
+def _get_stack_outputs(cfn, stack_name):
+    """Return stack outputs as {key: value} dict."""
+    resp = cfn.describe_stacks(StackName=stack_name)
+    outputs = resp["Stacks"][0].get("Outputs", [])
+    return {o["OutputKey"]: o["OutputValue"] for o in outputs}
+
+
+def _wait_for_stack(cfn, stack_name, target_statuses, failure_statuses):
+    """Poll stack status until it reaches a target or failure state."""
+    while True:
+        resp = cfn.describe_stacks(StackName=stack_name)
+        status = resp["Stacks"][0]["StackStatus"]
+        if status in target_statuses:
+            return status
+        if status in failure_statuses:
+            reason = resp["Stacks"][0].get("StackStatusReason", "unknown")
+            raise InfraError(f"Stack '{stack_name}' reached {status}: {reason}")
+        time.sleep(5)
+
+
+def _create_or_update_stack(cfn, stack_name, template, parameters=None):
+    """Create or update a CloudFormation stack. Handles common edge cases."""
+    params = [{"ParameterKey": k, "ParameterValue": v} for k, v in (parameters or {}).items()]
+    template_body = json.dumps(template)
+
+    # Check if stack exists and its current state
     try:
-        lambda_client.add_permission(
-            FunctionName=function_name,
-            StatementId="FunctionURLAllowPublicAccess",
-            Action="lambda:InvokeFunctionUrl",
-            Principal="*",
-            FunctionUrlAuthType="NONE",
-        )
+        resp = cfn.describe_stacks(StackName=stack_name)
+        stack_status = resp["Stacks"][0]["StackStatus"]
     except ClientError as e:
-        if e.response["Error"]["Code"] != "ResourceConflictException":
+        if "does not exist" not in str(e):
             raise
-    return resp["FunctionUrl"]
+        stack_status = None
+
+    # Handle ROLLBACK_COMPLETE - must delete before recreating
+    if stack_status == "ROLLBACK_COMPLETE":
+        print(f"    Stack '{stack_name}' is in ROLLBACK_COMPLETE - deleting before recreate...")
+        cfn.delete_stack(StackName=stack_name)
+        _wait_for_stack(cfn, stack_name, {"DELETE_COMPLETE"}, {"DELETE_FAILED"})
+        stack_status = None
+
+    if stack_status is None:
+        # Create
+        print(f"    Creating stack '{stack_name}'...")
+        cfn.create_stack(
+            StackName=stack_name,
+            TemplateBody=template_body,
+            Parameters=params,
+            Capabilities=["CAPABILITY_NAMED_IAM"],
+        )
+        _wait_for_stack(
+            cfn,
+            stack_name,
+            {"CREATE_COMPLETE"},
+            {"CREATE_FAILED", "ROLLBACK_COMPLETE", "ROLLBACK_FAILED"},
+        )
+    else:
+        # Update
+        print(f"    Updating stack '{stack_name}'...")
+        try:
+            cfn.update_stack(
+                StackName=stack_name,
+                TemplateBody=template_body,
+                Parameters=params,
+                Capabilities=["CAPABILITY_NAMED_IAM"],
+            )
+            _wait_for_stack(
+                cfn,
+                stack_name,
+                {"UPDATE_COMPLETE"},
+                {"UPDATE_FAILED", "UPDATE_ROLLBACK_COMPLETE", "UPDATE_ROLLBACK_FAILED"},
+            )
+        except ClientError as e:
+            if "No updates are to be performed" in str(e):
+                print(f"    Stack '{stack_name}' is already up to date.")
+            else:
+                raise
 
 
-def _ensure_log_group(logs, log_group_name):
-    """Create a CloudWatch log group if it doesn't exist. Returns the ARN."""
+def _validate_key_pair(ec2, key_name):
+    """Validate that an EC2 key pair exists. Raises InfraError if not found."""
     try:
-        resp = logs.describe_log_groups(logGroupNamePrefix=log_group_name)
-        for group in resp["logGroups"]:
-            if group["logGroupName"] == log_group_name:
-                print(f"    Log group '{log_group_name}' already exists.")
-                return group["arn"]
-    except ClientError:
-        pass
-    print(f"    Creating log group '{log_group_name}'...")
-    logs.create_log_group(logGroupName=log_group_name)
-    resp = logs.describe_log_groups(logGroupNamePrefix=log_group_name)
-    for group in resp["logGroups"]:
-        if group["logGroupName"] == log_group_name:
-            return group["arn"]
+        ec2.describe_key_pairs(KeyNames=[key_name])
+    except ClientError as e:
+        if "InvalidKeyPair.NotFound" in str(e):
+            raise InfraError(
+                f"EC2 key pair '{key_name}' not found. "
+                "Create it in the AWS Console or with: "
+                f"aws ec2 create-key-pair --key-name {key_name}"
+            ) from e
+        raise
 
 
-def _get_role_name_from_profile(iam, profile_name):
-    """Get the IAM role name from an instance profile name."""
-    resp = iam.get_instance_profile(InstanceProfileName=profile_name)
-    roles = resp["InstanceProfile"]["Roles"]
-    if not roles:
-        print(f"Error: Instance profile '{profile_name}' has no associated role.")
-        sys.exit(1)
-    return roles[0]["RoleName"]
+def get_vpc_outputs(region):
+    """Read VPC stack outputs into a dict. Raises InfraError if stack is missing."""
+    cfn = boto3.client("cloudformation", region_name=region)
+    try:
+        outputs = _get_stack_outputs(cfn, VPC_STACK_NAME)
+    except ClientError as e:
+        if "does not exist" in str(e):
+            raise InfraError(
+                f"VPC stack '{VPC_STACK_NAME}' not found. "
+                "Run 'maverick infra deploy' first to create prerequisites."
+            ) from e
+        raise
+    expected = ("SubnetId", "SecurityGroupId", "InstanceProfileName", "RoleName", "SecretArn")
+    missing = [k for k in expected if k not in outputs]
+    if missing:
+        raise InfraError(
+            f"VPC stack is missing expected outputs: {', '.join(missing)}. "
+            "Run 'maverick infra deploy' to update the stack."
+        )
+    return outputs
 
 
-def deploy():
+def _deploy_vpc_stack(cfn, region, ssh_cidr="0.0.0.0/0"):
+    """Deploy or update the VPC stack. Returns outputs."""
+    template = _build_vpc_template()
+    parameters = {"SshCidr": ssh_cidr}
+    _create_or_update_stack(cfn, VPC_STACK_NAME, template, parameters)
+    return _get_stack_outputs(cfn, VPC_STACK_NAME)
+
+
+def _delete_stack(cfn, stack_name):
+    """Delete a CloudFormation stack and wait for completion."""
+    try:
+        cfn.describe_stacks(StackName=stack_name)
+    except ClientError as e:
+        if "does not exist" in str(e):
+            print(f"    Stack '{stack_name}' does not exist - skipping.")
+            return
+        raise
+
+    print(f"    Deleting stack '{stack_name}'...")
+    cfn.delete_stack(StackName=stack_name)
+
+    # Wait - after deletion describe_stacks raises if fully cleaned up
+    while True:
+        try:
+            resp = cfn.describe_stacks(StackName=stack_name)
+            status = resp["Stacks"][0]["StackStatus"]
+            if status == "DELETE_COMPLETE":
+                return
+            if status == "DELETE_FAILED":
+                reason = resp["Stacks"][0].get("StackStatusReason", "unknown")
+                raise InfraError(f"Stack '{stack_name}' deletion failed: {reason}")
+            time.sleep(5)
+        except ClientError as e:
+            if "does not exist" in str(e):
+                return
+            raise
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def deploy(ssh_cidr="0.0.0.0/0"):
     """Create or update all infrastructure resources."""
+    try:
+        _deploy_impl(ssh_cidr=ssh_cidr)
+    except InfraError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        msg = e.response["Error"]["Message"]
+        print(f"\nAWS error ({code}): {msg}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _deploy_impl(ssh_cidr="0.0.0.0/0"):
+    # Check for legacy state file — require migration
+    if INFRA_STATE.exists():
+        raise InfraError(
+            f"Legacy infrastructure state file found at {INFRA_STATE}.\n"
+            "This version of maverick uses CloudFormation instead of imperative resource management.\n"
+            "Please run 'maverick infra destroy' with the previous version first, then re-deploy.\n"
+            "(The VPC will be preserved across destroy/redeploy.)"
+        )
+
     cfg = init_config()
     region = cfg["aws"]["region"]
-    account_id = _get_account_id()
 
-    ec2 = boto3.client("ec2", region_name=region)
-    sqs = boto3.client("sqs", region_name=region)
+    # 0. Preflight: key_pair must be set in config (the one manual prerequisite)
+    key_pair = cfg["aws"]["key_pair"]
+    if not key_pair:
+        raise InfraError(
+            "aws.key_pair is not set in config.\n"
+            "Create an EC2 key pair and add it to ~/.maverick/config.json:\n"
+            '  "aws": { "key_pair": "your-key-name" }'
+        )
+
+    cfn = boto3.client("cloudformation", region_name=region)
     iam = boto3.client("iam")
-    lambda_client = boto3.client("lambda", region_name=region)
-    logs = boto3.client("logs", region_name=region)
 
-    infra = _load_infra_state()
-    log_group_name = cfg["worker"]["cloudwatch_log_group"]
-    webhook_label = cfg["worker"]["webhook_label"]
+    # 1. Validate EC2 key pair exists in AWS before creating any stacks
+    print("==> Validating EC2 key pair...")
+    ec2 = boto3.client("ec2", region_name=region)
+    _validate_key_pair(ec2, key_pair)
 
-    # 1. VPC
+    # 2. VPC stack (creates SG, IAM profile, Secret)
     print("==> Setting up VPC...")
-    vpc_id, subnet_id = _ensure_vpc(ec2, region)
+    vpc_outputs = _deploy_vpc_stack(cfn, region, ssh_cidr=ssh_cidr)
+    subnet_id = vpc_outputs["SubnetId"]
+    security_group_id = vpc_outputs["SecurityGroupId"]
+    instance_profile_name = vpc_outputs["InstanceProfileName"]
+    role_name = vpc_outputs["RoleName"]
+    secret_arn = vpc_outputs["SecretArn"]
 
-    # 2. SQS queues
-    print("==> Setting up SQS queues...")
-    dlq_url = _ensure_queue(sqs, DLQ_NAME)
-    dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])["Attributes"][
-        "QueueArn"
-    ]
+    # 3. Resolve AMI — prefer maverick-baked, fall back to Ubuntu LTS
+    print("==> Resolving AMI...")
+    ami_id = _resolve_ami(region, cfg)
 
-    sqs_cfg = cfg["sqs"]
-    queue_url = _ensure_queue(
-        sqs,
-        QUEUE_NAME,
-        attributes={
-            "VisibilityTimeout": str(sqs_cfg["visibility_timeout"]),
-            "MessageRetentionPeriod": str(sqs_cfg["message_retention"]),
-            "RedrivePolicy": json.dumps(
-                {
-                    "deadLetterTargetArn": dlq_arn,
-                    "maxReceiveCount": str(sqs_cfg["max_receive_count"]),
-                }
-            ),
-        },
-    )
-    queue_arn = sqs.get_queue_attributes(QueueUrl=queue_url, AttributeNames=["QueueArn"])[
-        "Attributes"
-    ]["QueueArn"]
+    # 4. Read Lambda handler source for inline embedding
+    handler_path = Path(__file__).parent / "lambda_handler.py"
+    lambda_code = handler_path.read_text()
 
-    # 3. CloudWatch log group
-    print("==> Setting up CloudWatch log group...")
-    log_group_arn = _ensure_log_group(logs, log_group_name)
+    # 5. Prepare cloud-init user data for CFN embedding
+    user_data = _prepare_user_data()
 
-    # 4. Lambda IAM role and policy
-    print("==> Setting up Lambda IAM role...")
-    lambda_assume_policy = {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Principal": {"Service": "lambda.amazonaws.com"},
-                "Action": "sts:AssumeRole",
-            }
-        ],
+    # 6. Main infrastructure stack
+    print("==> Deploying infrastructure stack...")
+    template = _build_infra_template(lambda_code, user_data)
+    parameters = {
+        "SecretArn": secret_arn,
+        "WebhookLabel": cfg["worker"]["webhook_label"],
+        "LogGroupName": cfg["worker"]["cloudwatch_log_group"],
+        "VpcSubnetId": subnet_id,
+        "AmiId": ami_id,
+        "InstanceType": cfg["instance"]["type"],
+        "KeyPairName": key_pair,
+        "SecurityGroupId": security_group_id,
+        "IamInstanceProfileName": instance_profile_name,
     }
-    lambda_role_arn = _ensure_iam_role(iam, LAMBDA_ROLE_NAME, lambda_assume_policy)
+    _create_or_update_stack(cfn, STACK_NAME, template, parameters)
 
-    lambda_policy_doc = {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": "sqs:SendMessage",
-                "Resource": queue_arn,
-            },
-            {
-                "Effect": "Allow",
-                "Action": "secretsmanager:GetSecretValue",
-                "Resource": cfg["aws"]["secret_arn"],
-            },
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents",
-                ],
-                "Resource": "arn:aws:logs:*:*:*",
-            },
-        ],
-    }
-    lambda_policy_arn = _ensure_iam_policy(iam, LAMBDA_POLICY_NAME, lambda_policy_doc, account_id)
-    _ensure_role_policy_attachment(iam, LAMBDA_ROLE_NAME, lambda_policy_arn)
+    # 7. Read outputs
+    outputs = _get_stack_outputs(cfn, STACK_NAME)
 
-    # 5. Lambda function
-    print("==> Setting up Lambda function...")
-    zip_bytes = _build_lambda_zip()
-    env_vars = {
-        "SQS_QUEUE_URL": queue_url,
-        "SECRET_ARN": cfg["aws"]["secret_arn"],
-        "WEBHOOK_LABEL": webhook_label,
-    }
-    lambda_arn = _ensure_lambda(
-        lambda_client, LAMBDA_FUNCTION_NAME, lambda_role_arn, zip_bytes, env_vars
-    )
+    # 8. Attach worker policy to EC2 instance profile role (out-of-band)
+    print("==> Attaching worker policy to EC2 role...")
+    _ensure_role_policy_attachment(iam, role_name, outputs["WorkerPolicyArn"])
 
-    # 6. Function URL
-    function_url = _ensure_function_url(lambda_client, LAMBDA_FUNCTION_NAME)
-
-    # 7. EC2 worker policy
-    print("==> Setting up EC2 worker IAM policy...")
-    ec2_worker_policy_doc = {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "sqs:ReceiveMessage",
-                    "sqs:DeleteMessage",
-                    "sqs:GetQueueAttributes",
-                ],
-                "Resource": queue_arn,
-            },
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents",
-                ],
-                "Resource": f"{log_group_arn}:*",
-            },
-        ],
-    }
-    ec2_policy_arn = _ensure_iam_policy(
-        iam, EC2_WORKER_POLICY_NAME, ec2_worker_policy_doc, account_id
-    )
-
-    # Attach to the existing EC2 instance profile's role
-    ec2_role_name = _get_role_name_from_profile(iam, cfg["aws"]["iam_profile"])
-    _ensure_role_policy_attachment(iam, ec2_role_name, ec2_policy_arn)
-
-    # 8. Save infra state
-    infra = {
-        "vpc_id": vpc_id,
-        "subnet_id": subnet_id,
-        "queue_url": queue_url,
-        "queue_arn": queue_arn,
-        "dlq_url": dlq_url,
-        "dlq_arn": dlq_arn,
-        "lambda_arn": lambda_arn,
-        "lambda_role_arn": lambda_role_arn,
-        "lambda_policy_arn": lambda_policy_arn,
-        "function_url": function_url,
-        "ec2_policy_arn": ec2_policy_arn,
-        "log_group_name": log_group_name,
-        "log_group_arn": log_group_arn,
-    }
-    _save_infra_state(infra)
-
-    # 9. Update config with runtime values
-    cfg["aws"]["sqs_queue_url"] = queue_url
+    # 9. Update config with VPC output values (backward compat)
+    cfg["aws"]["work_table_name"] = outputs["WorkTableName"]
     cfg["aws"]["subnet"] = subnet_id
+    cfg["aws"]["security_group"] = security_group_id
+    cfg["aws"]["iam_profile"] = instance_profile_name
+    cfg["aws"]["secret_arn"] = secret_arn
     save_config(cfg)
+
+    # 10. Clean up legacy instance state if present
+    INSTANCE_STATE.unlink(missing_ok=True)
+
+    # 11. Get instance public IP
+    instance_id = outputs["InstanceId"]
+    ip = "pending"
+    try:
+        resp = ec2.describe_instances(InstanceIds=[instance_id])
+        ip = resp["Reservations"][0]["Instances"][0].get("PublicIpAddress") or "pending"
+    except ClientError:
+        pass
 
     print()
     print("=== Infrastructure deployed ===")
-    print(f"  VPC:            {vpc_id}")
-    print(f"  Subnet:         {subnet_id}")
-    print(f"  SQS Queue:      {queue_url}")
-    print(f"  DLQ:            {dlq_url}")
-    print(f"  Lambda:         {lambda_arn}")
-    print(f"  Function URL:   {function_url}")
-    print(f"  Log Group:      {log_group_name}")
-    print(f"  State saved:    {INFRA_STATE}")
+    print(f"  VPC Subnet:     {subnet_id}")
+    print(f"  Security Group: {security_group_id}")
+    print(f"  IAM Profile:    {instance_profile_name}")
+    print(f"  Secret ARN:     {secret_arn}")
+    print(f"  DynamoDB Table: {outputs['WorkTableName']}")
+    print(f"  Lambda:         {outputs['LambdaArn']}")
+    print(f"  Function URL:   {outputs['FunctionUrl']}")
+    print(f"  Log Group:      {outputs['LogGroupName']}")
+    print(f"  Worker Policy:  {outputs['WorkerPolicyArn']}")
+    print(f"  Instance:       {instance_id}")
+    print(f"  Public IP:      {ip}")
+    if ip and ip != "pending":
+        print(f"  SSH:            ssh claude@{ip}")
     print()
-    print("Next: Configure this Function URL as a GitHub webhook")
-    print(f"  URL:    {function_url}")
-    print("  Events: Issues")
-    print("  Secret: Set GITHUB_WEBHOOK_SECRET in your Secrets Manager secret")
+    print("Next steps:")
+    print("  1. Update secret values in AWS Console (Secrets Manager)")
+    print("  2. Configure this Function URL as a GitHub webhook")
+    print(f"     URL:    {outputs['FunctionUrl']}")
+    print("     Events: Issues")
+    print("     Secret: The GITHUB_WEBHOOK_SECRET value from your secret")
 
 
 def status():
     """Show current infrastructure resource status."""
-    infra = _load_infra_state()
-    if not infra:
+    try:
+        return _status_impl()
+    except InfraError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        msg = e.response["Error"]["Message"]
+        print(f"\nAWS error ({code}): {msg}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _status_impl():
+    cfg = init_config()
+    region = cfg["aws"]["region"]
+    cfn = boto3.client("cloudformation", region_name=region)
+
+    # VPC stack
+    vpc_status = "not deployed"
+    vpc_outputs = {}
+    try:
+        resp = cfn.describe_stacks(StackName=VPC_STACK_NAME)
+        vpc_status = resp["Stacks"][0]["StackStatus"]
+        vpc_outputs = _get_stack_outputs(cfn, VPC_STACK_NAME)
+    except ClientError as e:
+        if "does not exist" not in str(e):
+            raise
+
+    # Infra stack
+    infra_status = "not deployed"
+    infra_outputs = {}
+    try:
+        resp = cfn.describe_stacks(StackName=STACK_NAME)
+        infra_status = resp["Stacks"][0]["StackStatus"]
+        infra_outputs = _get_stack_outputs(cfn, STACK_NAME)
+    except ClientError as e:
+        if "does not exist" not in str(e):
+            raise
+
+    if infra_status == "not deployed" and vpc_status == "not deployed":
         print("No infrastructure deployed. Run 'maverick infra deploy' first.")
         sys.exit(1)
 
+    # Instance live state
+    instance_id = infra_outputs.get("InstanceId")
+    instance_state = "N/A"
+    instance_ip = "N/A"
+    if instance_id:
+        try:
+            ec2 = boto3.client("ec2", region_name=region)
+            resp = ec2.describe_instances(InstanceIds=[instance_id])
+            inst = resp["Reservations"][0]["Instances"][0]
+            instance_state = inst["State"]["Name"]
+            instance_ip = inst.get("PublicIpAddress") or "None"
+        except ClientError:
+            pass
+
     print("=== Infrastructure Status ===")
-    print(f"  VPC:          {infra.get('vpc_id', 'N/A')}")
-    print(f"  Subnet:       {infra.get('subnet_id', 'N/A')}")
-    print(f"  SQS Queue:    {infra.get('queue_url', 'N/A')}")
-    print(f"  DLQ:          {infra.get('dlq_url', 'N/A')}")
-    print(f"  Lambda:       {infra.get('lambda_arn', 'N/A')}")
-    print(f"  Function URL: {infra.get('function_url', 'N/A')}")
-    print(f"  Log Group:    {infra.get('log_group_name', 'N/A')}")
-    print(f"  State file:   {INFRA_STATE}")
+    print(f"  VPC Stack:      {VPC_STACK_NAME} ({vpc_status})")
+    print(f"    VPC:          {vpc_outputs.get('VpcId', 'N/A')}")
+    print(f"    Subnet:       {vpc_outputs.get('SubnetId', 'N/A')}")
+    print(f"    Security Grp: {vpc_outputs.get('SecurityGroupId', 'N/A')}")
+    print(f"    IAM Profile:  {vpc_outputs.get('InstanceProfileName', 'N/A')}")
+    print(f"    IAM Role:     {vpc_outputs.get('RoleName', 'N/A')}")
+    print(f"    Secret ARN:   {vpc_outputs.get('SecretArn', 'N/A')}")
+    print(f"  Infra Stack:    {STACK_NAME} ({infra_status})")
+    print(f"    DynamoDB:     {infra_outputs.get('WorkTableName', 'N/A')}")
+    print(f"    Lambda:       {infra_outputs.get('LambdaArn', 'N/A')}")
+    print(f"    Function URL: {infra_outputs.get('FunctionUrl', 'N/A')}")
+    print(f"    Log Group:    {infra_outputs.get('LogGroupName', 'N/A')}")
+    print(f"    Worker Policy:{infra_outputs.get('WorkerPolicyArn', 'N/A')}")
+    print(f"    Instance:     {instance_id or 'N/A'} ({instance_state})")
+    print(f"    Public IP:    {instance_ip}")
 
 
-def destroy():
+def destroy(include_vpc=False):
     """Tear down all infrastructure resources."""
-    infra = _load_infra_state()
-    if not infra:
+    try:
+        return _destroy_impl(include_vpc=include_vpc)
+    except InfraError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
+    except (NoCredentialsError, PartialCredentialsError):
+        print(
+            "\nError: AWS credentials not found. Configure credentials before destroying infrastructure.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        msg = e.response["Error"]["Message"]
+        print(f"\nAWS error ({code}): {msg}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _destroy_impl(include_vpc=False):
+    cfg = init_config()
+    region = cfg["aws"]["region"]
+    cfn = boto3.client("cloudformation", region_name=region)
+    iam = boto3.client("iam")
+
+    # Check if anything is deployed
+    infra_exists = True
+    try:
+        cfn.describe_stacks(StackName=STACK_NAME)
+    except ClientError as e:
+        if "does not exist" in str(e):
+            infra_exists = False
+        else:
+            raise
+
+    vpc_exists = True
+    try:
+        cfn.describe_stacks(StackName=VPC_STACK_NAME)
+    except ClientError as e:
+        if "does not exist" in str(e):
+            vpc_exists = False
+        else:
+            raise
+
+    if not infra_exists and not vpc_exists and not INFRA_STATE.exists():
         print("No infrastructure to destroy.")
         return
 
-    cfg = init_config()
-    region = cfg["aws"]["region"]
-
-    confirm = input("Destroy all maverick infrastructure? This cannot be undone. [y/N] ")
+    what = "all maverick infrastructure"
+    if include_vpc:
+        what += " including VPC"
+    confirm = input(f"Destroy {what}? This cannot be undone. [y/N] ")
     if confirm.lower() != "y":
         print("Cancelled.")
         return
 
-    sqs = boto3.client("sqs", region_name=region)
-    iam = boto3.client("iam")
-    lambda_client = boto3.client("lambda", region_name=region)
-    logs = boto3.client("logs", region_name=region)
+    # Detach worker policy from EC2 role before stack deletion
+    if infra_exists:
+        print("==> Detaching worker policy from EC2 role...")
+        try:
+            outputs = _get_stack_outputs(cfn, STACK_NAME)
+            # Prefer VPC stack output for role name, fall back to config
+            try:
+                vpc_outputs = _get_stack_outputs(cfn, VPC_STACK_NAME)
+                ec2_role_name = vpc_outputs.get("RoleName")
+            except ClientError:
+                ec2_role_name = None
+            if not ec2_role_name:
+                ec2_role_name = _get_role_name_from_profile(
+                    iam, cfg["aws"].get("iam_profile", "")
+                )
+            iam.detach_role_policy(
+                RoleName=ec2_role_name,
+                PolicyArn=outputs.get("WorkerPolicyArn", ""),
+            )
+        except (ClientError, InfraError):
+            pass
 
-    # Delete Lambda Function URL and Function
-    print("==> Deleting Lambda...")
-    try:
-        lambda_client.delete_function_url_config(FunctionName=LAMBDA_FUNCTION_NAME)
-    except ClientError:
-        pass
-    try:
-        lambda_client.delete_function(FunctionName=LAMBDA_FUNCTION_NAME)
-    except ClientError:
-        pass
+    # Delete main infrastructure stack
+    if infra_exists:
+        print("==> Deleting infrastructure stack...")
+        _delete_stack(cfn, STACK_NAME)
 
-    # Detach and delete Lambda policy
-    print("==> Cleaning up Lambda IAM...")
-    try:
-        iam.detach_role_policy(
-            RoleName=LAMBDA_ROLE_NAME,
-            PolicyArn=infra.get("lambda_policy_arn", ""),
-        )
-    except ClientError:
-        pass
-    try:
-        # Delete all policy versions before deleting policy
-        if infra.get("lambda_policy_arn"):
-            versions = iam.list_policy_versions(PolicyArn=infra["lambda_policy_arn"])["Versions"]
-            for v in versions:
-                if not v["IsDefaultVersion"]:
-                    iam.delete_policy_version(
-                        PolicyArn=infra["lambda_policy_arn"],
-                        VersionId=v["VersionId"],
-                    )
-            iam.delete_policy(PolicyArn=infra["lambda_policy_arn"])
-    except ClientError:
-        pass
-    try:
-        iam.delete_role(RoleName=LAMBDA_ROLE_NAME)
-    except ClientError:
-        pass
+    # Delete VPC stack if requested
+    if include_vpc and vpc_exists:
+        print("==> Deleting VPC stack...")
+        _delete_stack(cfn, VPC_STACK_NAME)
 
-    # Detach and delete EC2 worker policy
-    print("==> Cleaning up EC2 worker IAM...")
-    try:
-        ec2_role_name = _get_role_name_from_profile(iam, cfg["aws"]["iam_profile"])
-        iam.detach_role_policy(
-            RoleName=ec2_role_name,
-            PolicyArn=infra.get("ec2_policy_arn", ""),
-        )
-    except (ClientError, SystemExit):
-        pass
-    try:
-        if infra.get("ec2_policy_arn"):
-            versions = iam.list_policy_versions(PolicyArn=infra["ec2_policy_arn"])["Versions"]
-            for v in versions:
-                if not v["IsDefaultVersion"]:
-                    iam.delete_policy_version(
-                        PolicyArn=infra["ec2_policy_arn"],
-                        VersionId=v["VersionId"],
-                    )
-            iam.delete_policy(PolicyArn=infra["ec2_policy_arn"])
-    except ClientError:
-        pass
-
-    # Delete SQS queues
-    print("==> Deleting SQS queues...")
-    try:
-        sqs.delete_queue(QueueUrl=infra.get("queue_url", ""))
-    except ClientError:
-        pass
-    try:
-        sqs.delete_queue(QueueUrl=infra.get("dlq_url", ""))
-    except ClientError:
-        pass
-
-    # Delete CloudWatch log group
-    print("==> Deleting CloudWatch log group...")
-    try:
-        logs.delete_log_group(logGroupName=infra.get("log_group_name", ""))
-    except ClientError:
-        pass
-
-    # Remove state
-    INFRA_STATE.unlink(missing_ok=True)
-
-    # Remove runtime config values
-    cfg["aws"].pop("sqs_queue_url", None)
+    # Clean up config
+    cfg["aws"].pop("work_table_name", None)
+    cfg["aws"].pop("sqs_queue_url", None)  # Clean up old SQS config if present
     save_config(cfg)
+
+    # Remove legacy state files if present
+    INFRA_STATE.unlink(missing_ok=True)
+    INSTANCE_STATE.unlink(missing_ok=True)
 
     print()
     print("=== Infrastructure destroyed ===")
+    if not include_vpc and vpc_exists:
+        print("  Note: VPC stack preserved. Use --include-vpc to also destroy it.")

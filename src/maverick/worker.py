@@ -1,11 +1,11 @@
-"""SQS worker daemon — polls for issues, runs Claude Code, logs to CloudWatch."""
+"""DynamoDB worker daemon — polls for issues, runs Claude Code, logs to CloudWatch."""
 
-import json
 import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import boto3
@@ -14,6 +14,7 @@ from botocore.exceptions import ClientError
 from maverick.config import init_config
 
 SYSTEMD_UNIT = Path("/etc/systemd/system/maverick-worker.service")
+WORKER_ID = str(uuid.uuid4())
 
 
 class CloudWatchLogger:
@@ -54,12 +55,110 @@ class CloudWatchLogger:
             pass
 
 
-def _process_message(message, cfg, sqs, logs_client):
-    """Process a single SQS message: clone, run Claude, clean up."""
-    body = json.loads(message["Body"])
-    repo = body["repo"]
-    issue_number = body["issue_number"]
-    clone_url = body["clone_url"]
+def _claim_item(dynamodb, table_name, item):
+    """Attempt to claim a work item via conditional update. Returns True if claimed."""
+    now = datetime.now(timezone.utc)
+    lock_until = (now + timedelta(minutes=15)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    try:
+        dynamodb.update_item(
+            TableName=table_name,
+            Key={"id": item["id"]},
+            UpdateExpression=(
+                "SET #s = :processing, locked_until = :lock, worker_id = :wid, "
+                "receive_count = receive_count + :one"
+            ),
+            ConditionExpression=(
+                "#s = :pending OR (#s = :processing AND locked_until < :now)"
+            ),
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":processing": {"S": "PROCESSING"},
+                ":pending": {"S": "PENDING"},
+                ":lock": {"S": lock_until},
+                ":wid": {"S": WORKER_ID},
+                ":now": {"S": now_str},
+                ":one": {"N": "1"},
+            },
+        )
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise
+
+
+def _complete_item(dynamodb, table_name, item_id):
+    """Mark a work item as completed."""
+    dynamodb.update_item(
+        TableName=table_name,
+        Key={"id": {"S": item_id}},
+        UpdateExpression="SET #s = :completed",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":completed": {"S": "COMPLETED"}},
+    )
+
+
+def _fail_item(dynamodb, table_name, item_id, receive_count, max_attempts):
+    """Mark a work item as FAILED if max attempts reached, else reset to PENDING."""
+    if receive_count >= max_attempts:
+        new_status = "FAILED"
+    else:
+        new_status = "PENDING"
+
+    dynamodb.update_item(
+        TableName=table_name,
+        Key={"id": {"S": item_id}},
+        UpdateExpression="SET #s = :status",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":status": {"S": new_status}},
+    )
+
+
+def _poll_candidates(dynamodb, table_name):
+    """Query for PENDING items and stale PROCESSING items."""
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    candidates = []
+
+    # Query PENDING items via GSI
+    resp = dynamodb.query(
+        TableName=table_name,
+        IndexName="status-created_at-index",
+        KeyConditionExpression="#s = :pending",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={":pending": {"S": "PENDING"}},
+        Limit=5,
+    )
+    candidates.extend(resp.get("Items", []))
+
+    # Also query stale PROCESSING items (crashed workers)
+    resp = dynamodb.query(
+        TableName=table_name,
+        IndexName="status-created_at-index",
+        KeyConditionExpression="#s = :processing",
+        FilterExpression="locked_until < :now",
+        ExpressionAttributeNames={"#s": "status"},
+        ExpressionAttributeValues={
+            ":processing": {"S": "PROCESSING"},
+            ":now": {"S": now_str},
+        },
+        Limit=5,
+    )
+    candidates.extend(resp.get("Items", []))
+
+    return candidates
+
+
+def _process_item(item, cfg, dynamodb, logs_client):
+    """Process a single work item: clone, run Claude, clean up."""
+    item_id = item["id"]["S"]
+    repo = item["repo"]["S"]
+    issue_number = int(item["issue_number"]["N"])
+    clone_url = item["clone_url"]["S"]
+    receive_count = int(item["receive_count"]["N"])
+    table_name = cfg["aws"]["work_table_name"]
+    max_attempts = cfg["queue"]["max_attempts"]
 
     owner_repo = repo.replace("/", "-")
     stream_name = f"{owner_repo}-{issue_number}"
@@ -109,16 +208,13 @@ def _process_message(message, cfg, sqs, logs_client):
             cw.log(f"Claude exited with code {proc.returncode}")
             raise RuntimeError(f"Claude exited with code {proc.returncode}")
 
-        # Success — delete SQS message
+        # Success — mark completed
         cw.log(f"Completed {repo}#{issue_number}")
-        sqs.delete_message(
-            QueueUrl=cfg["aws"]["sqs_queue_url"],
-            ReceiptHandle=message["ReceiptHandle"],
-        )
+        _complete_item(dynamodb, table_name, item_id)
 
     except Exception as e:
         cw.log(f"Failed: {e}")
-        # Don't delete message — visibility timeout will expire and it returns to queue
+        _fail_item(dynamodb, table_name, item_id, receive_count, max_attempts)
         raise
 
     finally:
@@ -128,34 +224,35 @@ def _process_message(message, cfg, sqs, logs_client):
 
 
 def _poll_loop(cfg):
-    """Main polling loop — processes one message at a time."""
+    """Main polling loop — processes one item at a time."""
     region = cfg["aws"]["region"]
-    sqs = boto3.client("sqs", region_name=region)
+    dynamodb = boto3.client("dynamodb", region_name=region)
     logs_client = boto3.client("logs", region_name=region)
-    queue_url = cfg["aws"]["sqs_queue_url"]
+    table_name = cfg["aws"]["work_table_name"]
 
-    print(f"Worker polling {queue_url}...")
+    print(f"Worker {WORKER_ID} polling {table_name}...")
 
     while True:
         try:
-            resp = sqs.receive_message(
-                QueueUrl=queue_url,
-                MaxNumberOfMessages=1,
-                WaitTimeSeconds=20,
-            )
-            messages = resp.get("Messages", [])
-            if not messages:
+            candidates = _poll_candidates(dynamodb, table_name)
+            if not candidates:
+                time.sleep(5)
                 continue
 
-            message = messages[0]
-            body = json.loads(message["Body"])
-            print(f"Processing {body['repo']}#{body['issue_number']}...")
+            for item in candidates:
+                if not _claim_item(dynamodb, table_name, item):
+                    continue
 
-            try:
-                _process_message(message, cfg, sqs, logs_client)
-                print("  Done.")
-            except Exception as e:
-                print(f"  Failed: {e}")
+                repo = item["repo"]["S"]
+                issue_number = item["issue_number"]["N"]
+                print(f"Processing {repo}#{issue_number}...")
+
+                try:
+                    _process_item(item, cfg, dynamodb, logs_client)
+                    print("  Done.")
+                except Exception as e:
+                    print(f"  Failed: {e}")
+                break  # Process one item per poll cycle
 
         except KeyboardInterrupt:
             print("\nWorker stopped.")
@@ -166,28 +263,30 @@ def _poll_loop(cfg):
 
 
 def run_once(cfg):
-    """Process a single message and exit. For testing."""
+    """Process a single item and exit. For testing."""
     region = cfg["aws"]["region"]
-    sqs = boto3.client("sqs", region_name=region)
+    dynamodb = boto3.client("dynamodb", region_name=region)
     logs_client = boto3.client("logs", region_name=region)
-    queue_url = cfg["aws"]["sqs_queue_url"]
+    table_name = cfg["aws"]["work_table_name"]
 
-    print("Checking queue for one message...")
-    resp = sqs.receive_message(
-        QueueUrl=queue_url,
-        MaxNumberOfMessages=1,
-        WaitTimeSeconds=5,
-    )
-    messages = resp.get("Messages", [])
-    if not messages:
-        print("No messages in queue.")
+    print("Checking table for pending work...")
+    candidates = _poll_candidates(dynamodb, table_name)
+    if not candidates:
+        print("No pending items.")
         return
 
-    message = messages[0]
-    body = json.loads(message["Body"])
-    print(f"Processing {body['repo']}#{body['issue_number']}...")
-    _process_message(message, cfg, sqs, logs_client)
-    print("Done.")
+    for item in candidates:
+        if not _claim_item(dynamodb, table_name, item):
+            continue
+
+        repo = item["repo"]["S"]
+        issue_number = item["issue_number"]["N"]
+        print(f"Processing {repo}#{issue_number}...")
+        _process_item(item, cfg, dynamodb, logs_client)
+        print("Done.")
+        return
+
+    print("No items could be claimed.")
 
 
 def install(cfg):
@@ -262,13 +361,13 @@ def main(action):
         worker_status()
     elif action == "start":
         cfg = init_config()
-        if not cfg["aws"].get("sqs_queue_url"):
-            print("Error: No SQS queue configured. Run 'maverick infra deploy' first.")
+        if not cfg["aws"].get("work_table_name"):
+            print("Error: No DynamoDB table configured. Run 'maverick infra deploy' first.")
             sys.exit(1)
         _poll_loop(cfg)
     elif action == "run-once":
         cfg = init_config()
-        if not cfg["aws"].get("sqs_queue_url"):
-            print("Error: No SQS queue configured. Run 'maverick infra deploy' first.")
+        if not cfg["aws"].get("work_table_name"):
+            print("Error: No DynamoDB table configured. Run 'maverick infra deploy' first.")
             sys.exit(1)
         run_once(cfg)

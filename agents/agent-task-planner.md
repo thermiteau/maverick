@@ -13,7 +13,7 @@ skills:
 You will be given:
 
 - **Task ID** — e.g., `TASK-001`
-- **Design path** — path to `design.md` containing the approved solution design
+- **Design path** — path to `solution-design.md` containing the approved solution design
 
 ## Process
 
@@ -64,4 +64,4 @@ Return a structured message containing:
 - **Scope boundaries** — follow the mav-scope-boundaries skill. Flag any tasks that touch infrastructure, auth, or destructive operations.
 - **Durable output** — always write the tasks file and update the state file before returning, so work is not lost if the caller's session crashes.
 
-<!-- maverick-plugin-version: 0.5.5 -->
+<!-- maverick-plugin-version: 0.5.4-dev -->
