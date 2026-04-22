@@ -24,11 +24,11 @@ All task artifacts live under `.maverick/do-task/<TASK-ID>/`. The task ID is a z
 ```
 .maverick/do-task/
   TASK-001/
-    task.md            # Formalised task description (the "issue")
-    design.md          # Solution design
-    tasks.md           # Task checklist
-    state.json         # Phase and progress tracking
-    completion.md      # Completion summary
+    task.md              # Formalised task description (the "issue")
+    solution-design.md   # Solution design
+    tasks.md             # Task checklist
+    state.json           # Phase and progress tracking
+    completion.md        # Completion summary
 ```
 
 ### Initialise the Task Directory
@@ -106,20 +106,20 @@ Run Phase 2 as a subagent to keep the main context window clean for implementati
 1. Dispatch the **agent-issue-analyst** agent with:
    - Task ID and path to `task.md` (instead of an issue number)
    - Mode: `solo`
-   - Instruction to read the task from the local file and write the design to `.maverick/do-task/<TASK-ID>/design.md` instead of posting a GitHub comment
+   - Instruction to read the task from the local file and write the design to `.maverick/do-task/<TASK-ID>/solution-design.md` instead of posting a GitHub comment
 2. When the agent returns, verify:
-   - `design.md` exists and follows the solution design structure (Approach, Areas Affected, Key Decisions, Risks, Acceptance Criteria Mapping)
+   - `solution-design.md` exists and follows the solution design structure (Approach, Areas Affected, Key Decisions, Risks, Acceptance Criteria Mapping)
    - `state.json` has `phase` set to `design`
 3. If the agent flagged ambiguities it could not resolve, ask the user. Otherwise continue.
 
-The design document follows the same structure as the mav-create-solution-design skill, written to `design.md` instead of a GitHub comment.
+The design document follows the same structure as the mav-create-solution-design skill, written to `solution-design.md` instead of a GitHub comment.
 
 ## Phase 3: Create Tasks (subagent)
 
 Run Phase 3 as a subagent to keep the main context window clean for implementation.
 
 1. Dispatch the **agent-task-planner** agent with:
-   - Task ID and path to `design.md`
+   - Task ID and path to `solution-design.md`
    - Instruction to read the design from the local file and write the task list to `.maverick/do-task/<TASK-ID>/tasks.md`
 2. When the agent returns, verify:
    - `tasks.md` exists and contains a checkbox-format task list
@@ -130,7 +130,7 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 
 1. Derive the branch name from the task. Use the format `<type>/<task-id>-<short-desc>` (e.g., `feat/TASK-001-add-export`). Follow the mav-git-workflow skill for type prefixes.
 2. Create the branch from the project's integration branch (typically `develop`).
-3. Commit the task artifacts (`task.md`, `design.md`, `tasks.md`) so they are tracked in version control.
+3. Commit the task artifacts (`task.md`, `solution-design.md`, `tasks.md`) so they are tracked in version control.
 4. Update `state.json`: set `branch` and `phase` to `branch`.
 
 ## Phase 5: Execute Tasks
@@ -160,7 +160,7 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
    - Verify each suggestion against the codebase.
    - Push back with reasoning when a suggestion is incorrect.
    - Implement valid fixes one at a time, verifying after each.
-5. If fixes changed the implementation approach, update `design.md` and `tasks.md`.
+5. If fixes changed the implementation approach, update `solution-design.md` and `tasks.md`.
 6. Request re-review if there were critical or spec compliance issues. Repeat until approved.
 7. Update `state.json` phase to `review`.
 
@@ -254,6 +254,6 @@ When resuming work on a task (new session, after crash):
 - **Never commit directly** to `main` or `develop`.
 - **Use conventional commits** that reference the task ID (e.g., `feat: add rubric export (TASK-001)`).
 - **Always create a PR** at the end — this is the autonomous workflow, so deliver a complete result.
-- **Commit task artifacts** (`task.md`, `design.md`, `tasks.md`, `completion.md`) to version control so they are available for review and survive across sessions. Only `state.json` is gitignored.
+- **Commit task artifacts** (`task.md`, `solution-design.md`, `tasks.md`, `completion.md`) to version control so they are available for review and survive across sessions. Only `state.json` is gitignored.
 
 <!-- maverick-plugin-version: 0.5.4-dev -->

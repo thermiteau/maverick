@@ -141,6 +141,7 @@ Every generated project skill MUST use this exact structure:
 
 ```
 ---
+name: <topic-name>
 title: <Topic> — Project Implementation
 topic: <topic-name>
 package: <package-name>          # only for package-level skills in mono-repos
@@ -172,7 +173,7 @@ The `package` field is only included for package-level skills generated in mono-
 - **Facts only** (detected implementations) — describe what exists in the codebase; for recommended skills, describe what should be adopted based on best-practice guidance
 - **Under 100 lines** — this is a fact sheet, not documentation
 - **All four sections required** — Stack, Configuration, Patterns, File Locations
-- **Frontmatter required** — title, topic, last-verified fields mandatory; package field mandatory for package-level skills
+- **Frontmatter required** — name, title, topic, last-verified fields mandatory; package field mandatory for package-level skills
 - **Write directly** — no user approval needed, file is version-controlled
 
 ## When Nothing Is Found
@@ -204,6 +205,7 @@ Use the same mandatory output structure but with **recommended** content:
 
 ```
 ---
+name: <topic-name>
 title: <Topic> — Project Implementation
 topic: <topic-name>
 package: <package-name>          # only for package-level skills in mono-repos
@@ -236,6 +238,7 @@ If no best-practice skill exists for the topic, write a minimal stub:
 
 ```
 ---
+name: <topic-name>
 title: <Topic> — Project Implementation
 topic: <topic-name>
 last-verified: <YYYY-MM-DD>

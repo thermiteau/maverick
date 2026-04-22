@@ -13,7 +13,7 @@ skills:
 You will be given:
 
 - **Task ID** — e.g., `TASK-001`
-- **Design path** — path to `design.md` containing the approved solution design
+- **Design path** — path to `solution-design.md` containing the approved solution design
 
 ## Process
 
