@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-04-22
+
 ### Added
 
 - New `do-recommend` skill — scans a project for missing best-practice areas (currently linting and unit testing) and writes 1–3 ranked technology recommendations per gap to `docs/maverick/recommendations/<topic>.md`. Supports optional single-topic invocation.
@@ -85,7 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.5.7...HEAD
+[0.5.7]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.7
 [0.5.5]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.5
 [0.5.3]: https://github.com/thermiteau/maverick/compare/v0.5.1...v0.5.3
 [0.5.1]: https://github.com/thermiteau/maverick/compare/v0.4.0...v0.5.1

@@ -5,12 +5,12 @@
     "name": "David Cheal",
     "email": "david.cheal@thermite.au"
   },
-  "version": "0.5.6-dev",
+  "version": "0.5.7",
   "plugins": [
     {
       "name": "maverick",
       "description": "Skills, Agents, and Hooks for autonomous AI development. Claude Code, Cursor IDE, Codex.",
-      "version": "0.5.6-dev",
+      "version": "0.5.7",
       "source": "./",
       "author": {
         "name": "David Cheal",
