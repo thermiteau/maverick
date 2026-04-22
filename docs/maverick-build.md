@@ -96,21 +96,22 @@ make release VERSION=0.2.0
 
 ### What the script does
 
-The release script follows a develop-first flow: the release is prepared on `develop`, merged to `main`, tagged, and then `develop` is bumped to the next dev version so it always stays ahead of `main`.
+The release script follows a trunk-based flow. `main` carries the current `-dev` version between releases. The script cuts a short-lived `release/<version>` branch from `main`, bumps the version, and opens a PR back to `main`. After the PR squash-merges, `release-finalize.yml` takes over: tag, GitHub Release, and a follow-up PR that bumps `main` to the next `-dev` version.
 
-1. **Pre-flight checks** — validates the version is valid semver, the branch is `develop`, the working tree is clean, the tag does not already exist, and `main` is an ancestor of `develop`
-2. Bumps the version to `X.Y.Z` in all four manifest files
-3. Updates `CHANGELOG.md` — adds a dated version section below `[Unreleased]` and updates comparison links
-4. Runs `uv lock` to sync the lockfile
-5. Commits on `develop`: `chore: release X.Y.Z`
-6. Checks out `main` and merges `develop` with `--no-ff`
-7. Creates an annotated git tag `vX.Y.Z` on `main`
-8. Checks out `develop` and bumps the version to `X.(Y+1).0-dev` in all four manifest files
-9. Runs `uv lock` and commits: `chore: begin X.(Y+1).0-dev cycle`
+**Local phase** (`scripts/release.sh`):
 
-After running the script, push both branches and the tag, then create a GitHub release:
+1. **Pre-flight checks** — validates the current branch is `main`, the working tree is clean, the computed version has not already been tagged, and the release branch does not already exist
+2. Creates `release/<version>` from `main`
+3. Bumps the version to `X.Y.Z` in `pyproject.toml`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, and `.cursor-plugin/cursor.plugin.json`
+4. Updates `CHANGELOG.md` — adds a dated version section below `[Unreleased]` and updates comparison links
+5. Runs `uv lock` and `make build` to refresh the lockfile and regenerated output
+6. Commits on `release/<version>`: `chore: release X.Y.Z`
+7. Pushes the release branch and creates a PR targeting `main` with the release notes
 
-```bash
-git push origin main develop --tags
-gh release create vX.Y.Z --generate-notes
-```
+**CI phase** (`.github/workflows/release-finalize.yml`):
+
+After the release PR squash-merges into `main`:
+
+1. Tags the merge commit `vX.Y.Z`
+2. Creates a GitHub Release with notes extracted from `CHANGELOG.md`
+3. Opens a follow-up PR (`chore/begin-X.Y.(Z+1)-dev-cycle`) that bumps `main` back to the next `-dev` version

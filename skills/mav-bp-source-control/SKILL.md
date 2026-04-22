@@ -137,7 +137,7 @@ For detailed branching strategy, commit message format, merge conflict handling,
 
 This skill covers:
 - Branch naming conventions (`<type>/<issue>-<desc>`)
-- Protected branches (`main`, `develop`)
+- Protected branch (`main`)
 - Conventional Commits format
 - Merge and rebase strategies
 - Branch cleanup after merge
@@ -157,4 +157,4 @@ When auditing a project or starting work, flag these patterns:
 | Sensitive file patterns missing from `.gitignore` | Future risk of secret commits | Add missing patterns to `.gitignore`                  |
 | Remote URL points to deleted/moved repo    | Effectively no remote           | Update remote URL to valid repository                     |
 
-<!-- maverick-plugin-version: 0.5.7 -->
+<!-- maverick-plugin-version: 0.5.8-dev -->

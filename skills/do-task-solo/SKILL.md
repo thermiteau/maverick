@@ -129,7 +129,7 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 ## Phase 4: Create Branch
 
 1. Derive the branch name from the task. Use the format `<type>/<task-id>-<short-desc>` (e.g., `feat/TASK-001-add-export`). Follow the mav-git-workflow skill for type prefixes.
-2. Create the branch from the project's integration branch (typically `develop`).
+2. Create the branch from the project's default branch (typically `main`).
 3. Commit the task artifacts (`task.md`, `solution-design.md`, `tasks.md`) so they are tracked in version control.
 4. Update `state.json`: set `branch` and `phase` to `branch`.
 
@@ -151,7 +151,7 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 
 ## Phase 6: Code Review
 
-1. Dispatch the agent-code-reviewer agent with the task requirements (from `task.md`) and the diff (`git diff develop...HEAD`).
+1. Dispatch the agent-code-reviewer agent with the task requirements (from `task.md`) and the diff (`git diff main...HEAD`).
 2. The reviewer performs two-stage review: spec compliance first, then code quality.
 3. If spec compliance fails, stop — fix the gaps before requesting re-review.
 4. Process code quality feedback per the do-pullrequest-review skill:
@@ -166,14 +166,14 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 
 ## Phase 7: Documentation Review
 
-1. Run `git diff develop...HEAD --name-only` to identify all changed files.
+1. Run `git diff main...HEAD --name-only` to identify all changed files.
 2. Determine whether the changes affect behaviour that is covered by existing documentation in `docs/`:
    - Changed or added public APIs, components, services, or configuration
    - Altered data flows, integration points, or architectural patterns
    - Modified feature behaviour described in existing docs
 3. If documentation updates are needed, dispatch the **agent-tech-docs-writer** agent with:
    - Mode: **update**
-   - The diff (`git diff develop...HEAD`)
+   - The diff (`git diff main...HEAD`)
    - The list of affected doc files (or a note that new documentation is needed)
    - Instruction to update existing docs to reflect the changes — not to rewrite unrelated sections
 4. Review the agent's output. Verify that updates are accurate and scoped to the changes made.
@@ -251,9 +251,9 @@ When resuming work on a task (new session, after crash):
 
 - **Only pause for user input** when blocked or when the task is ambiguous. Do not ask for approval on design or tasks unless you are uncertain.
 - **Run verification** after each task and after all tasks. Do not declare success if checks fail.
-- **Never commit directly** to `main` or `develop`.
+- **Never commit directly** to `main`.
 - **Use conventional commits** that reference the task ID (e.g., `feat: add rubric export (TASK-001)`).
 - **Always create a PR** at the end — this is the autonomous workflow, so deliver a complete result.
 - **Commit task artifacts** (`task.md`, `solution-design.md`, `tasks.md`, `completion.md`) to version control so they are available for review and survive across sessions. Only `state.json` is gitignored.
 
-<!-- maverick-plugin-version: 0.5.7 -->
+<!-- maverick-plugin-version: 0.5.8-dev -->

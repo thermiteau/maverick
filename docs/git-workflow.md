@@ -37,43 +37,43 @@ These skills work together to constrain the LLM into a disciplined workflow that
 
 ## Branching Strategy
 
-Maverick uses a simplified Gitflow model with two long-lived branches and short-lived feature branches.
+Maverick uses a trunk-based model: `main` is the only long-lived branch. All work happens on short-lived branches that PR back to `main`.
 
 ```mermaid
 gitGraph
-    commit id: "initial"
-    branch develop
-    commit id: "d1"
+    commit id: "m1"
     branch feat/12-add-export
     commit id: "feat: add CSV export module"
     commit id: "feat: add export button to UI"
-    checkout develop
-    merge feat/12-add-export id: "merge PR #13"
+    checkout main
+    merge feat/12-add-export id: "squash-merge PR #13"
     branch fix/15-null-check
     commit id: "fix: handle null input in parser"
-    checkout develop
-    merge fix/15-null-check id: "merge PR #16"
     checkout main
-    merge develop id: "release v1.2.0"
+    merge fix/15-null-check id: "squash-merge PR #16"
+    branch release/1.2.0
+    commit id: "chore: release 1.2.0"
+    checkout main
+    merge release/1.2.0 id: "squash-merge + tag v1.2.0"
 ```
 
 ### Long-lived branches
 
-| Branch    | Purpose                                                 | Direct commits allowed |
-| --------- | ------------------------------------------------------- | ---------------------- |
-| `main`    | Production-ready code. Tagged with release versions.    | Never                  |
-| `develop` | Integration branch. All feature work merges here first. | Never                  |
+| Branch | Purpose                                                                                               | Direct commits allowed |
+| ------ | ----------------------------------------------------------------------------------------------------- | ---------------------- |
+| `main` | Trunk. Carries the current `-dev` version between releases. Tagged `vX.Y.Z` at each release.          | Never                  |
 
 ### Short-lived branches
 
-Feature and fix branches are created per issue and deleted after merge.
+Feature, fix, and release branches are created for a specific purpose and deleted after merge.
 
-| Branch type | Naming pattern                 | Merges into          |
-| ----------- | ------------------------------ | -------------------- |
-| Feature     | `feat/<issue>-<description>`   | `develop`            |
-| Fix         | `fix/<issue>-<description>`    | `develop`            |
-| Chore       | `chore/<issue>-<description>`  | `develop`            |
-| Hotfix      | `hotfix/<issue>-<description>` | `main` and `develop` |
+| Branch type | Naming pattern                 | Merges into |
+| ----------- | ------------------------------ | ----------- |
+| Feature     | `feat/<issue>-<description>`   | `main`      |
+| Fix         | `fix/<issue>-<description>`    | `main`      |
+| Chore       | `chore/<issue>-<description>`  | `main`      |
+| Hotfix      | `hotfix/<issue>-<description>` | `main`      |
+| Release     | `release/<version>`            | `main`      |
 
 ## Branch Naming Convention
 
@@ -163,7 +163,7 @@ An LLM opening a PR without issue linking is producing unaccountable work. The `
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Created: LLM creates branch from develop
+    [*] --> Created: LLM creates branch from main
     Created --> InProgress: LLM commits changes
     InProgress --> PROpened: LLM opens pull request
     PROpened --> CIPassing: All checks pass
@@ -172,14 +172,14 @@ stateDiagram-v2
     CIPassing --> ReviewApproved: Human approves
     CIPassing --> ChangesRequested: Human requests changes
     ChangesRequested --> InProgress: LLM addresses feedback
-    ReviewApproved --> Merged: PR merged to develop
+    ReviewApproved --> Merged: PR squash-merged to main
     Merged --> Deleted: Branch cleaned up
     Deleted --> [*]
 ```
 
 ### Branch creation
 
-- Always branch from `develop` (or `main` for hotfixes)
+- Always branch from `main`
 - Always use the naming convention
 - Always verify the branch does not already exist
 
@@ -230,7 +230,7 @@ The `mav-scope-boundaries` skill encodes these prohibitions. An LLM operating wi
 
 | Phase   | Action                                            | Skill enforcing                         |
 | ------- | ------------------------------------------------- | --------------------------------------- |
-| Start   | Read issue, create branch from `develop`          | `mav-github-issue-workflow`, `mav-git-workflow` |
+| Start   | Read issue, create branch from `main`             | `mav-github-issue-workflow`, `mav-git-workflow` |
 | Develop | Commit with conventional messages, push regularly | `mav-git-workflow`                              |
 | Verify  | Run local checks before push                      | `mav-local-verification`                        |
 | PR      | Open PR linking to issue, wait for CI             | `mav-github-issue-workflow`, `mav-git-workflow` |
@@ -239,7 +239,7 @@ The `mav-scope-boundaries` skill encodes these prohibitions. An LLM operating wi
 
 ## Key Constraints for LLMs
 
-- Never commit directly to `main` or `develop`
+- Never commit directly to `main`
 - Never create a branch without an issue number
 - Never use `--no-verify` to skip hooks
 - Never force push to any branch
