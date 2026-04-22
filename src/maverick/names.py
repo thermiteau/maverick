@@ -4,6 +4,7 @@
 # Skills
 # ---------------------------------------------------------------------------
 
+DO_ADOPT = "do-adopt"
 DO_DOCS = "do-docs"
 DO_INIT = "do-init"
 DO_INSTALL = "do-install"
@@ -11,6 +12,7 @@ DO_ISSUE_GUIDED = "do-issue-guided"
 DO_ISSUE_SOLO = "do-issue-solo"
 DO_MAVERICK_ALIGNMENT = "do-maverick-alignment"
 DO_PULLREQUEST_REVIEW = "do-pullrequest-review"
+DO_RECOMMEND = "do-recommend"
 DO_TASK_SOLO = "do-task-solo"
 DO_TECH_DOCS = "do-tech-docs"
 DO_UPSKILL = "do-upskill"
@@ -50,6 +52,7 @@ MAV_SCOPE_BOUNDARIES = "mav-scope-boundaries"
 MAV_SYSTEMATIC_DEBUGGING = "mav-systematic-debugging"
 
 ALL_SKILL_NAMES = {
+    DO_ADOPT,
     DO_DOCS,
     DO_INIT,
     DO_INSTALL,
@@ -57,6 +60,7 @@ ALL_SKILL_NAMES = {
     DO_ISSUE_SOLO,
     DO_MAVERICK_ALIGNMENT,
     DO_PULLREQUEST_REVIEW,
+    DO_RECOMMEND,
     DO_TASK_SOLO,
     DO_TECH_DOCS,
     DO_UPSKILL,

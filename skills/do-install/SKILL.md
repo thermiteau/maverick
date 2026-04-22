@@ -21,4 +21,4 @@ Dispatch the **maverick** agent with task `install` and any user-provided argume
 4. Verify the installation by running `maverick --help`
 5. Report the result to the user — success or failure with any error output
 
-<!-- maverick-plugin-version: 0.5.4-dev -->
+<!-- maverick-plugin-version: 0.5.6-dev -->
