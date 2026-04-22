@@ -141,7 +141,12 @@ The registry (`src/maverick/registry.py`) discovers all `config.py` files, rende
 
 ## Key Conventions
 
-- **Git workflow**: Trunk-based. `main` is the only long-lived branch — it carries the current `-dev` version between releases and is tagged at each release. No direct commits or pushes to `main` — all changes land via squash-merged PRs. Feature branches are short-lived and branch from `main`: `<type>/<issue>-<desc>` (e.g., `feat/42-add-export`). Release branches (`release/<version>`) are short-lived and exist only long enough to cut a release. Conventional Commits with issue refs: `feat: add export button (#42)`.
+- **Git workflow**: Trunk-based with a stable tracking branch.
+  - `main` is where development happens: it carries the current `-dev` version between releases, and is tagged `vX.Y.Z` at each release. No direct commits or pushes to `main` — all changes land via squash-merged PRs.
+  - `stable` is the branch end users install from (it is GitHub's default branch, so a bare `git clone` resolves to it). It is automatically fast-forwarded to the latest release tag by `release-finalize.yml` and never moves during `-dev` cycles. No human ever pushes to `stable` — it is CI-managed.
+  - Feature branches are short-lived, branch from `main`, and PR back to `main`: `<type>/<issue>-<desc>` (e.g., `feat/42-add-export`). Release branches (`release/<version>`) are short-lived and exist only long enough to cut a release.
+  - Conventional Commits with issue refs: `feat: add export button (#42)`.
+  - When creating PRs programmatically (e.g., via `gh pr create`), always pass `--base main` explicitly, because the repository's default branch is `stable`.
 - **Scope boundaries** (`skills/mav-scope-boundaries/`): Four hard limits — no infrastructure changes without explicit issue authorization, no auth/permissions changes without human review, no destructive git ops without session consent, never touch production systems.
 - **Python**: 3.10+, `uv` package manager, `boto3` for AWS, `argparse` CLI framework.
 - **Skills format**: Source is `config.py` (frontmatter fields) + `body.md.j2` (Jinja2 template). Both skills and agents use `{{ SKILLS.CONSTANT }}` / `{{ AGENTS.CONSTANT }}` to reference other skills/agents. Build output is generated YAML frontmatter + rendered markdown.

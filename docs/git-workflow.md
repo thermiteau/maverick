@@ -59,9 +59,10 @@ gitGraph
 
 ### Long-lived branches
 
-| Branch | Purpose                                                                                               | Direct commits allowed |
-| ------ | ----------------------------------------------------------------------------------------------------- | ---------------------- |
-| `main` | Trunk. Carries the current `-dev` version between releases. Tagged `vX.Y.Z` at each release.          | Never                  |
+| Branch   | Purpose                                                                                                                                                     | Direct commits allowed |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `main`   | Trunk. Carries the current `-dev` version between releases. Tagged `vX.Y.Z` at each release.                                                                | Never                  |
+| `stable` | What end users install. Automatically fast-forwarded to the latest release tag by `release-finalize.yml`. Never moves during `-dev` cycles. CI-managed.     | Never (CI only)        |
 
 ### Short-lived branches
 

@@ -114,4 +114,11 @@ After the release PR squash-merges into `main`:
 
 1. Tags the merge commit `vX.Y.Z`
 2. Creates a GitHub Release with notes extracted from `CHANGELOG.md`
-3. Opens a follow-up PR (`chore/begin-X.Y.(Z+1)-dev-cycle`) that bumps `main` back to the next `-dev` version
+3. Fast-forwards the `stable` branch to the new tag commit (this is what end users clone)
+4. Opens a follow-up PR (`chore/begin-X.Y.(Z+1)-dev-cycle`) that bumps `main` back to the next `-dev` version
+
+### The `stable` branch
+
+`stable` is the branch end users install from — a bare `git clone git@github.com:thermiteau/maverick.git` resolves to it because `stable` is GitHub's default branch. It always points at the most recent release tag. Between releases `main` moves forward with feature PRs, but `stable` stays frozen on the last tagged commit, so consumers who pull updates only see new code once an actual release happens.
+
+No human pushes to `stable`. The only writer is the `Fast-forward stable branch to the new release` step in `release-finalize.yml`, which runs after tagging.

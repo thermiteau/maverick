@@ -249,7 +249,7 @@ BRANCH=$(jq -r '.branch' .claude/issue-state.json)
 
 git push -u origin $BRANCH
 
-gh pr create --title "<concise title>" --body "$(cat <<PR_EOF
+gh pr create --base main --title "<concise title>" --body "$(cat <<PR_EOF
 ## Summary
 <1-3 bullet points>
 
