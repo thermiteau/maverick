@@ -1,6 +1,6 @@
 ---
 name: mav-git-workflow
-description: Git branching strategy, commit conventions, merge conflict handling, and branch lifecycle. Implements a simplified Gitflow with protected branches and conventional commits.
+description: Git branching strategy, commit conventions, merge conflict handling, and branch lifecycle. Implements a simplified Gitflow with protected branches and conventional commits. Covers worktree-based multi-story workflows and cross-references stacked-PR handling.
 disable-model-invocation: false
 ---
 
@@ -26,6 +26,54 @@ If no remote is configured:
 3. **Do not create a remote autonomously** — the user must set up the remote repository and configure the origin
 
 A project with no remote cannot use protected branches, pull requests, or CI/CD — all of which are foundational to this workflow.
+
+## Worktrees — required for multi-story workflows
+
+Maverick's multi-story workflows (`do-epic`) run each story in
+its own git worktree under `.maverick/worktrees/`. This keeps in-flight
+stories isolated from each other and from the main checkout.
+
+### Worktree precondition
+
+Before entering `do-epic` (or any flow that relies on
+worktrees), verify the capability:
+
+```bash
+uv run maverick worktree list
+```
+
+If this fails, the workflow aborts with a hard error. Worktrees require:
+
+- A non-shallow clone (`git rev-parse --is-shallow-repository` returns
+  `false`). Shallow clones cannot create new worktrees.
+- A git version that supports `git worktree add` (2.15+).
+- Filesystem write access under `.maverick/worktrees/`.
+
+### Worktree lifecycle
+
+One worktree per story, created off the resolved base branch:
+
+```bash
+uv run maverick worktree create <branch> [--base <base-branch>]
+```
+
+On every exit path — merge, eject, abort — destroy the worktree:
+
+```bash
+uv run maverick worktree destroy <path>
+```
+
+Leaving stale worktrees inflates disk usage and confuses future
+`worktree list` reads. The only reason to keep a worktree after exit is
+if a PR was ejected and the human may want to inspect the in-flight
+state — note the path in the eject comment.
+
+### Stacked branches
+
+If a story depends on a sibling story whose PR is still open, stack per
+`mav-stacked-prs`. The worktree is created off the sibling
+branch instead of the default branch. The retarget guard in
+`mav-stacked-prs` handles the sibling merging.
 
 ## Branch Strategy
 
@@ -160,6 +208,14 @@ test: add integration tests for grading service (#42)
 refactor: extract token cost calculation into utility (#63)
 chore: update vitest to v3.1 (#71)
 ```
+
+### Push cadence — after every task
+
+Commit and push **after every task**, not only at end of story. This
+makes work durable across machine death: a takeover instance can fetch
+the branch from origin and resume at the next unchecked task. See
+`mav-durability-on-gh` for the rationale and the worked
+pattern.
 
 ### Multi-line Commits
 
