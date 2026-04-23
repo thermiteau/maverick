@@ -6,32 +6,68 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-pullrequest-review
 
 # Work on GitHub Issue (Autonomous)
 
-Work on GitHub issue `` autonomously. Follow every phase in order. Do not skip phases. Only pause to ask the user when you are blocked or need clarification.
+Work on GitHub issue `` autonomously, coordinating safely
+with any other Maverick instance that might also hold a claim on this
+issue. Follow every phase in order. Only pause to ask the user when you
+are blocked or need clarification.
 
 ## Before You Begin
 
-If `` is empty or not a valid issue number, ask the user for the issue number before proceeding. Do not attempt any phase without it.
+If `` is empty or not a valid issue number, ask the user
+for the issue number before proceeding.
+
+Determine the repo (via `gh repo view --json nameWithOwner`) — you will
+pass it to every `maverick coord` command below.
+
+## Phase 0: Coordination + cold-start
+
+This phase is new in the workflow overhaul. Before any other phase.
+
+1. Run `uv run maverick coord read <repo> ` and inspect
+   the snapshot. Decide which of the four branches in
+   `mav-multi-instance-coordination` applies:
+   - **Blocked** (`blocked-by:#N` label): abort cleanly, report to user.
+   - **Claimed with live lease**: abort cleanly, report holder + expiry.
+   - **Claimed with stale lease**: decide take-over vs defer.
+   - **Free**: proceed to claim.
+2. Claim the issue: `uv run maverick coord claim <repo> `.
+   The command exits non-zero if the claim is rejected — treat that as
+   abort.
+3. Start a heartbeat loop that refreshes the lease every
+   `HEARTBEAT_INTERVAL_MINUTES` minutes for as long as you hold the
+   claim. If two consecutive heartbeats fail, treat the claim as lost
+   and abort (do not push further work).
+4. Register a release handler that fires on every exit path (success,
+   eject, abort): `uv run maverick coord release <repo>  --reason <reason>`.
+5. Cold-start hydrate per `mav-durability-on-gh`:
+   - Read open PRs: `gh pr list --head <branch> --json number,state`
+   - Read the tasks comment on the issue
+   - Check for an existing worktree for this issue under `.maverick/worktrees/`
+   - If any state exists, resume at the appropriate phase rather than re-doing work.
 
 ## Phase 1-2: Understand the Issue and Solution Design (subagent)
 
-Run Phases 1 and 2 as a subagent to keep the main context window clean for implementation.
+Run Phases 1 and 2 as a subagent to keep the main context window clean for
+implementation.
 
-1. Initialise the issue state file per the mav-github-issue-workflow skill.
+1. Initialise the issue state file per the
+   mav-github-issue-workflow skill.
 2. Dispatch the **agent-issue-analyst** agent with:
    - Issue number: ``
    - Mode: `solo`
 3. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `design`
    - `.claude/issue-state.json` has `comments.design` set to a comment ID
-4. If the agent flagged ambiguities it could not resolve, ask the user. Otherwise continue.
+4. If the agent flagged ambiguities it could not resolve, ask the user.
+   Otherwise continue.
 
 ## Phase 3: Create Tasks (subagent)
 
-Run Phase 3 as a subagent to keep the main context window clean for implementation.
+Run Phase 3 as a subagent.
 
 1. Dispatch the **agent-github-issue-planner** agent with:
    - Issue number: ``
@@ -40,92 +76,155 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
    - `.claude/issue-state.json` has `phase` set to `tasks`
    - If < 5 tasks: `.claude/issue-state.json` has `comments.tasks` set to a comment ID
    - If >= 5 tasks: `.claude/issue-state.json` has `has_sub_issues` set to `true`
-3. If the agent flagged scope concerns, ask the user. Otherwise continue.
+3. If the agent flagged scope concerns, ask the user.
 
-## Phase 4: Create Branch
+## Phase 4: Create Worktree + Branch
 
-1. Derive the branch name per the mav-github-issue-workflow skill (branching conventions).
-2. Create the branch from the project's default branch (typically `main`).
-3. Update phase to `branch` in the state file.
+This phase has changed in the overhaul. The branch is created **inside a
+dedicated worktree**, not in the main checkout.
 
-## Phase 5: Execute Tasks
+1. Derive the branch name per the mav-github-issue-workflow skill.
+2. Resolve the base branch via `mav-git-workflow`'s default-branch
+   lookup (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`).
+   - If this story depends on a sibling story whose PR is open but not
+     merged, stack per `mav-stacked-prs` — base = sibling branch.
+3. Create the worktree: `uv run maverick worktree create <branch> [--base <sibling-branch>]`.
+   From this point on, all file edits happen inside the worktree path.
+4. `cd` into the worktree path for the rest of the story.
+5. Update phase to `branch` in the state file.
 
-1. Check for project-level skills in `docs/maverick/skills/`. For each topic directory that contains a `SKILL.md`, read it. These project skills provide codebase-specific guidance (libraries, patterns, configuration) that supplements the best-practice skills. If none exist, continue without them.
+## Phase 5: Execute Tasks (push after every task)
+
+This phase has changed. **Push after every task, not at the end.** See
+`mav-durability-on-gh`.
+
+1. Read project-level skills at `docs/maverick/skills/`. Apply any
+   topic-specific guidance they carry.
 2. Update phase to `implement` in the state file.
 
-**If `.claude/issue-state.json` has `has_sub_issues: true`:**
+**For each task (sub-issue or checklist item), in order:**
 
-1. Read the tasks summary comment on the parent issue for the execution order
-2. For each sub-issue in execution order:
-   1. Read the sub-issue description
-   2. Implement the change described
-   3. Run verification (lint, typecheck, tests) per the mav-local-verification skill
-   4. Commit with a conventional commit referencing the parent issue
-   5. Update the tasks summary comment: mark the sub-issue as complete
-   6. Close the sub-issue
-3. After all sub-issues are complete, run the full verification suite
+1. Implement the change.
+2. Run local verification per `mav-local-verification` (lint,
+   typecheck, tests).
+3. If verification fails, diagnose per `mav-systematic-debugging`
+   and fix. Do not commit red.
+4. Create a conventional commit referencing the issue number.
+5. **Push immediately**:
+   - If this is the first push on the branch, set upstream:
+     `git push -u origin <branch>`.
+   - If on a stacked branch, run the retarget check per
+     `mav-stacked-prs` **before every push**.
+6. Update the tasks comment (or close the sub-issue).
+7. Heartbeat: `uv run maverick coord heartbeat <repo> ` if it
+   is time for a refresh.
 
-**Otherwise (checklist tasks):**
+After the last task, run the full verification suite once more.
 
-1. Read the tasks comment on the issue
-2. For each task in order:
-   1. Implement the change described
-   2. Run verification (lint, typecheck, tests) per the mav-local-verification skill
-   3. Commit with a conventional commit referencing the issue number
-   4. Update the tasks comment: check off the completed task (`- [ ]` to `- [x]`)
-3. After all tasks are complete, run the full verification suite
+Follow `mav-plan-execution` for the broader execution loop,
+verification discipline, failure handling, and crash recovery.
 
-Follow the mav-plan-execution skill for the execution loop, verification discipline, failure handling, and crash recovery.
+## Phase 6: Documentation Review
 
-## Phase 6: Code Review
-
-1. Dispatch the agent-code-reviewer agent with the issue requirements and the diff (`git diff main...HEAD`).
-2. The reviewer performs two-stage review: spec compliance first, then code quality.
-3. If spec compliance fails, stop — fix the gaps before requesting re-review.
-4. Process code quality feedback per the do-pullrequest-review skill:
-   - Read all items before acting.
-   - Clarify unclear items before implementing any.
-   - Verify each suggestion against the codebase.
-   - Push back with reasoning when a suggestion is incorrect.
-   - Implement valid fixes one at a time, verifying after each.
-5. If fixes changed the implementation approach, update the tasks comment on the issue.
-6. Request re-review if there were critical or spec compliance issues. Repeat until approved.
-7. Update phase to `review` in the state file.
-
-## Phase 7: Documentation Review
-
-1. Run `git diff main...HEAD --name-only` to identify all changed files.
-2. Determine whether the changes affect behaviour that is covered by existing documentation in `docs/`:
-   - Changed or added public APIs, components, services, or configuration
-   - Altered data flows, integration points, or architectural patterns
+1. Run `git diff origin/<base>...HEAD --name-only` to identify all changed files.
+2. Determine whether the changes affect behaviour covered by `docs/`:
+   - Changed public APIs, components, services, configuration
+   - Altered data flows, integration points, architectural patterns
    - Modified feature behaviour described in existing docs
-3. If documentation updates are needed, dispatch the **agent-tech-docs-writer** agent with:
-   - Mode: **update**
-   - The diff (`git diff main...HEAD`)
-   - The list of affected doc files (or a note that new documentation is needed)
-   - Instruction to update existing docs to reflect the changes — not to rewrite unrelated sections
-4. Review the agent's output. Verify that updates are accurate and scoped to the changes made.
-5. If no existing documentation is affected and the changes do not warrant a new document, skip this phase.
+3. If docs need updating, dispatch **agent-tech-docs-writer** in
+   update mode with the diff and the list of affected doc files.
+4. Review and commit any doc updates. Push per the push-per-task rule.
+5. If no docs are affected, skip.
 
-## Phase 8: Push and Verify CI
+## Phase 7: Open PR + Monitor CI
 
-1. Run pre-push verification per the mav-local-verification skill (lint, typecheck, tests). Fix any failures before pushing.
-2. Push the branch to remote.
-3. Monitor CI status per the mav-bp-cicd skill. If CI fails, read the failure logs, fix locally, and push again. Do not proceed until CI passes.
+1. Pre-push verification per `mav-local-verification` — a final
+   green check before asking for review.
+2. Stacked-PR retarget check per `mav-stacked-prs` if the branch
+   stacks on a sibling. Retarget before opening the PR if the sibling is now
+   merged.
+3. Open the PR:
+   ```bash
+   gh pr create --base <resolved-base> --head <branch> \
+       --title "<conventional title referencing #>" \
+       --body "<summary + closes #>"
+   ```
+4. Monitor CI per `mav-bp-cicd`. If CI fails, read logs, fix
+   locally, push. Do not proceed to Phase 8 until CI is green.
 
-## Phase 9: Update Issue and Create PR
+## Phase 8: Code Review (binary, hard gate)
 
-1. Post a completion comment on the issue per the mav-github-issue-workflow skill (post completion comment pattern).
-2. Create a pull request per the mav-github-issue-workflow skill (PR pattern).
-3. Update phase to `complete` in the state file.
-4. Clean up the state file.
+This phase has changed. Review is now a **binary verdict** against the
+open PR, not a local-diff advisory loop. See `agent-code-reviewer`.
+
+1. Dispatch **agent-code-reviewer** with:
+   - The PR URL
+   - The issue body, design comment, and tasks list (so it has the spec)
+2. The agent returns exactly one of two verdicts:
+   - **PASS** — proceed to Phase 9 (merge).
+   - **FAIL** — proceed to Phase 10 (eject). Do not attempt to auto-fix.
+3. Update phase to `review` in the state file.
+
+There is no fix-and-re-review loop. If the reviewer FAILs the PR, the
+next step is eject-to-human, not iterate.
+
+## Phase 9: Auto-merge (on PASS)
+
+1. `maverick-bot` posts the approval:
+   ```bash
+   uv run maverick bot gh -- pr review <pr-url> --approve \
+       --body "Approved by agent-code-reviewer at $(date -u +%FT%TZ)"
+   ```
+2. Enable auto-merge (squash):
+   ```bash
+   uv run maverick bot gh -- pr merge <pr-url> --auto --squash
+   ```
+   If CI was already green, GitHub merges immediately. Otherwise it
+   merges when CI passes.
+3. Post the completion comment on the issue per
+   `mav-github-issue-workflow`.
+4. Update phase to `complete` in the state file.
+5. Release the claim: `uv run maverick coord release <repo>  --reason merged`.
+6. Clean up:
+   - Local state file
+   - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
+
+## Phase 10: Eject (on FAIL)
+
+1. Post the reviewer's verdict as a PR comment:
+   ```bash
+   gh pr comment <pr-url> --body-file /tmp/review-verdict.md
+   ```
+2. Apply the `needs-human` label to both the PR and the issue:
+   ```bash
+   gh pr edit <pr-url> --add-label needs-human
+   gh issue edit  --add-label needs-human
+   ```
+3. Request human review on the PR:
+   ```bash
+   gh pr edit <pr-url> --add-reviewer <human-handle>
+   ```
+4. If this story belongs to an epic (check `.claude/epic-state.json` or
+   look for a parent epic reference on the issue):
+   - Update epic state — mark this story `ejected`.
+   - Trigger block propagation per `mav-block-propagation`:
+     apply `blocked-by:#` to every transitive descendant.
+   - Cancel any in-flight subagent work for stories now in the blocked set.
+5. Release the claim: `uv run maverick coord release <repo>  --reason ejected`.
+6. Do **not** destroy the worktree — the human may want to inspect it.
+   Log the worktree path so the user can find it.
 
 ## Rules
 
-- **Only pause for user input** when blocked or when the issue is ambiguous. Do not ask for approval on design or tasks unless you are uncertain.
-- **Run verification** after each task and after all tasks. Do not declare success if checks fail.
-- **Never commit directly** to `main`.
-- **Use conventional commits** that reference the issue number (e.g., `feat: add rubric export (#42)`).
-- **Always create a PR** at the end — this is the autonomous workflow, so deliver a complete result.
+- **Only pause for user input** when blocked or when the issue is ambiguous.
+- **Never commit directly to the default branch.** All work flows through
+  the feature branch → PR.
+- **Always use conventional commits** referencing `#`.
+- **Push after every task.** Durability trumps CI-cost optimisation.
+- **Binary review.** PASS auto-merges; FAIL ejects. No fix loop.
+- **Release the claim on every exit path.** Success, eject, abort, crash —
+  all of them must release.
+- **Never remove a `blocked-by:#N` label from inside the workflow.** Only a
+  human may clear a block.
 
 <!-- maverick-plugin-version: 0.5.8-dev -->

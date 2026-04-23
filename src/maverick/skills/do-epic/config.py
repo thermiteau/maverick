@@ -1,11 +1,9 @@
 from maverick.models import SkillConfig
 from maverick.names import (
+    DO_EPIC,
     DO_ISSUE_SOLO,
-    DO_PULLREQUEST_REVIEW,
     MAV_BLOCK_PROPAGATION,
-    MAV_BP_ALERTING,
     MAV_BP_CICD,
-    MAV_BP_LOGGING,
     MAV_CLAUDE_CODE_RECOVERY,
     MAV_CREATE_SOLUTION_DESIGN,
     MAV_CREATE_TASKS,
@@ -17,15 +15,17 @@ from maverick.names import (
     MAV_PLAN_EXECUTION,
     MAV_SCOPE_BOUNDARIES,
     MAV_STACKED_PRS,
-    MAV_SYSTEMATIC_DEBUGGING,
 )
 
 CONFIG = SkillConfig(
-    name=DO_ISSUE_SOLO,
+    name=DO_EPIC,
     description=(
-        "Work on a GitHub issue end-to-end autonomously, only pausing when blocked or when clarification is needed."
+        "Work on a multi-story GitHub epic end-to-end. Builds a DAG from the child"
+        " stories, groups them into waves, runs waves in parallel via per-story"
+        " worktrees, ejects PRs that fail agent-code-review for human handling, and"
+        " propagates blocks to downstream stories. Requires git worktrees."
     ),
-    argument_hint="issue number (e.g., 123)",
+    argument_hint="epic issue number (e.g., 123)",
     user_invocable=True,
     disable_model_invocation=False,
     depends_on=[
@@ -42,9 +42,6 @@ CONFIG = SkillConfig(
         MAV_LOCAL_VERIFICATION,
         MAV_BP_CICD,
         MAV_CLAUDE_CODE_RECOVERY,
-        MAV_BP_LOGGING,
-        MAV_BP_ALERTING,
-        MAV_SYSTEMATIC_DEBUGGING,
-        DO_PULLREQUEST_REVIEW,
+        DO_ISSUE_SOLO,
     ],
 )
