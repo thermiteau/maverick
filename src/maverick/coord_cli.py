@@ -1,0 +1,327 @@
+"""CLI sub-commands for the new multi-instance coordination layer.
+
+Exposes the gh_state, dag, epic_state, worktree, coordinator, and gh_app
+modules as shell-callable commands so skill bodies can invoke them via
+`uv run maverick <sub> <op> …` without re-implementing anything.
+
+Usage shape:
+
+    uv run maverick coord read     <repo> <issue>
+    uv run maverick coord claim    <repo> <issue> [--scope N,N,N]
+    uv run maverick coord heartbeat <repo> <issue>
+    uv run maverick coord release  <repo> <issue> [--reason R]
+    uv run maverick coord takeover <repo> <issue>
+    uv run maverick dag show       <repo> <epic>
+    uv run maverick dag waves      <repo> <epic>
+    uv run maverick dag descendants <repo> <epic> <story>
+    uv run maverick state show     <repo> <epic>
+    uv run maverick state set      <repo> <epic> <story> <status>
+    uv run maverick worktree create <branch> [--base BASE]
+    uv run maverick worktree list
+    uv run maverick worktree destroy <path>
+    uv run maverick bot status
+    uv run maverick bot gh -- <gh args…>
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+from maverick import coordinator, dag, epic_state, gh_app, gh_state, worktree
+
+
+def _json_print(obj: object) -> None:
+    print(json.dumps(obj, indent=2, sort_keys=True))
+
+
+# ---------------------------------------------------------------------------
+# coord
+# ---------------------------------------------------------------------------
+
+
+def _coord_read(args: argparse.Namespace) -> int:
+    state = coordinator.read_claim_state(args.repo, args.issue)
+    _json_print(state)
+    return 0
+
+
+def _coord_claim(args: argparse.Namespace) -> int:
+    scope = args.scope.split(",") if args.scope else None
+    try:
+        c = coordinator.claim(args.repo, args.issue, scope=scope)
+    except coordinator.ClaimRejected as e:
+        print(f"claim rejected: {e}", file=sys.stderr)
+        return 2
+    _json_print(c.to_payload())
+    return 0
+
+
+def _coord_heartbeat(args: argparse.Namespace) -> int:
+    try:
+        coordinator.heartbeat(args.repo, args.issue)
+    except coordinator.ClaimLost as e:
+        print(f"claim lost: {e}", file=sys.stderr)
+        return 3
+    print("ok")
+    return 0
+
+
+def _coord_release(args: argparse.Namespace) -> int:
+    coordinator.release(args.repo, args.issue, reason=args.reason)
+    print("released")
+    return 0
+
+
+def _coord_takeover(args: argparse.Namespace) -> int:
+    try:
+        c = coordinator.takeover(args.repo, args.issue)
+    except coordinator.ClaimRejected as e:
+        print(f"takeover rejected: {e}", file=sys.stderr)
+        return 2
+    _json_print(c.to_payload())
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# dag
+# ---------------------------------------------------------------------------
+
+
+def _dag_show(args: argparse.Namespace) -> int:
+    d = dag.load_dag(args.repo, args.epic)
+    if d is None:
+        print("no maverick-dag marker on epic", file=sys.stderr)
+        return 1
+    _json_print(d.to_payload())
+    return 0
+
+
+def _dag_waves(args: argparse.Namespace) -> int:
+    d = dag.load_dag(args.repo, args.epic)
+    if d is None:
+        print("no maverick-dag marker on epic", file=sys.stderr)
+        return 1
+    _json_print(d.waves())
+    return 0
+
+
+def _dag_descendants(args: argparse.Namespace) -> int:
+    d = dag.load_dag(args.repo, args.epic)
+    if d is None:
+        print("no maverick-dag marker on epic", file=sys.stderr)
+        return 1
+    _json_print(sorted(d.transitive_descendants(args.story)))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# state
+# ---------------------------------------------------------------------------
+
+
+def _state_show(args: argparse.Namespace) -> int:
+    s = epic_state.hydrate_from_gh(args.repo, args.epic)
+    if s is None:
+        print("no maverick-state marker on epic", file=sys.stderr)
+        return 1
+    _json_print(s.to_payload())
+    return 0
+
+
+def _state_set(args: argparse.Namespace) -> int:
+    s = epic_state.hydrate_from_gh(args.repo, args.epic) or epic_state.EpicState(epic=args.epic)
+    epic_state.transition(args.repo, s, args.story, args.status)  # type: ignore[arg-type]
+    _json_print(s.to_payload())
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# worktree
+# ---------------------------------------------------------------------------
+
+
+def _worktree_create(args: argparse.Namespace) -> int:
+    worktree.ensure_available()
+    w = worktree.create(args.branch, base=args.base)
+    _json_print({"path": str(w.path), "branch": w.branch, "head": w.head})
+    return 0
+
+
+def _worktree_list(args: argparse.Namespace) -> int:
+    trees = worktree.list_worktrees()
+    _json_print(
+        [{"path": str(w.path), "branch": w.branch, "head": w.head} for w in trees]
+    )
+    return 0
+
+
+def _worktree_destroy(args: argparse.Namespace) -> int:
+    worktree.destroy(Path(args.path), force=args.force)
+    print("destroyed")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# bot
+# ---------------------------------------------------------------------------
+
+
+def _bot_status(args: argparse.Namespace) -> int:
+    _json_print(gh_app.check_configured())
+    return 0
+
+
+def _bot_gh(args: argparse.Namespace) -> int:
+    try:
+        result = gh_app.bot_gh(*args.gh_args)
+    except gh_app.BotNotConfigured as e:
+        print(f"bot not configured: {e}", file=sys.stderr)
+        return 4
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result.returncode
+
+
+# ---------------------------------------------------------------------------
+# gh-state
+# ---------------------------------------------------------------------------
+
+
+def _gh_state_read(args: argparse.Namespace) -> int:
+    m = gh_state.latest_marker(args.repo, args.issue, args.kind)
+    _json_print(m.payload if m else None)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# wiring
+# ---------------------------------------------------------------------------
+
+
+def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
+    """Register all new subcommands on the shared top-level parser."""
+    # coord
+    coord = subparsers.add_parser("coord", help="Multi-instance claim/lease primitives")
+    coord_sub = coord.add_subparsers(dest="coord_cmd", required=True)
+
+    p = coord_sub.add_parser("read", help="Read claim state for an issue")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.set_defaults(_handler=_coord_read)
+
+    p = coord_sub.add_parser("claim", help="Claim an issue")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument("--scope", help="Comma-separated issue numbers in scope")
+    p.set_defaults(_handler=_coord_claim)
+
+    p = coord_sub.add_parser("heartbeat", help="Refresh a lease")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.set_defaults(_handler=_coord_heartbeat)
+
+    p = coord_sub.add_parser("release", help="Release a claim")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument("--reason", default="complete")
+    p.set_defaults(_handler=_coord_release)
+
+    p = coord_sub.add_parser("takeover", help="Take over a stale lease")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.set_defaults(_handler=_coord_takeover)
+
+    # dag
+    d = subparsers.add_parser("dag", help="Read/walk the epic DAG")
+    d_sub = d.add_subparsers(dest="dag_cmd", required=True)
+
+    p = d_sub.add_parser("show", help="Print the DAG JSON")
+    p.add_argument("repo")
+    p.add_argument("epic", type=int)
+    p.set_defaults(_handler=_dag_show)
+
+    p = d_sub.add_parser("waves", help="Print wave grouping")
+    p.add_argument("repo")
+    p.add_argument("epic", type=int)
+    p.set_defaults(_handler=_dag_waves)
+
+    p = d_sub.add_parser("descendants", help="Print transitive descendants of a story")
+    p.add_argument("repo")
+    p.add_argument("epic", type=int)
+    p.add_argument("story")
+    p.set_defaults(_handler=_dag_descendants)
+
+    # state
+    s = subparsers.add_parser("state", help="Read/update epic state")
+    s_sub = s.add_subparsers(dest="state_cmd", required=True)
+
+    p = s_sub.add_parser("show", help="Print epic-state JSON")
+    p.add_argument("repo")
+    p.add_argument("epic", type=int)
+    p.set_defaults(_handler=_state_show)
+
+    p = s_sub.add_parser("set", help="Set story status and mirror to GH")
+    p.add_argument("repo")
+    p.add_argument("epic", type=int)
+    p.add_argument("story")
+    p.add_argument("status", choices=["pending", "in_flight", "merged", "ejected", "blocked"])
+    p.set_defaults(_handler=_state_set)
+
+    # worktree
+    w = subparsers.add_parser("worktree", help="Per-story worktree management")
+    w_sub = w.add_subparsers(dest="wt_cmd", required=True)
+
+    p = w_sub.add_parser("create", help="Create a worktree")
+    p.add_argument("branch")
+    p.add_argument("--base", help="Base branch (default: repo default)")
+    p.set_defaults(_handler=_worktree_create)
+
+    p = w_sub.add_parser("list", help="List worktrees")
+    p.set_defaults(_handler=_worktree_list)
+
+    p = w_sub.add_parser("destroy", help="Destroy a worktree")
+    p.add_argument("path")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(_handler=_worktree_destroy)
+
+    # bot
+    b = subparsers.add_parser("bot", help="maverick-bot GitHub App operations")
+    b_sub = b.add_subparsers(dest="bot_cmd", required=True)
+
+    p = b_sub.add_parser("status", help="Show bot configuration state")
+    p.set_defaults(_handler=_bot_status)
+
+    p = b_sub.add_parser("gh", help="Run `gh` as the bot")
+    p.add_argument("gh_args", nargs=argparse.REMAINDER)
+    p.set_defaults(_handler=_bot_gh)
+
+    # gh-state raw read
+    gs = subparsers.add_parser("gh-state", help="Read raw markers from GitHub")
+    gs_sub = gs.add_subparsers(dest="gs_cmd", required=True)
+
+    p = gs_sub.add_parser("read", help="Read latest marker of a kind on an issue")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument(
+        "kind",
+        choices=[
+            "maverick-dag",
+            "maverick-state",
+            "maverick-claim",
+            "maverick-lease",
+            "maverick-bprop",
+        ],
+    )
+    p.set_defaults(_handler=_gh_state_read)
+
+
+def dispatch(args: argparse.Namespace) -> int:
+    """Run the handler registered on the parsed args. Returns exit code."""
+    handler = getattr(args, "_handler", None)
+    if handler is None:
+        print("no handler wired", file=sys.stderr)
+        return 1
+    return int(handler(args) or 0)

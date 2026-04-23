@@ -144,6 +144,11 @@ def main():
         help="Worker action to perform",
     )
 
+    # Coordination / state / worktree / bot sub-commands (new workflow)
+    from maverick.coord_cli import build_subparsers as _build_coord
+
+    _build_coord(subparsers)
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -190,6 +195,13 @@ def main():
         from maverick.worker import main as worker_main
 
         worker_main(args.action)
+
+    elif args.command in ("coord", "dag", "state", "worktree", "bot", "gh-state"):
+        import sys as _sys
+
+        from maverick.coord_cli import dispatch as _dispatch
+
+        _sys.exit(_dispatch(args))
 
 
 if __name__ == "__main__":
