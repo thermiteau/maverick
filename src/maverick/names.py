@@ -6,6 +6,7 @@
 
 DO_ADOPT = "do-adopt"
 DO_DOCS = "do-docs"
+DO_EPIC = "do-epic"
 DO_INIT = "do-init"
 DO_INSTALL = "do-install"
 DO_ISSUE_GUIDED = "do-issue-guided"
@@ -41,19 +42,24 @@ MAV_BP_SOURCE_CONTROL = "mav-bp-source-control"
 MAV_BP_TASK_TRACKING = "mav-bp-task-tracking"
 MAV_BP_UNIT_TESTING = "mav-bp-unit-testing"
 MAV_BP_VERSIONING = "mav-bp-versioning"
+MAV_BLOCK_PROPAGATION = "mav-block-propagation"
 MAV_CLAUDE_CODE_RECOVERY = "mav-claude-code-recovery"
 MAV_CREATE_SOLUTION_DESIGN = "mav-create-solution-design"
 MAV_CREATE_TASKS = "mav-create-tasks"
+MAV_DURABILITY_ON_GH = "mav-durability-on-gh"
 MAV_GITHUB_ISSUE_WORKFLOW = "mav-github-issue-workflow"
 MAV_GIT_WORKFLOW = "mav-git-workflow"
 MAV_LOCAL_VERIFICATION = "mav-local-verification"
+MAV_MULTI_INSTANCE_COORDINATION = "mav-multi-instance-coordination"
 MAV_PLAN_EXECUTION = "mav-plan-execution"
 MAV_SCOPE_BOUNDARIES = "mav-scope-boundaries"
+MAV_STACKED_PRS = "mav-stacked-prs"
 MAV_SYSTEMATIC_DEBUGGING = "mav-systematic-debugging"
 
 ALL_SKILL_NAMES = {
     DO_ADOPT,
     DO_DOCS,
+    DO_EPIC,
     DO_INIT,
     DO_INSTALL,
     DO_ISSUE_GUIDED,
@@ -89,14 +95,18 @@ ALL_SKILL_NAMES = {
     MAV_BP_TASK_TRACKING,
     MAV_BP_UNIT_TESTING,
     MAV_BP_VERSIONING,
+    MAV_BLOCK_PROPAGATION,
     MAV_CLAUDE_CODE_RECOVERY,
     MAV_CREATE_SOLUTION_DESIGN,
     MAV_CREATE_TASKS,
+    MAV_DURABILITY_ON_GH,
     MAV_GITHUB_ISSUE_WORKFLOW,
     MAV_GIT_WORKFLOW,
     MAV_LOCAL_VERIFICATION,
+    MAV_MULTI_INSTANCE_COORDINATION,
     MAV_PLAN_EXECUTION,
     MAV_SCOPE_BOUNDARIES,
+    MAV_STACKED_PRS,
     MAV_SYSTEMATIC_DEBUGGING,
 }
 
