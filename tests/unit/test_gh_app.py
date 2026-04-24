@@ -74,3 +74,35 @@ class TestCheckConfigured:
         result = gh_app.check_configured()
         assert result["configured"] is False
         assert "no config" in result["reason"]
+
+
+class TestSignJwt:
+    """Regression coverage for the PyJWT-2.10 string-iss requirement.
+
+    PyJWT raises 'Issuer (iss) must be a string' if you pass an int.
+    The signer must coerce app_id to str before building the payload.
+    """
+
+    def test_iss_is_coerced_to_string(self, tmp_path: Path):
+        # Generate a tiny RSA key just to satisfy PyJWT's signer.
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        pem = key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode()
+
+        # Should not raise — int app_id must be coerced to str inside _sign_jwt.
+        token = gh_app._sign_jwt(123456, pem)
+        assert isinstance(token, str)
+        assert token.count(".") == 2  # JWT shape: header.payload.sig
+
+        # And the iss claim should be a string in the decoded payload.
+        import jwt as pyjwt
+
+        decoded = pyjwt.decode(token, options={"verify_signature": False})
+        assert isinstance(decoded["iss"], str)
+        assert decoded["iss"] == "123456"

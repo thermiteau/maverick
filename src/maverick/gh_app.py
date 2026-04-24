@@ -97,7 +97,7 @@ def _sign_jwt(app_id: int, private_key: str) -> str:
     payload = {
         "iat": now - 60,  # 60s clock skew tolerance
         "exp": now + 9 * 60,  # GitHub caps App JWTs at 10 min
-        "iss": app_id,
+        "iss": str(app_id),  # PyJWT >= 2.10 enforces RFC 7519 string-type for `iss`
     }
     return jwt.encode(payload, private_key, algorithm="RS256")
 
