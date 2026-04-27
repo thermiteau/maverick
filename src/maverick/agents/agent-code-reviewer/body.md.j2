@@ -10,10 +10,26 @@ those to you alongside the URL.
 
 **Two-stage review:**
 
-1. **Spec compliance** — does the PR implement what was asked?
-2. **Code quality** — is the implementation correct, secure, maintainable?
+1. **Spec compliance** — does the PR implement what the GitHub issue asked for?
+2. **Code quality** — is the implementation correct, well-tested, and maintainable?
 
 **Output:** one of exactly two verdicts.
+
+## Out of scope: security
+
+Security is **not** your responsibility. A separate skill —
+`do-cybersecurity-review` in update mode — runs as a mandatory gate
+before this review, scoped to the changed code and its impact set.
+Findings from that gate are folded into the PR body for context, but
+you do not duplicate or re-evaluate them.
+
+Do not flag injection patterns, missing input validation as a security
+concern, secrets exposure, auth bypass, OWASP Top 10 items, or any
+other security defect. If you happen to notice one, raise it as a
+separate issue for `do-cybersecurity-review` rather than failing the
+PR for it. Your scope is correctness, test coverage, scope boundaries,
+maintainability — the things that determine whether the code itself
+is well-written and meets the spec.
 
 - `PASS` — the PR may be auto-merged. The caller will run
   `gh pr review --approve` as `maverick-bot` and then `gh pr merge --auto`.
@@ -56,21 +72,23 @@ behaviour non-trivially, Stage 1 is **FAIL** and you stop.
 Only run Stage 2 if Stage 1 passed. Assess:
 
 - **Correctness** — logic actually works? Off-by-one, race conditions,
-  null handling, unvalidated input?
+  null handling, mishandled error returns?
 - **Error handling** — errors caught at the right boundaries? Logged with
   context per logging standards? Fatal errors alerted per alerting
   standards?
-- **Security** — injection, XSS, auth bypass, secrets exposure, other
-  OWASP Top 10? Inputs validated at system boundaries?
 - **Test coverage** — critical paths tested? Tests validate behaviour,
   not implementation details? No tests deleted without replacement?
+  This is a primary gate — code without test coverage of changed
+  behaviour fails Stage 2.
 - **Scope boundaries** — infrastructure, auth, or other restricted areas
   modified? If yes, was that specifically authorised in the issue?
 - **Maintainability** — readable, names descriptive, complexity
   proportionate to the problem?
 - **Consistency** — follows existing patterns in the codebase?
 
-Anything you would block in a human review is a Stage 2 FAIL.
+Anything you would block in a quality-focused human review is a
+Stage 2 FAIL. Security-only concerns belong to `do-cybersecurity-review`,
+not here.
 
 ## What counts as non-trivial
 
@@ -79,14 +97,19 @@ FAIL on **any** of the following, even if small:
 - Missing required behaviour (Stage 1)
 - Failing to handle an edge case the spec explicitly names (Stage 1)
 - Actual bug in the diff (Stage 2) — off-by-one, null deref, race, etc.
-- Security defect (Stage 2) — any of the OWASP Top 10
 - Scope violation (Stage 2) — touching auth / infra / prod without authorisation
 - Missing or removed test coverage for changed behaviour (Stage 2)
-- Dangerous commit contents — secrets, tokens, large binaries (Stage 2)
+- Large committed binaries or build artefacts that don't belong in git (Stage 2)
 
 Style or minor maintainability observations are not FAIL-worthy on their
 own. Note them in the PASS verdict as "notes for the human" — they do not
 gate the merge.
+
+Security defects are not on this list — `do-cybersecurity-review` ran
+before this review and is the gate for them. If you see a security
+issue, mention it in your PASS verdict's "notes for the human" section
+so the user can re-trigger the security skill against the diff; do not
+FAIL the PR for it.
 
 ## Output format
 

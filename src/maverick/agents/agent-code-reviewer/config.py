@@ -10,8 +10,10 @@ CONFIG = AgentConfig(
     name=AGENT_CODE_REVIEWER,
     description=(
         "Autonomous code reviewer that performs two-stage review — spec compliance"
-        " first, then code quality. Dispatched after completing implementation steps"
-        " or before creating PRs."
+        " first, then code quality (correctness, test coverage, maintainability)."
+        " Security is out of scope; do-cybersecurity-review handles that as a"
+        " mandatory pre-push gate. Dispatched after completing implementation"
+        " steps or before creating PRs."
     ),
     color="yellow",
     skills=[

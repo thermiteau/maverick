@@ -206,7 +206,7 @@ This is the core loop and is identical for epic-driven and standalone work:
 
 ### Code review — binary gate
 
-`agent-code-reviewer` runs in two stages against the open PR: spec compliance (does this implement what the issue actually asked for?) then code quality (security, conventions, hidden bugs). The verdict is **PASS** or **FAIL** — there is no "approve with suggestions" middle ground.
+`agent-code-reviewer` runs in two stages against the open PR: **spec compliance** (does this implement what the issue actually asked for?) then **code quality** (correctness, test coverage of changed behaviour, scope discipline, maintainability). Security is explicitly *not* part of this gate — it is handled by the pre-push `do-cybersecurity-review` (Phase 7) and findings are already in the PR body by the time the agent reviews. The verdict is **PASS** or **FAIL** — there is no "approve with suggestions" middle ground.
 
 - **PASS** → `maverick-bot` posts `gh pr review --approve` with the verdict, and the PR auto-merges (`gh pr merge --auto --squash`). The claim is released.
 - **FAIL** → the PR is ejected: a `maverick-needs-human` label is applied to the issue and PR, the review is posted as a comment, and the claim is released. The agent does **not** attempt to fix and retry.

@@ -84,7 +84,6 @@ The second review stage evaluates how well the code is built, independent of whe
 | Test coverage        | Tests exist for new code, cover success and error paths, meet coverage targets            |
 | Error handling       | Errors are caught and handled appropriately, not swallowed silently, logged with context  |
 | Conventions          | Project naming conventions, file organisation, import ordering, code style                |
-| Security             | No hardcoded secrets, input validation present, authentication checks in place            |
 | Performance          | No obvious performance issues (N+1 queries, unbounded loops, memory leaks)                |
 | Logging and alerting | Error paths include structured logging, critical errors trigger alerts                    |
 | Scope discipline     | Changes are limited to what was asked, no drive-by refactoring or unrelated modifications |
@@ -198,7 +197,7 @@ The code-reviewer agent checks test adequacy as part of Stage 2. It verifies tha
 
 ### Code review and security
 
-Security checks are part of the Stage 2 code quality review. The code-reviewer agent checks for hardcoded secrets, missing input validation, and authentication gaps. For deeper security analysis, the security-review process provides additional scrutiny. See security-review.md for details.
+Security is **not** part of the code review process. The code-reviewer agent's scope is limited to whether the code is well-written, tested, and meets the GitHub issue requirements. Security findings are surfaced separately by `do-cybersecurity-review` (in update mode) as a mandatory pre-push gate that runs before the PR is opened — by the time a reviewer sees the PR, security findings have already been folded into the PR body. See security-review.md for the broader security pipeline.
 
 ### Code review and CI/CD
 
