@@ -2,6 +2,7 @@
 title: Maverick - Architecture and Philosophy
 scope: architecture
 relates-to:
+  - do-issue-workflow.md
   - logging-standards.md
   - alerting-standards.md
   - comprehensive-testing.md
@@ -50,6 +51,14 @@ Because every codebase is unique, there is no way to ship defined skills that ar
 - First it looks to see if you have them already, and uses yours if they are there.
 - If it cant find any, it reads your codebase and builds technical skills that match your tech stack and align with its best practice skills
 - These become part of your code and you can change them as required
+
+### Issue-driven autonomous workflow
+
+When work is requested via a GitHub issue, Maverick runs an end-to-end flow that takes the issue from intake through implementation, review, and merge without human steering. The same per-story execution path runs whether the issue is a single story or one of many in an epic — epics layer DAG-based dependency analysis and wave dispatch on top of the same per-story flow, so worktrees can run in parallel without collision.
+
+The workflow is multi-instance safe (multiple Claude Code instances coordinate via GitHub-stored claim and lease state) and crash-safe (work is pushed per task; another instance can take over if a machine dies). Code review is a binary gate — the agent reviewer either approves and the PR auto-merges, or rejects and the PR is ejected to human handling.
+
+See [do-issue-workflow.md](do-issue-workflow.md) for the full diagram and a phase-by-phase walkthrough.
 
 ### Infrastructure for remote Claude Code instances
 
