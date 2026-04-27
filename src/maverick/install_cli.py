@@ -43,6 +43,22 @@ def _check_uv_available() -> None:
         )
 
 
+def _check_gh_available() -> None:
+    if shutil.which("gh") is None:
+        raise InstallError(
+            "GitHub CLI (gh) is required but not installed.\n"
+            "Maverick workflows depend on gh for issue and PR operations.\n"
+            "\n"
+            "Install instructions:\n"
+            "  macOS:    brew install gh\n"
+            "  Linux:    https://github.com/cli/cli/blob/trunk/docs/install_linux.md\n"
+            "  Windows:  winget install --id GitHub.cli\n"
+            "\n"
+            "After install, authenticate once with:  gh auth login\n"
+            "Then re-run this installer."
+        )
+
+
 def _check_plugin_root(plugin_root: Path) -> None:
     if not (plugin_root / "pyproject.toml").is_file():
         raise InstallError(
@@ -111,6 +127,7 @@ def install(plugin_root: Path) -> int:
     """Run the full install procedure. Returns a process exit code."""
     try:
         _check_uv_available()
+        _check_gh_available()
         _check_plugin_root(plugin_root)
     except InstallError as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -23,6 +23,7 @@ Dispatch the **maverick** agent with task `install` and any user-provided argume
 
    The module performs the install procedure end-to-end:
    - verifies `uv` is on PATH
+   - verifies `gh` (GitHub CLI) is on PATH — Maverick workflows depend on it for issue and PR operations; the installer fails with platform-specific install instructions if missing
    - verifies `pyproject.toml` exists at the plugin root
    - runs `uv tool install --force <plugin-root>`
    - verifies `maverick` is on PATH (warns about `~/.local/bin` if not)

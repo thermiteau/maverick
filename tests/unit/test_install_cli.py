@@ -11,6 +11,7 @@ import pytest
 from maverick import install_cli
 from maverick.install_cli import (
     InstallError,
+    _check_gh_available,
     _check_plugin_root,
     _check_uv_available,
     update_settings_permission,
@@ -26,6 +27,23 @@ class TestCheckUvAvailable:
         with patch.object(install_cli.shutil, "which", return_value=None):
             with pytest.raises(InstallError, match="uv is required"):
                 _check_uv_available()
+
+
+class TestCheckGhAvailable:
+    def test_present(self):
+        with patch.object(install_cli.shutil, "which", return_value="/usr/bin/gh"):
+            _check_gh_available()  # no raise
+
+    def test_missing(self):
+        with patch.object(install_cli.shutil, "which", return_value=None):
+            with pytest.raises(InstallError, match="GitHub CLI"):
+                _check_gh_available()
+
+    def test_missing_message_mentions_gh_auth_login(self):
+        with patch.object(install_cli.shutil, "which", return_value=None):
+            with pytest.raises(InstallError) as excinfo:
+                _check_gh_available()
+        assert "gh auth login" in str(excinfo.value)
 
 
 class TestCheckPluginRoot:
