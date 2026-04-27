@@ -15,10 +15,22 @@ Dispatch the **maverick** agent with task `install` and any user-provided argume
 
 ## Process
 
-1. Locate the `install.sh` script in the same directory as this SKILL.md
-2. Run `bash <path-to-install.sh>`
-3. The script will install the CLI, update Claude permissions, and create the default system config at `~/.maverick/settings.json` if it doesn't already exist
-4. Verify the installation by running `maverick --help`
-5. Report the result to the user — success or failure with any error output
+1. **Locate the plugin root.** This is the directory containing `pyproject.toml`. If `${CLAUDE_PLUGIN_ROOT}` is set, use that. Otherwise resolve two levels above this `SKILL.md` (i.e. the parent of `skills/do-install/`). Fail with a clear error if `pyproject.toml` is not found at the resolved path.
+
+2. **Run the installer.** From a shell:
+
+       uv run --directory <plugin-root> python -m maverick.install_cli
+
+   The module performs the install procedure end-to-end:
+   - verifies `uv` is on PATH
+   - verifies `gh` (GitHub CLI) is on PATH — Maverick workflows depend on it for issue and PR operations; the installer fails with platform-specific install instructions if missing
+   - verifies `pyproject.toml` exists at the plugin root
+   - runs `uv tool install --force <plugin-root>`
+   - verifies `maverick` is on PATH (warns about `~/.local/bin` if not)
+   - adds `Read(~/.claude/plugins/cache/thermite/maverick/**)` to `~/.claude/settings.json` `permissions.allow` (idempotent)
+
+3. **Verify.** Run `maverick --help` and capture the first line.
+
+4. **Report.** Return a structured result: install path, whether the settings file was modified or already had the permission entry, and any PATH warnings.
 
 <!-- maverick-plugin-version: 0.5.8-dev -->

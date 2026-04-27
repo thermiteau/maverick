@@ -32,10 +32,9 @@ Without recovery mechanisms, each of these scenarios produces inconsistent state
 | `mav-claude-code-recovery`  | Defines crash recovery patterns, state verification, and diagnostic procedures |
 | `mav-plan-execution`        | Tracks progress via state files, enabling resume from last completed phase     |
 | `mav-github-issue-workflow` | Posts artefacts (designs, plans, progress) to GitHub comments for durability   |
-| `do-task-solo`              | Stores artefacts as local committed files for durability without GitHub        |
 | `mav-scope-boundaries`      | Prevents destructive operations that would make recovery harder                |
 
-These skills create a layered recovery system: state files track progress locally, artefacts are preserved durably (via GitHub comments for issue workflows, or via committed local files for task workflows), and recovery patterns define how to resume safely.
+These skills create a layered recovery system: state files track progress locally, artefacts are posted durably to GitHub comments, and recovery patterns define how to resume safely. GitHub is the source of truth — local state files are a derivable cache.
 
 ## State Persistence
 
@@ -43,12 +42,12 @@ State persistence bridges the gap between stateless LLM sessions and multi-sessi
 
 ### State file locations
 
-Two state file patterns exist depending on the workflow:
+All Maverick workflows use the same state file pattern:
 
 | Workflow | State file | Gitignored |
 | --- | --- | --- |
 | `do-issue-solo` / `do-issue-guided` | `.claude/issue-state.json` | Yes |
-| `do-task-solo` | `.maverick/do-tasks/<TASK-ID>/state.json` | Yes |
+| `do-epic` | `.claude/epic-state.json` (mirrored to `maverick-state` GitHub comment) | Yes |
 
 ### Issue workflow state contents
 
@@ -136,20 +135,6 @@ For `do-issue-solo` and `do-issue-guided`, artefacts are posted to GitHub commen
 | Versioned                | Via git history    | Via comment edits  |
 
 GitHub comments are the durable store because they persist independent of branch state and are accessible to both LLMs and humans without requiring a checkout.
-
-### Task workflows: committed local files
-
-For `do-task-solo`, artefacts are written to `.maverick/do-tasks/<TASK-ID>/` and committed to git immediately. This provides durability without requiring GitHub issue integration.
-
-| Property                 | Committed task files | GitHub comments    |
-| ------------------------ | -------------------- | ------------------ |
-| Survives session crash   | Yes                  | Yes                |
-| Survives branch deletion | No                   | Yes                |
-| Readable by new session  | Yes (on branch)      | Yes (via API)      |
-| Readable by humans       | Requires checkout    | Visible in browser |
-| Versioned                | Via git history      | Via comment edits  |
-
-The trade-off is that committed task files do not survive branch deletion, but they are version-controlled, reviewable in PRs, and do not require GitHub API access.
 
 ### What to post immediately
 

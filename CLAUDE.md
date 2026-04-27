@@ -49,9 +49,9 @@ bash tests/integration/test_real_repos.sh
 Markdown files with YAML frontmatter that define machine-readable workflows and best practices. Two categories:
 
 - **Best-practice skills** (non-invocable): Universal standards for logging, alerting, linting, testing, CI/CD, git workflow, scope boundaries
-- **Workflow skills** (user-invocable): Orchestrate multi-step processes — `do-issue-solo` (autonomous from GitHub issue), `do-issue-guided` (interactive with checkpoints from GitHub issue), `do-task-solo` (autonomous from user-described task, no GitHub issue), `upskill` (generate project-specific skills), `maverick-alignment` (codebase audit)
+- **Workflow skills** (user-invocable): Orchestrate multi-step processes — `do-issue-solo` (autonomous from GitHub issue), `do-issue-guided` (interactive with checkpoints from GitHub issue), `do-epic` (autonomous epic-driven, parallel-wave dispatch), `upskill` (generate project-specific skills), `maverick-alignment` (codebase audit). All development work must originate from a GitHub issue — there is no local-file workflow.
 
-Skills compose via a `Depends on:` declaration. The three primary entry points are `do-issue-solo`, `do-issue-guided`, and `do-task-solo`, which chain through: understand → design → create tasks → branch → implement → review → push → PR. The `create-tasks` skill decomposes a solution design into discrete tasks — posted as a checklist comment for < 5 tasks, or as GitHub sub-issues for >= 5 tasks.
+Skills compose via a `Depends on:` declaration. The primary entry points are `do-issue-solo`, `do-issue-guided`, and `do-epic`, which chain through: understand → design → create tasks → branch → implement → review → push → PR. The `create-tasks` skill decomposes a solution design into discrete tasks — posted as a checklist comment for < 5 tasks, or as GitHub sub-issues for >= 5 tasks.
 
 ### Agents (`agents/*.md`)
 
@@ -150,3 +150,4 @@ The registry (`src/maverick/registry.py`) discovers all `config.py` files, rende
 - **Scope boundaries** (`skills/mav-scope-boundaries/`): Four hard limits — no infrastructure changes without explicit issue authorization, no auth/permissions changes without human review, no destructive git ops without session consent, never touch production systems.
 - **Python**: 3.10+, `uv` package manager, `boto3` for AWS, `argparse` CLI framework.
 - **Skills format**: Source is `config.py` (frontmatter fields) + `body.md.j2` (Jinja2 template). Both skills and agents use `{{ SKILLS.CONSTANT }}` / `{{ AGENTS.CONSTANT }}` to reference other skills/agents. Build output is generated YAML frontmatter + rendered markdown.
+- **Multi-instance workflows**: `do-epic` and the refactored `do-issue-solo` coordinate via GitHub labels and `maverick-*` marker comments (see `docs/conventions/github-markers.md`). They require git worktrees under `.maverick/worktrees/` and a configured `maverick-bot` GitHub App (`~/.maverick/config.json` → `bot` section). Single-machine ad-hoc use still works without the bot — only the auto-merge step needs it.

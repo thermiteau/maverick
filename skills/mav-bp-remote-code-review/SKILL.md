@@ -1,0 +1,51 @@
+---
+name: mav-bp-remote-code-review
+description: Mandatory remote code review on every pull request. Defines the contract for a GitHub Actions workflow that runs the agent-code-reviewer in CI when a PR is opened, synchronized, or reopened. Used as a dependency by do-issue-solo and do-epic to enforce the review gate, and by do-maverick-alignment to audit the workflow's presence.
+disable-model-invocation: false
+---
+
+# Remote Code Review
+
+Code review is mandatory and must run remotely in CI on every pull request — not only as a Claude Code subagent dispatched from a developer's session. Local subagent review is fast and useful, but it can be skipped or tampered with. The remote workflow is the gate that catches reviews that didn't happen locally.
+
+## The Contract
+
+A repository is compliant with this skill iff it ships a GitHub Actions workflow that:
+
+1. **Triggers on PR lifecycle events:** at minimum `pull_request: types: [opened, synchronize, reopened]`. Workflows that only run on `push` do not satisfy this contract — re-opened PRs, force-pushes, and base-branch retargets must each re-trigger the review.
+2. **Carries the marker comment** `# maverick:code-review` on its own line, anywhere in the file. The marker is the convention that lets `do-maverick-alignment` and the `do-issue-solo`/`do-epic` preconditions identify which workflow file plays the code-review role without parsing GitHub Actions semantics.
+3. **Invokes the agent-code-reviewer contract** — i.e., produces a structured PASS/FAIL verdict and posts it on the PR. The supported invocation is Anthropic's `anthropics/claude-code-action`; teams using their own Maverick worker pipeline or a custom integration are free to substitute as long as the verdict semantics match.
+
+The shipped reference template `code-review.yml` (alongside this `SKILL.md`) is a drop-in starting point that satisfies the contract.
+
+## Adopting the Reference Workflow
+
+The fastest path is to copy the shipped template into the project:
+
+```bash
+cp "${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml" .github/workflows/
+```
+
+Edit it to match the project's secret naming and any environment quirks, commit on a feature branch, and open a PR. The workflow itself will run on its own PR — a useful smoke test that the marker is present and the action invocation works.
+
+## Detection Heuristic
+
+When auditing or pre-checking, look for any file under `.github/workflows/` that:
+
+- contains the literal string `# maverick:code-review` on a line of its own (after stripping leading whitespace)
+- AND has a `pull_request:` trigger block (presence is sufficient — full validation of the trigger types is out of scope; the marker carries the team's intent)
+
+Either condition alone is not enough. The marker without a `pull_request:` trigger means a misplaced or in-progress workflow; a `pull_request:` trigger without the marker is some other PR workflow (lint, tests, etc.) and is not the code-review gate.
+
+## Failure Modes
+
+If the workflow file is missing or malformed:
+
+- **`do-maverick-alignment`** scores this category FAIL and includes the path to the reference template in its recommendations.
+- **`do-issue-solo` and `do-epic`** abort before opening the PR. The orchestrator must offer two paths to the user: (a) abort and ask the user to add the workflow, or (b) scaffold it from the reference template and continue. There is no silent skip.
+
+## Why It's a Hard Gate
+
+Per the project's binary review contract, the agent code reviewer's verdict is the only signal the auto-merge path trusts. If the gate is local-only, a PR can land via `gh pr merge --auto` without the gate ever running — for example, when a wave of stories is dispatched in parallel and one worktree's local review fails to fire. Putting the review in CI means the merge cannot complete until the workflow has reported back, regardless of what happened on the developer's machine.
+
+<!-- maverick-plugin-version: 0.5.8-dev -->

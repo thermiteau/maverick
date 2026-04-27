@@ -3,6 +3,16 @@
 
 Code review feedback requires technical evaluation, not automatic agreement. Verify before implementing. Push back when the feedback is wrong.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-pullrequest-review
+```
+
+The check verifies the project is initialised and `gh`/`uv` are on PATH.
+
 ## The Response Pattern
 
 ```dot

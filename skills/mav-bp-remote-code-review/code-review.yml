@@ -1,0 +1,48 @@
+# maverick:code-review
+#
+# Mandatory remote code review for every pull request. This workflow is the
+# Maverick gate referenced by mav-bp-remote-code-review — the marker comment
+# on the first line is what do-maverick-alignment and the do-issue-solo /
+# do-epic preconditions look for.
+#
+# The workflow runs anthropics/claude-code-action with a prompt that loads
+# the agent-code-reviewer skill. The agent posts a structured PASS / FAIL
+# verdict to the PR; auto-merge waits on the workflow's success.
+#
+# Required repository secret:
+#   ANTHROPIC_API_KEY  - the API key used by claude-code-action
+#
+# Edit `prompt` if you need a non-default review scope (e.g. point at a
+# project-specific agent or pass extra context). Do not remove the marker
+# comment above; tooling that audits the repo relies on it.
+
+name: Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Use the agent-code-reviewer agent to review this pull request.
+            Run the two-stage review (spec compliance, then code quality) and
+            return a binary PASS / FAIL verdict via `gh pr review`. Comment
+            on specific lines for any issues. Do not attempt to apply fixes.

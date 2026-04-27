@@ -12,6 +12,16 @@ disable-model-invocation: false
 
 Create, restructure, or update technical documentation. Operates in three modes depending on the current state of the project's documentation.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-docs
+```
+
+The check verifies the project is initialised and `uv` is on PATH.
+
 ## Task Detection
 
 If `` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:
@@ -72,6 +82,16 @@ Create `docs/technical/index.md` listing all documents with one-line description
 
 Run the do-tech-docs validation checklist against every document produced.
 
+### 6. Record the Milestone
+
+Once docs have been written and validated, record that tech-docs scaffolding has run on this project:
+
+```bash
+uv run maverick integration set tech_docs_scaffolded true
+```
+
+This commits the milestone into `.maverick/config.json`. Skip this step in `update` mode (which is incremental and does not represent a scaffolding milestone) — only `greenfield` and `refactor` modes flip this flag.
+
 ## Refactor Mode
 
 Bring existing non-compliant documentation up to standard.
@@ -118,6 +138,14 @@ Update or create `docs/technical/index.md` (and package-level indexes for mono-r
 ### 5. Validate
 
 Run the do-tech-docs validation checklist against every document changed or created.
+
+### 6. Record the Milestone
+
+Refactor mode produces a compliant docs scaffold, so set the flag:
+
+```bash
+uv run maverick integration set tech_docs_scaffolded true
+```
 
 ## Update Mode
 

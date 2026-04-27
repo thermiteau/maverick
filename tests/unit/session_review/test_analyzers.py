@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maverick.session_review.analyzers import (
     MAVERICK_GAP,
     USER_BEHAVIOR,
-    Finding,
     _bash_commands,
     _maverick_loaded,
     _short_path,
@@ -62,7 +59,7 @@ class TestHelpers:
         assert _maverick_loaded(empty_session) is False
 
     def test_maverick_loaded_with_do_prefix(self, empty_session: SessionData):
-        empty_session.skills_available = ["do-task-solo"]
+        empty_session.skills_available = ["do-issue-solo"]
         assert _maverick_loaded(empty_session) is True
 
     def test_maverick_loaded_with_mav_prefix(self, empty_session: SessionData):
@@ -70,9 +67,9 @@ class TestHelpers:
         assert _maverick_loaded(empty_session) is True
 
     def test_workflow_invoked_returns_matching(self, empty_session: SessionData):
-        empty_session.skills_invoked = ["do-task-solo", "other-skill"]
+        empty_session.skills_invoked = ["do-issue-solo", "other-skill"]
         result = _workflow_invoked(empty_session)
-        assert result == {"do-task-solo"}
+        assert result == {"do-issue-solo"}
 
     def test_workflow_invoked_empty(self, empty_session: SessionData):
         assert _workflow_invoked(empty_session) == set()
@@ -257,7 +254,7 @@ class TestAnalyzeMaverickNotUsed:
 
     def test_maverick_loaded_and_invoked(self, session_with_workflow: SessionData):
         # Also add a maverick-prefixed invocation to satisfy the filter
-        session_with_workflow.skills_invoked.append("maverick:do-task-solo")
+        session_with_workflow.skills_invoked.append("maverick:do-issue-solo")
         findings = analyze_maverick_not_used(session_with_workflow)
         assert findings == []
 

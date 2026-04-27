@@ -144,6 +144,48 @@ def main():
         help="Worker action to perform",
     )
 
+    # Preflight — check prerequisites before an action skill runs
+    preflight_parser = subparsers.add_parser(
+        "preflight",
+        help="Check prerequisites for a Maverick action skill (exit 1 if not met)",
+    )
+    preflight_parser.add_argument(
+        "skill",
+        help="Skill name to check (e.g., do-issue-solo, do-epic, do-upskill)",
+    )
+    preflight_parser.add_argument(
+        "--json", action="store_true", help="Emit JSON instead of human-readable text"
+    )
+
+    # Integration-status read/write (per-project, committed to .maverick/config.json)
+    integration_parser = subparsers.add_parser(
+        "integration", help="Read or update Maverick integration milestones"
+    )
+    integration_sub = integration_parser.add_subparsers(
+        dest="integration_action", required=True
+    )
+    int_get = integration_sub.add_parser(
+        "get", help="Print integration status (all flags by default)"
+    )
+    int_get.add_argument("key", nargs="?", help="Specific flag to read")
+    int_get.add_argument(
+        "--json", action="store_true", help="Emit JSON instead of human-readable text"
+    )
+    int_set = integration_sub.add_parser(
+        "set", help="Flip an integration flag and save to .maverick/config.json"
+    )
+    int_set.add_argument("key", help="Flag name (e.g., upskill, alignment)")
+    int_set.add_argument(
+        "value",
+        choices=["true", "false"],
+        help="New value for the flag",
+    )
+
+    # Coordination / state / worktree / bot sub-commands (new workflow)
+    from maverick.coord_cli import build_subparsers as _build_coord
+
+    _build_coord(subparsers)
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -190,6 +232,25 @@ def main():
         from maverick.worker import main as worker_main
 
         worker_main(args.action)
+
+    elif args.command == "integration":
+        from maverick.integration_cli import main as integration_main
+
+        integration_main(args)
+
+    elif args.command == "preflight":
+        import sys as _sys
+
+        from maverick.preflight_cli import main as preflight_main
+
+        _sys.exit(preflight_main(args))
+
+    elif args.command in ("coord", "dag", "state", "worktree", "bot", "gh-state"):
+        import sys as _sys
+
+        from maverick.coord_cli import dispatch as _dispatch
+
+        _sys.exit(_dispatch(args))
 
 
 if __name__ == "__main__":

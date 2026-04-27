@@ -24,8 +24,8 @@ def empty_session() -> SessionData:
 def session_with_maverick(empty_session: SessionData) -> SessionData:
     """A session where Maverick plugin was loaded but not invoked."""
     empty_session.skills_available = [
-        "maverick:do-task-solo",
         "maverick:do-issue-solo",
+        "maverick:do-issue-guided",
         "maverick:mav-bp-logging",
     ]
     return empty_session
@@ -34,7 +34,7 @@ def session_with_maverick(empty_session: SessionData) -> SessionData:
 @pytest.fixture
 def session_with_workflow(session_with_maverick: SessionData) -> SessionData:
     """A session where a Maverick workflow was invoked."""
-    session_with_maverick.skills_invoked = ["maverick:do-task-solo", "do-task-solo"]
+    session_with_maverick.skills_invoked = ["maverick:do-issue-solo", "do-issue-solo"]
     return session_with_maverick
 
 

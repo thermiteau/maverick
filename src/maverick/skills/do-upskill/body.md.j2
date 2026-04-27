@@ -5,6 +5,16 @@ Scan the current project's codebase for a given topic and produce a project-spec
 
 **Primary audience: LLMs.** The generated skill is project implementation and usage guidance — what technology is used, how it's configured, and where the code lives. It is NOT best practices (the maverick best-practice skill handles that). Keep it dense, factual, and under 500 lines.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-upskill
+```
+
+The check verifies the project is initialised and `uv` is on PATH.
+
 ## Invocation
 
 When invoked (via `/upskill` or the Skill tool), **process all topics listed in `skills/do-upskill/topics.json` without prompting the user**. Do not present a list of choices or ask which topics to generate — iterate through every entry in the JSON array and generate a project skill for each one.
@@ -169,6 +179,16 @@ The `package` field is only included for package-level skills generated in mono-
 - **All four sections required** — Stack, Configuration, Patterns, File Locations
 - **Frontmatter required** — name, title, topic, last-verified fields mandatory; package field mandatory for package-level skills
 - **Write directly** — no user approval needed, file is version-controlled
+
+## Recording the Milestone
+
+After every topic has been processed and at least one project skill file has been written, record that upskill has run on this project:
+
+```bash
+uv run maverick integration set upskill true
+```
+
+The flag is committed in `.maverick/config.json` so other Maverick skills (and `maverick integration get`) can see this milestone has been completed.
 
 ## When Nothing Is Found
 

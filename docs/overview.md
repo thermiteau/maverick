@@ -2,6 +2,7 @@
 title: Maverick - Architecture and Philosophy
 scope: architecture
 relates-to:
+  - do-issue-workflow.md
   - logging-standards.md
   - alerting-standards.md
   - comprehensive-testing.md
@@ -51,6 +52,14 @@ Because every codebase is unique, there is no way to ship defined skills that ar
 - If it cant find any, it reads your codebase and builds technical skills that match your tech stack and align with its best practice skills
 - These become part of your code and you can change them as required
 
+### Issue-driven autonomous workflow
+
+When work is requested via a GitHub issue, Maverick runs an end-to-end flow that takes the issue from intake through implementation, review, and merge without human steering. The same per-story execution path runs whether the issue is a single story or one of many in an epic — epics layer DAG-based dependency analysis and wave dispatch on top of the same per-story flow, so worktrees can run in parallel without collision.
+
+The workflow is multi-instance safe (multiple Claude Code instances coordinate via GitHub-stored claim and lease state) and crash-safe (work is pushed per task; another instance can take over if a machine dies). Code review is a binary gate — the agent reviewer either approves and the PR auto-merges, or rejects and the PR is ejected to human handling.
+
+See [do-issue-workflow.md](do-issue-workflow.md) for the full diagram and a phase-by-phase walkthrough.
+
 ### Infrastructure for remote Claude Code instances
 
 Running Claude Code locally works well for interactive development but does not scale when you need to complete multiple features or bug fixes concurrently.
@@ -99,7 +108,7 @@ Maverick encodes best practices as machine-readable artefacts that the LLM must 
 | Mechanism  | Role                                                            | Example                                                           |
 | ---------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
 | **Skills** | Define what good looks like - standards, conventions, workflows | `mav-bp-logging` defines log levels and structured format   |
-| **Agents** | Verify compliance autonomously - review, test, document         | `code-reviewer` catches convention violations and security issues |
+| **Agents** | Verify compliance autonomously - review, test, document         | `code-reviewer` catches spec gaps, missing tests, and quality issues; `do-cybersecurity-review` catches security issues separately |
 | **Hooks**  | Enforce rules automatically at tool-call boundaries             | Block commits to protected branches, prevent secret exposure      |
 
 ### The Enforcement Chain
@@ -114,7 +123,8 @@ Each link in this chain catches different classes of issues:
 - **Project skill** - ensures the LLM uses the project's specific technology (e.g., Pino with CloudWatch transport)
 - **Local verification** - catches syntax errors, lint failures, and test failures before push
 - **CI pipeline** - catches environment-specific issues, dependency problems, cross-platform failures
-- **Agent review** - catches spec violations, missing tests, security issues, convention drift
+- **Pre-push security review** - `do-cybersecurity-review` runs in update mode against the diff and impact set; BLOCKING findings halt the push, FINDINGS are folded into the PR body
+- **Agent code review** - catches spec violations, missing tests, scope drift, maintainability problems (security is handled by the pre-push gate above, not here)
 - **Human review** - final gate for production-bound code
 
 ## Project Structure
@@ -150,5 +160,5 @@ maverick/
 - **Upskill generates, humans review**: The upskill system generates recommended implementations automatically, but writes them as version-controlled files with `status: recommended`. The team reviews and adopts on their own schedule.
 - **Agents over inline checks**: Code review in a separate context window avoids the "marking your own homework" problem. The reviewer agent has no memory of writing the code.
 - **Solo + guided workflows**: Some teams trust unattended operation. Others want human checkpoints. Both use the same underlying phases - the difference is where approval gates sit.
-- **GitHub issues + local tasks**: Not every task starts as a GitHub issue. `do-task-solo` provides the same autonomous workflow using local task files under `.maverick/do-tasks/`, so users can describe work interactively in the CLI without needing a GitHub issue first.
+- **GitHub-only intake**: Every Maverick development workflow originates from a GitHub issue. The issue is the durable, multi-instance-safe coordination point — claim, lease, DAG, and state all live as labels and comments. There is no local-file-only path; trying to do autonomous work without a GitHub issue would lose the audit trail and the multi-instance coordination guarantees.
 - **Platform-agnostic best practices**: CI/CD, logging, alerting, and testing standards are platform-agnostic. Platform-specific skills (GitHub Actions, GitLab CI, Azure DevOps) implement the standards for each platform.

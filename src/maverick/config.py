@@ -95,6 +95,28 @@ class AmiConfig(TypedDict):
     description: str  # Description for built AMIs
 
 
+class IntegrationStatus(TypedDict):
+    """Per-project record of which Maverick adoption milestones have been
+    carried out. Each flag defaults to ``false`` and is flipped to ``true``
+    when the corresponding skill completes successfully.
+
+    The block lives in the project-level ``.maverick/config.json`` and is
+    committed to git, so the state survives across machines and contributors
+    rather than relying on a derivable filesystem signal.
+
+    Adding a new flag: extend this TypedDict, add a default in
+    CONFIG_DEFAULTS["integration"], and (optionally) wire the relevant skill
+    to flip it via ``maverick state set <key> true``.
+    """
+
+    init: bool  # do-init has been run on this project
+    alignment: bool  # do-maverick-alignment audit produced docs/maverick-audit.md
+    upskill: bool  # do-upskill has populated docs/maverick/skills/<topic>/SKILL.md
+    tech_docs_scaffolded: bool  # do-docs greenfield/refactor has populated docs/technical/
+    code_review_workflow: bool  # .github/workflows/ ships a `# maverick:code-review` workflow
+    cybersecurity_reviewed: bool  # do-cybersecurity-review produced docs/security-audit.md
+
+
 class MaverickConfig(TypedDict):
     """Top-level maverick configuration schema.
 
@@ -107,6 +129,7 @@ class MaverickConfig(TypedDict):
     queue: QueueConfig
     instance: InstanceConfig
     ami: AmiConfig
+    integration: IntegrationStatus
 
 
 # Defaults applied when sections or keys are missing.
@@ -137,6 +160,14 @@ CONFIG_DEFAULTS: MaverickConfig = {
     "ami": {
         "ssm_parameter": _DEFAULT_SSM_PARAMETER,
         "description": "Claude Code maverick worker",
+    },
+    "integration": {
+        "init": False,
+        "alignment": False,
+        "upskill": False,
+        "tech_docs_scaffolded": False,
+        "code_review_workflow": False,
+        "cybersecurity_reviewed": False,
     },
 }
 
@@ -341,3 +372,73 @@ def save_config(cfg: MaverickConfig) -> None:
     """Persist configuration to the user-level config file."""
     USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     SYSTEM_CONFIG_FILE.write_text(json.dumps(cfg, indent=2) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Integration-status helpers (project-level)
+# ---------------------------------------------------------------------------
+#
+# The ``integration`` block in .maverick/config.json records which Maverick
+# adoption milestones a project has hit. The block is committed to git so it
+# survives across machines. Each helper here reads or mutates only that
+# block, preserving the rest of the file (modules, platform, any other
+# top-level keys init may have written).
+
+
+def project_config_path() -> Path:
+    """Return the path to the project-level .maverick/config.json."""
+    return PROJECT_CONFIG_DIR / "config.json"
+
+
+def _default_integration() -> IntegrationStatus:
+    """Return a fresh IntegrationStatus with every flag at its default."""
+    return dict(CONFIG_DEFAULTS["integration"])  # type: ignore[return-value]
+
+
+def read_integration_status(path: Path | None = None) -> IntegrationStatus:
+    """Read the integration block from the project config.
+
+    Returns the defaults (all flags False) if the file does not exist or has
+    no integration block. Missing individual flags are filled with their
+    default. Unknown flags are dropped.
+    """
+    target = path or project_config_path()
+    raw = _load_json(target)
+    block = raw.get("integration") if isinstance(raw, dict) else None
+    status = _default_integration()
+    if isinstance(block, dict):
+        for key in status:
+            if key in block and isinstance(block[key], bool):
+                status[key] = block[key]  # type: ignore[literal-required]
+    return status
+
+
+def write_integration_status(
+    status: IntegrationStatus, path: Path | None = None
+) -> None:
+    """Write the integration block back, preserving all other config fields.
+
+    If the config file does not yet exist, creates it with just the
+    integration block (and the parent directory). Other top-level fields
+    written by ``init`` (modules, platform) are preserved untouched.
+    """
+    target = path or project_config_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    raw: dict[str, Any] = _load_json(target) if target.exists() else {}
+    raw["integration"] = dict(status)
+    target.write_text(json.dumps(raw, indent=2) + "\n")
+
+
+def set_integration_flag(key: str, value: bool, path: Path | None = None) -> None:
+    """Flip a single integration flag on the project config.
+
+    Raises ``KeyError`` if ``key`` is not a known integration flag.
+    """
+    valid = set(CONFIG_DEFAULTS["integration"].keys())
+    if key not in valid:
+        raise KeyError(
+            f"unknown integration key {key!r}; valid keys: {sorted(valid)}"
+        )
+    status = read_integration_status(path)
+    status[key] = value  # type: ignore[literal-required]
+    write_integration_status(status, path)

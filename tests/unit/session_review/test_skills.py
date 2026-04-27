@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from maverick.session_review.skills import (
     _extract_status,
     classify_skill_origin,

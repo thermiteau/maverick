@@ -7,7 +7,7 @@ Ensure all code changes are reviewed before merging. Reviews catch defects, shar
 
 1. **All changes reviewed before merge** — no code reaches a protected branch without at least one approval from a reviewer who was not the author
 2. **Small PRs get better reviews** — large diffs lead to superficial reviews. Keep pull requests focused and digestible.
-3. **Review for correctness, security, and maintainability** — style issues are handled by linters, not humans
+3. **Review for correctness, test coverage, and maintainability** — style issues are handled by linters; security is handled separately by `do-cybersecurity-review` as a pre-push gate
 4. **Automated checks supplement, not replace, human review** — linting, type checking, and AI review catch mechanical issues; humans assess design, intent, and edge cases
 
 ## Mandatory Review Requirements
@@ -24,10 +24,11 @@ Every review should evaluate the change against these dimensions:
 | Dimension          | What to check                                                                                         |
 | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | **Correctness**    | Does the code do what it claims? Are edge cases handled? Are assumptions documented?                  |
-| **Security**       | Are inputs validated? Are secrets exposed? Are auth checks present where needed? SQL injection, XSS?  |
 | **Maintainability** | Is the code readable? Are names clear? Is complexity justified? Will the next developer understand it? |
 | **Test coverage**  | Are new code paths tested? Are edge cases covered? Do tests actually assert meaningful outcomes?       |
 | **Documentation**  | Are public APIs documented? Are non-obvious decisions explained? Is the PR description clear?          |
+
+**Security is out of scope** for the PR review process. It runs as a separate pre-push gate via `{{ SKILLS.DO_CYBERSECURITY_REVIEW }}` (in update mode against the diff and impact set) before the PR is opened. By the time a reviewer sees a PR, security findings have already been surfaced and folded into the PR body.
 
 ## Reviewer Responsibilities
 
@@ -36,7 +37,7 @@ Every review should evaluate the change against these dimensions:
 - **Be timely** — complete reviews within one business day (see Review SLA below)
 - **Be constructive** — explain *why* something is a problem, not just that it is. Suggest alternatives.
 - **Distinguish blocking from non-blocking** — prefix optional suggestions with "nit:" or "optional:" so the author knows what must be addressed
-- **Approve when satisfied** — do not hold PRs hostage for perfection. If the code is correct, secure, and maintainable, approve it.
+- **Approve when satisfied** — do not hold PRs hostage for perfection. If the code is correct, well-tested, and maintainable, approve it.
 
 ## Author Responsibilities
 
@@ -81,7 +82,8 @@ Automated tools handle mechanical checks so human reviewers can focus on design 
 | **Linters**                                  | Style violations, unused imports, formatting          |
 | **Type checkers**                            | Type mismatches, null safety, missing returns         |
 | **Test suites**                              | Regressions, broken functionality                    |
-| **AI code review** ({{ AGENTS.AGENT_CODE_REVIEWER }}) | Spec compliance, common patterns, security smells    |
+| **AI code review** ({{ AGENTS.AGENT_CODE_REVIEWER }}) | Spec compliance, correctness, test coverage, maintainability |
+| **AI security review** ({{ SKILLS.DO_CYBERSECURITY_REVIEW }}) | Pre-push gate scoped to changed code + impact set |
 
 ### Rules for Automated Reviews
 

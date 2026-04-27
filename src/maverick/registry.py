@@ -37,8 +37,10 @@ def _get_version() -> str:
 
 SKILLS_TEMPLATES_DIR = Path(__file__).resolve().parent / "skills"
 AGENTS_TEMPLATES_DIR = Path(__file__).resolve().parent / "agents"
+HOOKS_TEMPLATES_DIR = Path(__file__).resolve().parent / "hooks"
 SKILLS_OUTPUT_DIR = PROJECT_ROOT / "skills"
 AGENTS_OUTPUT_DIR = PROJECT_ROOT / "agents"
+HOOKS_OUTPUT_DIR = PROJECT_ROOT / "hooks"
 
 GLOBAL_CONFIG = GlobalConfig()
 
@@ -130,7 +132,28 @@ def render_skill(
     skill_output_dir.mkdir(parents=True, exist_ok=True)
     output_path = skill_output_dir / "SKILL.md"
     output_path.write_text(frontmatter + "\n" + body + version_marker)
+
+    _copy_skill_assets(skill, templates_dir, skill_output_dir)
     return output_path
+
+
+def _copy_skill_assets(
+    skill: SkillConfig, templates_dir: Path, skill_output_dir: Path
+) -> None:
+    """Copy each declared asset from the skill source dir to the build output."""
+    skill_src_dir = templates_dir / skill.name
+    for asset in skill.assets:
+        src = skill_src_dir / asset
+        if not src.exists():
+            raise FileNotFoundError(
+                f"Skill {skill.name!r} declares asset {asset!r} but {src} does not exist."
+            )
+        dst = skill_output_dir / asset
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
 
 
 def _clean_skills_output(output_dir: Path) -> None:
@@ -285,10 +308,47 @@ def render_cfn_templates(output_dir: Path = INFRA_OUTPUT_DIR) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
+def render_all_hooks(
+    templates_dir: Path = HOOKS_TEMPLATES_DIR,
+    output_dir: Path = HOOKS_OUTPUT_DIR,
+) -> list[Path]:
+    """Copy every hook source file from src/ to the build output.
+
+    Hooks are static distribution files (no Jinja templating) — the
+    registry just mirrors the directory tree. The output dir is fully
+    cleared first so deleted source files don't linger.
+    """
+    if not templates_dir.is_dir():
+        return []
+
+    if output_dir.is_dir():
+        for child in output_dir.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for src in sorted(templates_dir.rglob("*")):
+        if src.is_dir():
+            continue
+        rel = src.relative_to(templates_dir)
+        if any(part.startswith("__") for part in rel.parts):
+            continue  # skip __pycache__ contents, __init__.py, etc.
+        dst = output_dir / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        written.append(dst)
+    return written
+
+
 def main() -> None:
     for output in render_all_skills():
         print(f"Generated {output}")
     for output in render_all_agents():
+        print(f"Generated {output}")
+    for output in render_all_hooks():
         print(f"Generated {output}")
     for output in render_cfn_templates():
         print(f"Generated {output}")

@@ -9,6 +9,16 @@ disable-model-invocation: false
 
 Analyze the current project's codebase against Maverick standard practices and write a findings report to `docs/maverick-audit.md`.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-maverick-alignment
+```
+
+The check verifies the project is initialised and `uv` is on PATH.
+
 ## When to Run
 
 - User invokes `/maverick:codebase-audit`
@@ -158,7 +168,29 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 
 **Additional detail:** Note which CI/CD platform is used and what steps the pipeline runs.
 
-### 6. Source Control
+### 6. Remote Code Review Workflow
+
+Per mav-bp-remote-code-review, every project must ship a GitHub Actions workflow that runs the agent code reviewer on every pull request. Local subagent review is not enough — the remote workflow is the gate the auto-merge path trusts.
+
+**Search for:**
+
+| What | Where to look |
+| --- | --- |
+| Marker comment | A line equal to `# maverick:code-review` (after stripping leading whitespace) in any file under `.github/workflows/` |
+| PR trigger | `on: pull_request:` block in the same file as the marker |
+| Reference action | `anthropics/claude-code-action` reference in the workflow body (informational; not required for compliance — teams may use their own integration) |
+
+**Scoring:**
+
+| Status | Criteria |
+| --- | --- |
+| PASS | A workflow file under `.github/workflows/` contains the `# maverick:code-review` marker AND has an `on: pull_request:` trigger |
+| WARN | A workflow with the marker exists but is missing the `pull_request` trigger, OR a `pull_request`-triggered workflow exists but no marker (likely a different review pipeline that needs the marker added) |
+| FAIL | No workflow under `.github/workflows/` contains the marker |
+
+**Recommendation on WARN/FAIL:** copy the reference template shipped with the plugin: `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml` -> `.github/workflows/code-review.yml`. Set the `ANTHROPIC_API_KEY` repo secret. Open a PR — the workflow itself will run on its own PR as a smoke test.
+
+### 7. Source Control
 
 **Search for:**
 
@@ -176,7 +208,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | WARN | Remote configured but .gitignore missing or incomplete |
 | FAIL | No remote configured (local-only repository) |
 
-### 7. Application Security
+### 8. Application Security
 
 **Search for:**
 
@@ -196,7 +228,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | WARN | Some security measures present but gaps (e.g., no CI scanning, or no input validation) |
 | FAIL | No security measures found |
 
-### 8. Dependency Management
+### 9. Dependency Management
 
 **Search for:**
 
@@ -214,7 +246,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | WARN | Lock file committed but no automated updates or no vulnerability scanning |
 | FAIL | No lock file committed |
 
-### 9. Database Management
+### 10. Database Management
 
 **Search for:**
 
@@ -233,7 +265,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | FAIL | Database dependencies present with no migration tooling at all |
 | N/A | No database dependencies found |
 
-### 10. Error Handling
+### 11. Error Handling
 
 **Search for:**
 
@@ -310,6 +342,11 @@ Create `docs/maverick-audit.md` (create the `docs/` directory if it does not exi
 <Evidence: platform, config file, steps found>
 <If WARN/FAIL: one-line recommendation>
 
+### Remote Code Review Workflow -- <STATUS>
+
+<Evidence: workflow file path containing the `# maverick:code-review` marker, or absence noted>
+<If WARN/FAIL: one-line recommendation pointing at the reference template>
+
 ### Source Control -- <STATUS>
 
 <Evidence: remote URL, .gitignore presence, sensitive file check>
@@ -348,5 +385,18 @@ After writing the report, print a brief summary:
 - The score (e.g. "3/5 passing")
 - Which categories are WARN or FAIL
 - The path to the full report
+
+## Step 5: Record the milestone
+
+Once the report is written, record that the alignment audit has run on this
+project so other skills (and humans running `maverick integration get`) can
+see it:
+
+```bash
+uv run maverick integration set alignment true
+```
+
+This commits the milestone into `.maverick/config.json` — the file is in git
+so the state is durable across machines and contributors.
 
 <!-- maverick-plugin-version: 0.5.8-dev -->

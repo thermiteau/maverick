@@ -12,7 +12,7 @@ Execute an implementation plan step-by-step. Each step is implemented, verified,
 
 This skill adapts its behaviour based on how it was invoked:
 
-- **Solo mode** (called from do-issue-solo or do-task-solo): work autonomously. Only pause when genuinely blocked or when the issue is ambiguous. Press through recoverable problems.
+- **Solo mode** (called from do-issue-solo): work autonomously. Only pause when genuinely blocked or when the issue is ambiguous. Press through recoverable problems.
 - **Guided mode** (called from do-issue-guided): provide checkpoints to the user. Pause when uncertain, report progress at natural break points.
 
 ```dot
@@ -70,13 +70,12 @@ digraph execute {
 
 Read the task list from one of:
 - The tasks comment on the GitHub issue (if working from do-issue)
-- The `tasks.md` file (if working from do-task-solo)
 - The task list directly (if invoked standalone)
 
 ### 2. Check for Prior Progress
 
 If resuming after a crash or new session, determine where to pick up:
-- Read the tasks comment (or `tasks.md`) and parse checkboxes (`- [x]` = done, `- [ ]` = pending)
+- Read the tasks comment and parse checkboxes (`- [x]` = done, `- [ ]` = pending)
 - Cross-reference with `git log` — if commits exist for tasks that aren't checked off, the comment update was lost. Check them off now.
 - Resume from the first genuinely unchecked task.
 
@@ -96,16 +95,15 @@ For each task in the list:
 3. **Verify** — run verification (lint, typecheck, tests) per the mav-local-verification skill
 4. **Fix if needed** — if verification fails, diagnose and fix (see Failure Handling)
 5. **Commit** — descriptive message referencing the issue number, using conventional commits
-6. **Mark complete** — update the tasks comment or `tasks.md` to check off the task
+6. **Mark complete** — update the tasks comment to check off the task
 
 Never batch multiple tasks into one commit unless they are trivially related (e.g. a one-line change and its import).
 
 ### 4. Update Progress
 
-After completing each task, update the tasks comment (or `tasks.md`) to check off the task:
+After completing each task, update the tasks comment to check off the task:
 
 ```bash
-# Issue mode
 REPO=$(jq -r '.repo' .claude/issue-state.json)
 COMMENT_ID=$(jq -r '.comments.tasks' .claude/issue-state.json)
 

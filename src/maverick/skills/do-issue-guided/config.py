@@ -1,5 +1,7 @@
 from maverick.models import SkillConfig
 from maverick.names import (
+    DO_CYBERSECURITY_REVIEW,
+    DO_DOCS,
     DO_ISSUE_GUIDED,
     DO_PULLREQUEST_REVIEW,
     MAV_BP_ALERTING,
@@ -39,6 +41,8 @@ CONFIG = SkillConfig(
         MAV_BP_LOGGING,
         MAV_BP_ALERTING,
         MAV_SYSTEMATIC_DEBUGGING,
+        DO_DOCS,
+        DO_CYBERSECURITY_REVIEW,
         DO_PULLREQUEST_REVIEW,
     ],
 )

@@ -28,6 +28,11 @@ class SkillConfig:
     # Maverick-specific fields (not part of Claude Code frontmatter)
     depends_on: list[str] = field(default_factory=list)
     extra_context: dict[str, str] = field(default_factory=dict)
+    # Files to ship alongside the rendered SKILL.md (paths relative to the
+    # skill source directory). Listed assets must exist in source and are
+    # copied verbatim to the build output. Validated by tests so a missing
+    # asset fails the build rather than silently shipping a broken skill.
+    assets: list[str] = field(default_factory=list)
 
 
 @dataclass

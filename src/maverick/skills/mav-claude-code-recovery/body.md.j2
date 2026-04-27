@@ -188,6 +188,86 @@ digraph cmd_failure {
 - **Limit retry attempts** — if a fix-and-retry cycle fails 3 times, stop and report to the user with full context.
 - **Preserve error output** — include the actual error message when reporting to the user, not just "it failed".
 
+## Epic Recovery
+
+Multi-story (`do-epic`) workflows have additional state on GitHub that
+single-issue recovery does not. On entry, always re-hydrate from GitHub
+per `{{ SKILLS.MAV_DURABILITY_ON_GH }}` before touching anything local.
+
+### The five things to check on re-entry
+
+| Signal | Location | What it means |
+| --- | --- | --- |
+| `maverick-dag` marker | Epic issue | DAG exists — do not rebuild, read it |
+| `maverick-state` marker | Epic issue | Current story statuses — trust over local cache |
+| `maverick-claim` + `maverick-lease` | Each claimed issue | Who holds what, and whether they are alive |
+| `maverick-bprop` marker | Epic issue | **A block walk was in progress** — must resume it first |
+| `blocked-by:#N` labels | Each story | Which stories are currently blocked |
+
+If a local `.claude/epic-state.json` exists but the GitHub markers
+disagree, **GitHub wins** — overwrite the local cache.
+
+### Resume order
+
+```dot
+digraph epic_resume {
+    "Session starts" [shape=box];
+    "maverick-bprop present?" [shape=diamond];
+    "Resume block propagation — idempotent walk from the ejected story" [shape=box];
+    "Claim still live on any issue?" [shape=diamond];
+    "Re-verify heartbeat — extend or release" [shape=box];
+    "Stale claims present?" [shape=diamond];
+    "Decide takeover vs defer" [shape=box];
+    "Proceed with next wave" [shape=box];
+
+    "Session starts" -> "maverick-bprop present?";
+    "maverick-bprop present?" -> "Resume block propagation — idempotent walk from the ejected story" [label="yes"];
+    "maverick-bprop present?" -> "Claim still live on any issue?" [label="no"];
+    "Resume block propagation — idempotent walk from the ejected story" -> "Claim still live on any issue?";
+    "Claim still live on any issue?" -> "Re-verify heartbeat — extend or release" [label="yes"];
+    "Claim still live on any issue?" -> "Stale claims present?" [label="no"];
+    "Stale claims present?" -> "Decide takeover vs defer" [label="yes"];
+    "Stale claims present?" -> "Proceed with next wave" [label="no"];
+    "Re-verify heartbeat — extend or release" -> "Proceed with next wave";
+    "Decide takeover vs defer" -> "Proceed with next wave";
+}
+```
+
+### Block-propagation resume — critical path
+
+If a `maverick-bprop` marker exists on the epic when you enter, the prior
+instance was mid-block-walk when it died. The marker payload names the
+ejected story, the full descendant set, and which descendants are already
+labelled. Per `{{ SKILLS.MAV_BLOCK_PROPAGATION }}`:
+
+1. Read the marker payload.
+2. For each descendant not already in `labelled`:
+   - Apply `blocked-by:#<ejected>` if not present (idempotent).
+   - Post the block comment if not present.
+   - Update `maverick-state` for that story.
+   - Append to `labelled` in the marker.
+3. When every descendant is in `labelled`, **delete** the marker.
+
+Only after `maverick-bprop` is cleared should you proceed with other
+epic work. Leaving a partially-applied block set running invites
+downstream PRs to merge against a broken base.
+
+### Worktree reconciliation
+
+Local worktrees under `.maverick/worktrees/` are a cache. After
+re-hydration, walk them and reconcile:
+
+| Worktree state | GitHub state | Action |
+| --- | --- | --- |
+| Exists | Story `merged` on GH | Destroy the worktree — work is done |
+| Exists | Story `ejected` on GH | Keep — note the path for the human |
+| Exists | Story `blocked` on GH | Destroy — abandon the work |
+| Exists | Story `in_flight` by us (live lease) | Resume where you left off |
+| Exists | Story `in_flight` by another instance | Destroy — they own it now |
+| Missing | Story `in_flight` by us | Recreate from `origin/<branch>` |
+
+See `{{ SKILLS.MAV_DURABILITY_ON_GH }}` for the worktree-recreate command.
+
 ## Subagent Failure Handling
 
 When a subagent fails or returns incomplete results:

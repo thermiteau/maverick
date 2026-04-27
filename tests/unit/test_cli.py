@@ -12,14 +12,12 @@ class TestCliParsing:
 
     def test_no_command_exits(self):
         with pytest.raises(SystemExit):
-            import sys
             from unittest.mock import patch
 
             with patch("sys.argv", ["maverick"]):
                 main()
 
     def test_init_dry_run(self, monkeypatch: pytest.MonkeyPatch):
-        import sys
         from unittest.mock import MagicMock, patch
 
         mock_init = MagicMock()
@@ -63,7 +61,6 @@ class TestCliParsing:
         mock_clean.assert_called_once_with(dry_run=True)
 
     def test_invalid_plugin_action(self):
-        import sys
         from unittest.mock import patch
 
         with patch("sys.argv", ["maverick", "plugin", "invalid"]):

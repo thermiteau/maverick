@@ -14,7 +14,7 @@ Skills are markdown files with YAML frontmatter that load into the LLM's context
 | Category            | Skills                                                                                                                                                                                                          | Purpose                                                        |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | **Best Practices**  | logging, alerting, observability, linting, unit-testing, integration-testing, error-handling, application-security, code-review, api-design, accessibility, database-management, dependency-management, documentation, environment-management, infrastructure-as-code, solutions-design, source-control, task-tracking, versioning | Define standards for each practice area                        |
-| **Workflow**        | do-issue-solo, do-issue-guided, do-task-solo, create-solution-design, create-tasks                                                                                                                             | Orchestrate multi-step development workflows                   |
+| **Workflow**        | do-issue-solo, do-issue-guided, do-epic, create-solution-design, create-tasks                                                                                                                                  | Orchestrate multi-step development workflows                   |
 | **Execution**       | mav-plan-execution, mav-local-verification                                                                                                                                                                     | Control how tasks are executed and verified                    |
 | **Git & GitHub**    | mav-git-workflow, mav-github-issue-workflow                                                                                                                                                                    | Define branching, commit, and issue interaction patterns       |
 | **CI/CD Platforms** | mav-bp-cicd, mav-bp-cicd-github, mav-bp-cicd-gitlab, mav-bp-cicd-azure, mav-bp-cicd-bitbucket                                                                                                                | Platform-agnostic standards and platform-specific monitoring   |
@@ -51,26 +51,27 @@ Agents are autonomous workers that run in isolated context windows. They verify 
 
 | Agent                       | Purpose                                                      | When it runs                            |
 | --------------------------- | ------------------------------------------------------------ | --------------------------------------- |
-| **Code Reviewer**           | Two-stage review: spec compliance, then code quality         | After implementation steps or before PR |
+| **Code Reviewer**           | Two-stage review: spec compliance, then code quality (correctness, test coverage, maintainability — security is out of scope, handled by do-cybersecurity-review) | Against the open PR after pre-push gates |
 | **Issue Analyst**           | Reads a GitHub issue, explores the codebase, produces a solution design | At the start of issue-driven workflows  |
 | **GitHub Issue Planner**    | Takes a solution design and produces an ordered task list    | After solution design for GitHub issues |
-| **Task Planner**            | Takes a solution design and produces an ordered task list    | After solution design for local tasks   |
 | **Session Reviewer**        | Reviews session activity and git diffs for quality issues    | After development sessions              |
 | **Maverick**                | Handles Maverick plugin and CLI management                   | During plugin installation and setup    |
-| **Tech Docs Writer**        | Generate technical documentation with Mermaid diagrams       | After significant architecture changes  |
+| **Tech Docs Writer**        | Generate technical documentation with Mermaid diagrams       | Pre-push, dispatched by the docs review phase |
 
 Agents reference skills for domain knowledge but operate independently - they don't share the main session's context window.
 
 ### Workflow Entry Points
 
-Maverick provides three primary workflows. Two are GitHub issue-driven, one is local task-driven:
+Maverick provides three GitHub-issue-driven workflows. All development originates from a GitHub issue — the issue is the durable, multi-instance-safe coordination point.
 
 ```mermaid
 flowchart TD
-    SOURCE{"Work source?"}
+    SOURCE["GitHub issue"]
 
-    SOURCE -->|"GitHub issue"| ISSUEMODE{"Workflow mode?"}
-    SOURCE -->|"User request in CLI"| TASK["do-task-solo"]
+    SOURCE --> SHAPE{"Single story or epic?"}
+
+    SHAPE -->|"single story"| ISSUEMODE{"Workflow mode?"}
+    SHAPE -->|"multi-story epic"| EPIC["do-epic"]
 
     ISSUEMODE -->|"solo"| SOLO["do-issue-solo"]
     ISSUEMODE -->|"guided"| GUIDED["do-issue-guided"]
@@ -87,23 +88,19 @@ flowchart TD
     EXEC2 --> VERIFY2["Verify + Review"]
     VERIFY2 -->|"checkpoint"| PR2["Create PR"]
 
-    TASK --> SD3["Formalise Task → Solution Design"]
-    SD3 --> CT3["Create Tasks"]
-    CT3 --> EXEC3["Execute Tasks"]
-    EXEC3 --> VERIFY3["Verify + Review"]
-    VERIFY3 --> PR3["Create PR"]
+    EPIC --> DAG["Build dependency DAG"]
+    DAG --> WAVES["Group stories into waves"]
+    WAVES --> PARALLEL["Per-wave: dispatch do-issue-solo per story in parallel worktrees"]
 
     style SOLO fill:#e6f3ff
     style GUIDED fill:#fff3e6
-    style TASK fill:#e6ffe6
+    style EPIC fill:#e6ffe6
 ```
 
 | Workflow            | Human involvement                                     | Use case                                                                      |
 | ------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **do-issue-solo**   | None until PR review                                  | Unattended development - LLM works autonomously from a GitHub issue           |
+| **do-issue-solo**   | None until PR review                                  | Unattended development on a single GitHub issue                               |
 | **do-issue-guided** | Checkpoints at design, plan, review, and completion   | Supervised development - human validates approach at key decision points      |
-| **do-task-solo**    | Initial request only, then none until PR review       | Local autonomous development - user describes the task in the CLI, no GitHub issue required |
+| **do-epic**         | None per story; user reviews ejected PRs only         | Multi-story epic with DAG-scheduled parallel execution                        |
 
-All three workflows follow the same phases: solution design → create tasks → execution → verification → PR creation. The `create-tasks` skill decomposes a solution design into discrete tasks — posted as a checklist comment for fewer than 5 tasks, or as GitHub sub-issues with dependency ordering for 5 or more. The differences between workflows are where work originates and where human checkpoints occur.
-
-**do-task-solo** stores all artifacts locally under `.maverick/do-task/<TASK-ID>/` (task description, design, tasks, completion) instead of GitHub issue comments. Task documents are committed to version control; only the state file is gitignored.
+All three workflows share the per-story phases: solution design → create tasks → execution → verification → PR creation. `do-epic` adds a wave-scheduling layer on top, dispatching `do-issue-solo` per story under each wave's worktrees. The `create-tasks` skill decomposes a solution design into discrete tasks — posted as a checklist comment for fewer than 5 tasks, or as GitHub sub-issues with dependency ordering for 5 or more.

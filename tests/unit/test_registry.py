@@ -18,14 +18,15 @@ from maverick.registry import (
     _clean_skills_output,
     _get_version,
     render_agent,
+    render_all_hooks,
     render_skill,
 )
 
 
 class TestBuildNamesDict:
     def test_basic_conversion(self):
-        result = _build_names_dict({"do-task-solo", "mav-bp-logging"})
-        assert result["DO_TASK_SOLO"] == "do-task-solo"
+        result = _build_names_dict({"do-issue-solo", "mav-bp-logging"})
+        assert result["DO_ISSUE_SOLO"] == "do-issue-solo"
         assert result["MAV_BP_LOGGING"] == "mav-bp-logging"
 
     def test_empty_set(self):
@@ -106,7 +107,7 @@ class TestBuildAgentFrontmatter:
             memory="project",
             tools=["Read", "Write", "Bash"],
             disallowed_tools=["Agent"],
-            skills=["do-task-solo", "mav-bp-logging"],
+            skills=["do-issue-solo", "mav-bp-logging"],
         )
         fm = _build_agent_frontmatter(agent)
         assert "model: opus" in fm
@@ -119,7 +120,7 @@ class TestBuildAgentFrontmatter:
         assert "tools: Read, Write, Bash" in fm
         assert "disallowedTools: Agent" in fm
         assert "skills:" in fm
-        assert "  - do-task-solo" in fm
+        assert "  - do-issue-solo" in fm
         assert "  - mav-bp-logging" in fm
 
 
@@ -166,7 +167,7 @@ class TestRenderSkill:
         skill_dir = templates_dir / "jinja-skill"
         skill_dir.mkdir(parents=True)
         (skill_dir / "body.md.j2").write_text(
-            "Depends on: {{ DEPENDS_ON }}\nSkill: {{ SKILLS.DO_TASK_SOLO }}"
+            "Depends on: {{ DEPENDS_ON }}\nSkill: {{ SKILLS.DO_ISSUE_SOLO }}"
         )
 
         output_dir = tmp_path / "output"
@@ -175,7 +176,7 @@ class TestRenderSkill:
 
         content = result.read_text()
         assert "dep-a, dep-b" in content
-        assert "do-task-solo" in content
+        assert "do-issue-solo" in content
 
     def test_render_with_extra_context(self, tmp_path: Path):
         templates_dir = tmp_path / "templates"
@@ -189,6 +190,34 @@ class TestRenderSkill:
 
         content = result.read_text()
         assert "Version: 2.0" in content
+
+    def test_copies_declared_assets(self, tmp_path: Path):
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "asset-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text("Body")
+        (skill_dir / "helper.sh").write_text("#!/bin/bash\necho hi\n")
+        (skill_dir / "data").mkdir()
+        (skill_dir / "data" / "values.json").write_text('{"x": 1}')
+
+        output_dir = tmp_path / "output"
+        skill = SkillConfig(name="asset-skill", assets=["helper.sh", "data"])
+        render_skill(skill, GlobalConfig(), templates_dir, output_dir)
+
+        out_skill_dir = output_dir / "asset-skill"
+        assert (out_skill_dir / "helper.sh").read_text() == "#!/bin/bash\necho hi\n"
+        assert (out_skill_dir / "data" / "values.json").read_text() == '{"x": 1}'
+
+    def test_missing_asset_raises(self, tmp_path: Path):
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "broken-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text("Body")
+
+        output_dir = tmp_path / "output"
+        skill = SkillConfig(name="broken-skill", assets=["does-not-exist.sh"])
+        with pytest.raises(FileNotFoundError, match="does-not-exist.sh"):
+            render_skill(skill, GlobalConfig(), templates_dir, output_dir)
 
 
 class TestRenderAgent:
@@ -258,3 +287,70 @@ class TestCleanOutput:
         _clean_agents_output(tmp_path)
         assert not (tmp_path / "agent-a.md").exists()
         assert (tmp_path / "keep.txt").exists()
+
+
+class TestRenderAllHooks:
+    def test_copies_files_preserving_subdirs(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        (src / "hooks.json").write_text('{"hooks": {}}')
+        (src / "scripts").mkdir()
+        (src / "scripts" / "check.py").write_text("# script\n")
+
+        out = tmp_path / "out-hooks"
+        written = render_all_hooks(src, out)
+
+        assert (out / "hooks.json").read_text() == '{"hooks": {}}'
+        assert (out / "scripts" / "check.py").read_text() == "# script\n"
+        assert {p.name for p in written} == {"hooks.json", "check.py"}
+
+    def test_clears_stale_files(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        (src / "hooks.json").write_text("{}")
+
+        out = tmp_path / "out-hooks"
+        out.mkdir()
+        (out / "stale.py").write_text("old")
+        (out / "stale-dir").mkdir()
+        (out / "stale-dir" / "x.txt").write_text("x")
+
+        render_all_hooks(src, out)
+
+        assert (out / "hooks.json").exists()
+        assert not (out / "stale.py").exists()
+        assert not (out / "stale-dir").exists()
+
+    def test_preserves_executable_mode(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        script = src / "check.py"
+        script.write_text("#!/usr/bin/env python3\n")
+        script.chmod(0o755)
+
+        out = tmp_path / "out-hooks"
+        render_all_hooks(src, out)
+
+        copied = out / "check.py"
+        assert copied.stat().st_mode & 0o111, "executable bit should be preserved"
+
+    def test_empty_when_source_dir_missing(self, tmp_path: Path):
+        out = tmp_path / "out"
+        result = render_all_hooks(tmp_path / "does-not-exist", out)
+        assert result == []
+        assert not out.exists()
+
+    def test_skips_dunder_files(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        (src / "hooks.json").write_text("{}")
+        (src / "__pycache__").mkdir()
+        (src / "__pycache__" / "junk.pyc").write_bytes(b"\x00")
+        (src / "__init__.py").write_text("")
+
+        out = tmp_path / "out-hooks"
+        render_all_hooks(src, out)
+
+        assert (out / "hooks.json").exists()
+        assert not (out / "__pycache__").exists()
+        assert not (out / "__init__.py").exists()
