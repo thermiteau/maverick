@@ -48,4 +48,4 @@ If the workflow file is missing or malformed:
 
 Per the project's binary review contract, the agent code reviewer's verdict is the only signal the auto-merge path trusts. If the gate is local-only, a PR can land via `gh pr merge --auto` without the gate ever running — for example, when a wave of stories is dispatched in parallel and one worktree's local review fails to fire. Putting the review in CI means the merge cannot complete until the workflow has reported back, regardless of what happened on the developer's machine.
 
-<!-- maverick-plugin-version: 1.0.0 -->
+<!-- maverick-plugin-version: 1.0.1-dev -->
