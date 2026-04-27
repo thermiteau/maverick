@@ -1,9 +1,9 @@
 """Tests for maverick.names — name constants and registry sets."""
 
 from maverick.names import (
+    AGENT_CODE_REVIEWER,
     ALL_AGENT_NAMES,
     ALL_SKILL_NAMES,
-    AGENT_CODE_REVIEWER,
     DO_ISSUE_SOLO,
     DO_TASK_SOLO,
     MAV_BP_LOGGING,

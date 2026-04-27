@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maverick.session_review.analyzers import (
     MAVERICK_GAP,
     USER_BEHAVIOR,
-    Finding,
     _bash_commands,
     _maverick_loaded,
     _short_path,

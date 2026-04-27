@@ -6,7 +6,6 @@ instance-id stability, label/block detection, lease-liveness math,
 payload shape.
 """
 
-import os
 from datetime import datetime, timedelta, timezone
 
 from maverick import coordinator

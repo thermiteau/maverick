@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from maverick.models import AgentConfig, GlobalConfig, SkillConfig
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
 from maverick.registry import (

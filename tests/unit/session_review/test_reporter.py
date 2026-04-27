@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from maverick.session_review.analyzers import MAVERICK_GAP, USER_BEHAVIOR, Finding
 from maverick.session_review.parser import SessionData
 from maverick.session_review.reporter import (

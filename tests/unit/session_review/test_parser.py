@@ -8,8 +8,6 @@ from pathlib import Path
 import pytest
 
 from maverick.session_review.parser import (
-    SessionData,
-    ToolCall,
     _extract_file_path,
     encode_project_path,
     load_session_index,

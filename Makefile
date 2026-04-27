@@ -13,7 +13,7 @@ generate: ## Render all skill and agent templates
 generate-topics: ## Generate skills/upskill/topics.json from upskill config
 	cd src && uv run python -m maverick.generate_topics
 
-build: generate-topics generate
+build: generate generate-topics
 
 test: ## Run unit tests
 	uv run pytest tests/unit/ -v

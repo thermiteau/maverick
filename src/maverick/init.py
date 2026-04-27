@@ -10,12 +10,12 @@ import json
 import shutil
 from argparse import Namespace
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from maverick.config import PROJECT_CONFIG_DIR
 
 # Marker files → detected module name
-_DETECTORS: List[tuple[str, str]] = [
+_DETECTORS: list[tuple[str, str]] = [
     ("package.json", "nodejs"),
     ("pyproject.toml", "python"),
     ("requirements.txt", "python"),
@@ -34,7 +34,7 @@ _DETECTORS: List[tuple[str, str]] = [
 ]
 
 
-def _detect_modules() -> List[str]:
+def _detect_modules() -> list[str]:
     """Scan the current directory for known technology markers."""
     cwd = Path.cwd()
     found: set[str] = set()
@@ -60,7 +60,7 @@ def main(args: Namespace) -> None:
         if args.remove:
             modules = sorted(set(modules) - set(args.remove))
 
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "modules": modules,
     }
 
