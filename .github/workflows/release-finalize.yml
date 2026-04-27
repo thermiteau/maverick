@@ -78,12 +78,24 @@ jobs:
 
       - name: Fast-forward stable branch to the new release
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           # `stable` is the branch that end users clone to install a
           # released version. It is always fast-forwarded to the most
           # recent tag commit — never moves during -dev cycles.
-          git push origin "refs/tags/${TAG}:refs/heads/stable"
+          #
+          # Updated via the REST API rather than `git push` because
+          # the runner's git transport hits a `[remote rejected]` even
+          # when named branch protection / rulesets are disabled,
+          # while the REST endpoint accepts the same fast-forward
+          # update with the same auth. Diagnosed during the 1.0.0
+          # and 1.0.1 releases (see commit history for context).
+          COMMIT_SHA=$(git rev-parse "${TAG}^{commit}")
+          gh api -X PATCH \
+            "repos/${REPO}/git/refs/heads/stable" \
+            -f sha="$COMMIT_SHA"
 
       - name: Open PR to bump main to next -dev cycle
         env:
