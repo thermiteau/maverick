@@ -7,9 +7,12 @@ disable-model-invocation: false
 
 # Cybersecurity Review
 
-Run a security audit of the **existing codebase** (not pending changes — see the built-in `/security-review` for per-PR review) and write a findings report to `docs/security-audit.md`.
+Audit a codebase for security risks. Operates in two modes:
 
-This is the initial pass. Scope is deliberately broad and somewhat coarse — the goal is to surface obvious risks at adoption time so they become tracked work, not to produce an exhaustive penetration test. Refer to `mav-bp-application-security` for the standards each finding should be measured against.
+- **full-audit** — scan the entire codebase. Used by `do-init` at adoption time and on demand. Produces `docs/security-audit.md`. Flips `cybersecurity_reviewed` milestone.
+- **update** — scoped to a diff, plus the code that could be impacted by the diff. Used by `do-issue-solo` and `do-issue-guided` as a mandatory pre-push gate before opening a PR. Returns a structured findings list to the orchestrator; does not flip the milestone (it's per-PR work, not a one-time milestone).
+
+Refer to `mav-bp-application-security` for the standards each finding should be measured against. The skill **surfaces** risks; it does not modify code.
 
 ## Preflight (mandatory)
 
@@ -21,7 +24,13 @@ uv run maverick preflight do-cybersecurity-review
 
 The check verifies the project is initialised and `uv` is on PATH.
 
-## Process
+## Mode Selection
+
+If `` specifies a mode (`full-audit` or `update`), use it. If `update` is selected the caller must also pass a diff (via stdin or a file path); halt and ask for one if missing.
+
+If no mode is specified, default to `full-audit`.
+
+## Full Audit Mode
 
 ### 1. Detect the project stack
 
@@ -158,6 +167,75 @@ uv run maverick integration set cybersecurity_reviewed true
 ```
 
 This commits the milestone into `.maverick/config.json` so other Maverick skills (and `maverick integration get`) can see it.
+
+## Update Mode
+
+Diff-scoped review used as a mandatory pre-push gate by `do-issue-solo` and `do-issue-guided`. Reviews **only the changed code and the code that could be impacted by it** — not the whole codebase. Returns findings to the orchestrator as a structured outcome.
+
+This mode does **not** flip the `cybersecurity_reviewed` milestone — it runs on every PR, not once per project lifetime.
+
+### 1. Read the diff
+
+Caller passes the diff via stdin or as a file path. Parse it to get:
+
+- the list of changed files
+- the changed line ranges per file (so subsequent checks can be scoped)
+- whether any of the changes touch dependency manifests (`package.json`, `pyproject.toml`, `Cargo.toml`, lock files), env / config files, IaC, or CI workflows — those carry security weight beyond the line count
+
+If no diff was provided, halt and ask the caller for one. Do not silently fall back to a full-audit scan.
+
+### 2. Identify impacted code
+
+A change to a function, type, schema, or config can introduce security risk in code that wasn't itself edited. For each changed entity, identify the impact set:
+
+| Change kind | Impact set to audit |
+| --- | --- |
+| Function signature / body | All callers (use grep / IDE-equivalent symbol search) |
+| Exported type / schema | All importers; also serialisation / persistence sites |
+| Auth / authz primitive (middleware, decorator, role) | Every route or handler protected by it |
+| Public API surface (route, endpoint, GraphQL resolver) | Clients of that API; rate-limits and input validation around it |
+| Config or env variable | Every reader of that config; consider whether the new value needs to be a secret |
+| Dependency added or upgraded | The added/upgraded package itself: licence, known CVEs, transitive deps |
+| Dockerfile / IaC | The deployed surface that uses it |
+
+The impact set is **bounded** — do not transitively trace until the entire codebase is included. Stop at one or two hops; if the impact is wider than that, surface it as a finding ("this change has wide reach; recommend a fuller review") rather than try to audit everything.
+
+### 3. Run the audit categories on the scoped set
+
+Apply the same eight categories from Full Audit Mode (Secret exposure, Dependency hygiene, Authentication / authorisation, Input validation / output encoding, Transport / headers / CORS, Data at rest, Logging / monitoring / rate-limit, Container / IaC) — but only against the changed lines and the impact set, not the whole repo.
+
+Most categories will be N/A on any given diff. That is fine. Returning "N/A" with a one-line justification is informative; returning empty findings without saying which categories were considered is not.
+
+### 4. Return a structured outcome
+
+The orchestrator wires this output into the PR description or a comment. Format:
+
+```json
+{
+  "verdict": "PASS" | "FINDINGS" | "BLOCKING",
+  "summary": "<one sentence: what was reviewed and the headline result>",
+  "categories_considered": ["secret-exposure", "auth", ...],
+  "findings": [
+    {
+      "severity": "critical|high|medium|low",
+      "category": "<one of the eight>",
+      "location": "<path/to/file:line>",
+      "description": "<concrete what + why>",
+      "recommendation": "<concrete next step>"
+    }
+  ]
+}
+```
+
+Verdict semantics:
+
+- **PASS** — nothing of concern. Findings list may still contain `low` severity items but none are actionable.
+- **FINDINGS** — one or more `medium` / `high` items. The PR may proceed; findings are surfaced to the human reviewer in the PR body.
+- **BLOCKING** — at least one `critical` finding (e.g., a secret committed to the diff, an auth bypass introduced). The orchestrator must halt the push and surface this to the user. Do not return BLOCKING lightly — the bar is "this PR cannot land safely as-is".
+
+### 5. Do not write to docs/security-audit.md
+
+Update mode produces transient findings, not a snapshot of the whole codebase. Writing to the audit doc would either overwrite valid full-audit content or accumulate noise. Findings stay in the structured output; the orchestrator decides where they end up.
 
 ## Rules
 

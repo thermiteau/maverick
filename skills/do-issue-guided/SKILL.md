@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-cybersecurity-review, do-pullrequest-review
 
 # Work on GitHub Issue (Guided)
 
@@ -133,13 +133,25 @@ its own heuristic.
    and ask the agent to revise.
 4. Commit any doc changes with a `docs:` conventional commit.
 
-## Phase 8: Push and Verify CI
+## Phase 8: Pre-push Cybersecurity Review (mandatory)
+
+This phase **always runs** before push. Any changed code AND any code that could be impacted by the changes (callers, importers, dependents) must be reviewed by `do-cybersecurity-review` before the push proceeds.
+
+1. Compute the full diff: `git diff main...HEAD`.
+2. Dispatch the **do-cybersecurity-review** skill with:
+   - **Mode:** `update`
+   - **Diff:** the output of step 1, passed via stdin or as a file path
+   - **Instructions:** review the changed code AND the impact set (callers, importers, dependents — bounded to one or two hops). Return the structured outcome (verdict + findings).
+3. **Checkpoint — Review security outcome with the user:** show the verdict and any findings. If BLOCKING, halt and route the user back to Phase 5 (implement) to resolve the issues before re-running this phase. If FINDINGS or PASS, confirm with the user before proceeding to push.
+4. If FINDINGS, fold the security findings into the PR description draft so they are visible to the human reviewer in Phase 9.
+
+## Phase 9: Push and Verify CI
 
 1. Run pre-push verification per the mav-local-verification skill (lint, typecheck, tests). Fix any failures before pushing.
 2. Push the branch to remote.
 3. Monitor CI status per the mav-bp-cicd skill. If CI fails, read the failure logs, fix locally, and push again. Do not proceed until CI passes.
 
-## Phase 9: Update Issue and Create PR
+## Phase 10: Update Issue and Create PR
 
 1. Post a completion comment on the issue per the mav-github-issue-workflow skill (post completion comment pattern).
 2. Create a pull request per the mav-github-issue-workflow skill (PR pattern).

@@ -108,8 +108,10 @@ flowchart TD
         COMMIT[Conventional commit + push<br/>per-task durability]
         MORE{More tasks?}
         FULL[Run full verification suite]
-        DOCS{Docs impacted?}
-        DOCS_UPD[Dispatch agent-tech-docs-writer]
+        DOCS_REVIEW[Mandatory: dispatch agent-tech-docs-writer<br/>update mode against the diff]
+        SEC_REVIEW[Mandatory: dispatch do-cybersecurity-review<br/>update mode — diff + impact set]
+        SEC_VERDICT{Security verdict?}
+        BLOCKING_HALT[Halt, surface findings, route<br/>back to implementation]
         RETARGET{Stacked branch:<br/>sibling base merged?}
         RT[Retarget PR base to develop]
         CI_PUSH[Pre-push verification, push final state]
@@ -128,9 +130,10 @@ flowchart TD
         OK -- No --> DEBUG --> TASK
         OK -- Yes --> COMMIT --> MORE
         MORE -- Yes --> TASK
-        MORE -- No --> FULL --> DOCS
-        DOCS -- Yes --> DOCS_UPD --> RETARGET
-        DOCS -- No --> RETARGET
+        MORE -- No --> FULL --> DOCS_REVIEW
+        DOCS_REVIEW --> SEC_REVIEW --> SEC_VERDICT
+        SEC_VERDICT -- BLOCKING --> BLOCKING_HALT --> TASK
+        SEC_VERDICT -- PASS or FINDINGS --> RETARGET
         RETARGET -- Yes --> RT --> CI_PUSH
         RETARGET -- No --> CI_PUSH
         CI_PUSH --> CI_WAIT --> CI_OK
@@ -196,7 +199,10 @@ This is the core loop and is identical for epic-driven and standalone work:
 1. **Re-verify the claim.** A late `blocked-by` propagation from a sibling ejection or an expired lease aborts the story before any push.
 2. **Branch.** From `develop` for an independent story; from a sibling branch when the story depends on a sibling whose PR is open but not yet merged (stacked PR pattern).
 3. **Implement task by task.** Each task: implement → local verification (lint, typecheck, tests) → conventional commit referencing the issue → **push immediately**. Pushing per task is a durability checkpoint — if the machine dies between tasks, the work survives.
-4. **Wrap up.** After the last task, full verification, docs update if anything user-facing changed, retarget guard if stacked (rebase to `develop` if the sibling has merged), final push, CI monitoring, then PR opens ready-for-review.
+4. **Wrap up.** After the last task: full verification, then two mandatory pre-push reviews (always run, no skip path):
+   - **Documentation review** dispatches `agent-tech-docs-writer` in `update` mode against the diff — updates stale docs and creates new ones for new components. "No changes required" is a valid outcome but is recorded explicitly.
+   - **Cybersecurity review** dispatches `do-cybersecurity-review` in `update` mode against the diff. Reviews the changed code AND the code that could be impacted by it (callers, importers, dependents — bounded to one or two hops). Returns PASS / FINDINGS / BLOCKING. **BLOCKING halts the workflow** and routes the user back to implementation; FINDINGS are folded into the PR description so the human reviewer and `agent-code-reviewer` see them; PASS is recorded as `Security review: no concerns.`
+   - Then: stacked-PR retarget guard if applicable, final push, CI monitoring, PR opens ready-for-review.
 
 ### Code review — binary gate
 

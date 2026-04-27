@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-cybersecurity-review, do-pullrequest-review
 
 # Work on GitHub Issue (Autonomous)
 
@@ -176,7 +176,37 @@ whether work is needed; the workflow decides whether the agent runs.
 5. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
 
-## Phase 7: Open PR + Monitor CI
+## Phase 7: Pre-push Cybersecurity Review (mandatory)
+
+This phase **always runs** before the PR is opened. There is no skip
+path. Any changed code AND any code that could be impacted by the
+changes (callers, importers, dependents) must be reviewed by
+`do-cybersecurity-review` before the PR can be opened.
+
+1. Compute the full diff: `git diff origin/<base>...HEAD`.
+2. Dispatch the **do-cybersecurity-review** skill with:
+   - **Mode:** `update`
+   - **Diff:** the output of step 1, passed via stdin or as a file path
+   - **Instructions:** review the changed code AND the impact set
+     (callers, importers, dependents — bounded to one or two hops).
+     Return the structured outcome (verdict + findings) defined in the
+     skill's Update Mode contract.
+3. **Act on the verdict:**
+   - **BLOCKING** — halt. Surface the findings to the user verbatim.
+     Do not open the PR. The user resolves the BLOCKING items by
+     returning to Phase 5 (implement, test, commit, push). Re-run
+     this phase against the new diff before proceeding.
+   - **FINDINGS** — append a `## Security Review` section to the PR
+     body draft listing each finding (severity, location, description,
+     recommendation). The PR may proceed to Phase 8 with these items
+     visible to the human reviewer and to agent-code-reviewer.
+   - **PASS** — record `Security review: no concerns.` in the PR body
+     draft so the gate is auditable.
+4. The PR cannot proceed to Phase 8 until this phase has returned a
+   non-BLOCKING verdict and the outcome has been folded into the PR
+   body draft.
+
+## Phase 8: Open PR + Monitor CI
 
 1. Pre-push verification per `mav-local-verification` — a final
    green check before asking for review.
@@ -190,9 +220,9 @@ whether work is needed; the workflow decides whether the agent runs.
        --body "<summary + closes #>"
    ```
 4. Monitor CI per `mav-bp-cicd`. If CI fails, read logs, fix
-   locally, push. Do not proceed to Phase 8 until CI is green.
+   locally, push. Do not proceed to Phase 9 until CI is green.
 
-## Phase 8: Code Review (binary, hard gate)
+## Phase 9: Code Review (binary, hard gate)
 
 This phase has changed. Review is now a **binary verdict** against the
 open PR, not a local-diff advisory loop. See `agent-code-reviewer`.
@@ -201,14 +231,14 @@ open PR, not a local-diff advisory loop. See `agent-code-reviewer`.
    - The PR URL
    - The issue body, design comment, and tasks list (so it has the spec)
 2. The agent returns exactly one of two verdicts:
-   - **PASS** — proceed to Phase 9 (merge).
-   - **FAIL** — proceed to Phase 10 (eject). Do not attempt to auto-fix.
+   - **PASS** — proceed to Phase 10 (merge).
+   - **FAIL** — proceed to Phase 11 (eject). Do not attempt to auto-fix.
 3. Update phase to `review` in the state file.
 
 There is no fix-and-re-review loop. If the reviewer FAILs the PR, the
 next step is eject-to-human, not iterate.
 
-## Phase 9: Auto-merge (on PASS)
+## Phase 10: Auto-merge (on PASS)
 
 1. `maverick-bot` posts the approval:
    ```bash
@@ -229,7 +259,7 @@ next step is eject-to-human, not iterate.
    - Local state file
    - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
 
-## Phase 10: Eject (on FAIL)
+## Phase 11: Eject (on FAIL)
 
 1. Post the reviewer's verdict as a PR comment:
    ```bash
