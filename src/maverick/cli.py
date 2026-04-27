@@ -1,12 +1,32 @@
 """Unified CLI entry point for claude-maverick."""
 
 import argparse
+from importlib.metadata import PackageNotFoundError, version
+
+
+def _get_version() -> str:
+    try:
+        v = version("maverick")
+    except PackageNotFoundError:
+        return "unknown"
+    # importlib.metadata returns PEP 440 normalised form (e.g. "1.0.3.dev0"),
+    # but pyproject.toml uses the literal "-dev" suffix. Emit the source form
+    # so callers can do exact-string comparison against the plugin's
+    # pyproject.toml.
+    if v.endswith(".dev0"):
+        return v[: -len(".dev0")] + "-dev"
+    return v
 
 
 def main():
     parser = argparse.ArgumentParser(
         prog="maverick",
         description="Claude Code provisioning and configuration tool",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_get_version()}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
