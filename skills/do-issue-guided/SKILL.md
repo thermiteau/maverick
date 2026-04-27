@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-pullrequest-review
 
 # Work on GitHub Issue (Guided)
 
@@ -102,20 +102,26 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 
 **🔲 Checkpoint — Review results:** Present a summary of the review outcome to the user — what was flagged, what was fixed, and what was pushed back on. If there were significant changes during review, highlight them.
 
-## Phase 7: Documentation Review
+## Phase 7: Documentation Review (mandatory)
 
-1. Run `git diff main...HEAD --name-only` to identify all changed files.
-2. Determine whether the changes affect behaviour that is covered by existing documentation in `docs/`:
-   - Changed or added public APIs, components, services, or configuration
-   - Altered data flows, integration points, or architectural patterns
-   - Modified feature behaviour described in existing docs
-3. If documentation updates are needed, dispatch the **agent-tech-docs-writer** agent with:
-   - Mode: **update**
-   - The diff (`git diff main...HEAD`)
-   - The list of affected doc files (or a note that new documentation is needed)
-   - Instruction to update existing docs to reflect the changes — not to rewrite unrelated sections
-4. Review the agent's output. Verify that updates are accurate and scoped to the changes made.
-5. If no existing documentation is affected and the changes do not warrant a new document, skip this phase.
+This phase **always runs** before push. The agent decides whether any
+docs work is needed; the workflow does not skip the analysis based on
+its own heuristic.
+
+1. Compute the full diff: `git diff main...HEAD`.
+2. Dispatch the **agent-tech-docs-writer** agent with:
+   - **Mode:** `update` (per `do-docs`)
+   - **Diff:** the output of step 1
+   - **Instructions:** review every changed file. Update existing
+     `docs/` content that is now stale, and create new documents for
+     any new component, subsystem, or architectural change with no
+     existing coverage. Return "no doc changes required" explicitly if
+     neither applies — do not skip silently.
+3. **Checkpoint — Review docs outcome with the user:** show what was
+   updated or created (or the explicit no-op decision) and confirm
+   before pushing. If updates are inaccurate or out of scope, push back
+   and ask the agent to revise.
+4. Commit any doc changes with a `docs:` conventional commit.
 
 ## Phase 8: Push and Verify CI
 

@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-pullrequest-review
 
 # Work on GitHub Issue (Autonomous)
 
@@ -151,17 +151,31 @@ After the last task, run the full verification suite once more.
 Follow `mav-plan-execution` for the broader execution loop,
 verification discipline, failure handling, and crash recovery.
 
-## Phase 6: Documentation Review
+## Phase 6: Documentation Review (mandatory)
 
-1. Run `git diff origin/<base>...HEAD --name-only` to identify all changed files.
-2. Determine whether the changes affect behaviour covered by `docs/`:
-   - Changed public APIs, components, services, configuration
-   - Altered data flows, integration points, architectural patterns
-   - Modified feature behaviour described in existing docs
-3. If docs need updating, dispatch **agent-tech-docs-writer** in
-   update mode with the diff and the list of affected doc files.
-4. Review and commit any doc updates. Push per the push-per-task rule.
-5. If no docs are affected, skip.
+This phase **always runs** before the PR is opened. There is no skip
+path — the heuristic-gated version of this phase used to let stale docs
+ship when Claude's affected-or-not call was wrong. The agent decides
+whether work is needed; the workflow decides whether the agent runs.
+
+1. Compute the full diff: `git diff origin/<base>...HEAD`.
+2. Dispatch **agent-tech-docs-writer** with:
+   - **Mode:** `update` (per `do-docs`)
+   - **Diff:** the output of step 1
+   - **Instructions:** review every changed file. Decide for each whether
+     existing `docs/` content is now stale, or whether a new document is
+     needed for a new component, subsystem, or architectural change with
+     no existing coverage. Update or create accordingly. Returning
+     "no doc changes required" is a valid outcome and must be reported
+     explicitly (not silently inferred).
+3. **Record the outcome** in the PR body or as a one-line PR comment so
+   the gate is auditable:
+   - If docs were updated or created: list the files changed.
+   - If no changes were required: post `Docs review: no changes required.`
+4. Commit any doc changes with a `docs:` conventional commit and push
+   per the push-per-task rule.
+5. The PR cannot proceed to Phase 7 until this phase has produced
+   either committed doc changes or the auditable no-op record.
 
 ## Phase 7: Open PR + Monitor CI
 
