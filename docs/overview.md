@@ -108,7 +108,7 @@ Maverick encodes best practices as machine-readable artefacts that the LLM must 
 | Mechanism  | Role                                                            | Example                                                           |
 | ---------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
 | **Skills** | Define what good looks like - standards, conventions, workflows | `mav-bp-logging` defines log levels and structured format   |
-| **Agents** | Verify compliance autonomously - review, test, document         | `code-reviewer` catches convention violations and security issues |
+| **Agents** | Verify compliance autonomously - review, test, document         | `code-reviewer` catches spec gaps, missing tests, and quality issues; `do-cybersecurity-review` catches security issues separately |
 | **Hooks**  | Enforce rules automatically at tool-call boundaries             | Block commits to protected branches, prevent secret exposure      |
 
 ### The Enforcement Chain
@@ -123,7 +123,8 @@ Each link in this chain catches different classes of issues:
 - **Project skill** - ensures the LLM uses the project's specific technology (e.g., Pino with CloudWatch transport)
 - **Local verification** - catches syntax errors, lint failures, and test failures before push
 - **CI pipeline** - catches environment-specific issues, dependency problems, cross-platform failures
-- **Agent review** - catches spec violations, missing tests, security issues, convention drift
+- **Pre-push security review** - `do-cybersecurity-review` runs in update mode against the diff and impact set; BLOCKING findings halt the push, FINDINGS are folded into the PR body
+- **Agent code review** - catches spec violations, missing tests, scope drift, maintainability problems (security is handled by the pre-push gate above, not here)
 - **Human review** - final gate for production-bound code
 
 ## Project Structure

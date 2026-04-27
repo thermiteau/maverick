@@ -31,6 +31,15 @@ All Maverick development work originates from a GitHub issue. There is no local-
 flowchart TD
     Start([GitHub issue exists])
 
+    %% ─────────────── Preflight ───────────────
+    PREFLIGHT[uv run maverick preflight do-issue-solo<br/>integration flags + tools + runtime checks]
+    PREFLIGHT_FAIL([Abort: prerequisites not met])
+    PREFLIGHT_OK{Preflight<br/>exits 0?}
+
+    Start --> PREFLIGHT --> PREFLIGHT_OK
+    PREFLIGHT_OK -- No --> PREFLIGHT_FAIL
+    PREFLIGHT_OK -- Yes --> COLD
+
     %% ─────────────── Coordination ───────────────
     subgraph COORD[Coordination — claim and crash safety]
         direction TB
@@ -48,7 +57,6 @@ flowchart TD
         TAKEN -- No / lease expired --> CLAIM
     end
 
-    Start --> COLD
     CLAIM --> ANALYSE
 
     %% ─────────────── Pre-development ───────────────
@@ -171,6 +179,10 @@ flowchart TD
 ```
 
 ## Phase Walkthrough
+
+### Preflight
+
+The very first step of every action skill is `uv run maverick preflight <skill-name>`. The CLI checks three classes of prerequisite: integration flags from `.maverick/config.json` (e.g. `init`, `code_review_workflow`), required tools on PATH (`gh`, `git`, `uv`), and named runtime checks (e.g. `bot_configured`, `worktrees_enabled`). Exit 0 means proceed; exit 1 means halt and report the missing prerequisites verbatim to the user. There is no skip path — the exit code is the gate.
 
 ### Coordination
 

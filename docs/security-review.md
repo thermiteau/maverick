@@ -51,54 +51,51 @@ In attended development, a human developer might notice a suspicious pattern dur
 
 ## How Maverick Enforces Security Review
 
-Maverick implements security review at multiple stages of the development pipeline.
+Security review in Maverick is owned by a single skill — `do-cybersecurity-review` — that runs in two contexts. Code review is deliberately *not* a security gate; the agent code reviewer's scope is correctness, test coverage, and spec compliance, with security explicitly out of scope (see code-review.md).
 
 ```mermaid
 flowchart TD
-    GEN["LLM generates code"] --> PRE["Pre-commit checks"]
-    PRE -->|secrets detected| BLOCK1["Commit blocked"]
-    PRE -->|clean| COMMIT["Code committed"]
-    COMMIT --> PUSH["Push to feature branch"]
-    PUSH --> CI["CI pipeline"]
-    CI --> SAST["Static analysis<br/>security testing"]
-    CI --> DEP["Dependency<br/>vulnerability scan"]
-    CI --> LINT["Security-focused<br/>linting rules"]
-    SAST --> GATE{All checks pass?}
-    DEP --> GATE
-    LINT --> GATE
-    GATE -->|yes| PR["Pull request created"]
-    GATE -->|no| BLOCK2["Pipeline fails"]
-    PR --> REVIEW["Code reviewer agent<br/>+ human reviewer"]
-    REVIEW -->|approved| MERGE["Merge to protected branch"]
-    REVIEW -->|security issue found| ISSUE["Security issue created<br/>for human triage"]
+    INIT["do-init"] --> FULL["do-cybersecurity-review<br/>full-audit mode"]
+    FULL --> AUDIT["docs/security-audit.md<br/>(committed report)"]
+    FULL --> FLAG1["integration.cybersecurity_reviewed = true"]
 
-    style BLOCK1 fill:#d32f2f,color:#fff
-    style BLOCK2 fill:#d32f2f,color:#fff
-    style ISSUE fill:#f57c00,color:#fff
-    style MERGE fill:#388e3c,color:#fff
+    DEV["Developer / agent makes changes"] --> TASK["Per-task implement,<br/>commit, push"]
+    TASK --> PREPUSH["Pre-push gate"]
+    PREPUSH --> DOCS_REVIEW["Documentation review<br/>(mandatory)"]
+    DOCS_REVIEW --> SEC_UPDATE["do-cybersecurity-review<br/>update mode<br/>(diff + impact set)"]
+    SEC_UPDATE --> VERDICT{Verdict}
+    VERDICT -->|BLOCKING| HALT["Halt push,<br/>route back to implementation"]
+    VERDICT -->|FINDINGS| FOLD["Fold into PR body<br/>for reviewer context"]
+    VERDICT -->|PASS| RECORD["Record 'no concerns'<br/>in PR body"]
+    FOLD --> OPEN_PR["Open PR"]
+    RECORD --> OPEN_PR
+    OPEN_PR --> CODE_REVIEW["agent-code-reviewer<br/>quality gate<br/>(security NOT reviewed here)"]
+
+    style HALT fill:#d32f2f,color:#fff
+    style FOLD fill:#f57c00,color:#fff
+    style RECORD fill:#388e3c,color:#fff
 ```
 
-**Enforcement mechanisms:**
+**Where security review runs:**
 
-- **Scope-boundaries skill** prevents the LLM from modifying auth systems, credential stores, or security middleware without explicit instruction
-- **Code-reviewer agent** performs automated review of every PR, with specific focus on security patterns
-- **Pre-commit hooks** run secrets detection before any code is committed
-- **CI pipeline** runs static analysis security testing (SAST) and dependency vulnerability scanning
-- **Human reviewer** provides final approval with security context the automated tools lack
+- **At adoption time** (`do-init` → `do-cybersecurity-review` full-audit mode). Audits the whole codebase across eight categories (secret exposure, dependency hygiene, auth/authz, input validation, transport/headers, data at rest, logging/monitoring, container/IaC) and writes a findings report to `docs/security-audit.md`. Flips the `cybersecurity_reviewed` integration flag.
+- **Before every PR** (do-issue-solo Phase 7 / do-issue-guided Phase 8 → `do-cybersecurity-review` update mode). Scoped to changed lines plus the impact set (callers, importers, dependents — bounded to one or two hops). Returns a structured verdict.
 
-## Pre-PR Security Scan Process
+**Verdict semantics:**
 
-Before a pull request is created, the following security checks must pass:
+| Verdict | Meaning | Workflow effect |
+| --- | --- | --- |
+| **PASS** | No concerns surfaced. | Records `Security review: no concerns.` in the PR body. PR opens normally. |
+| **FINDINGS** | One or more medium/high items. | Findings are appended to the PR body so the reviewer sees them with full context. PR opens; the items become tracked work. |
+| **BLOCKING** | One or more critical items (committed secret, auth bypass introduced, etc.). | Push is halted. The user must address the findings (back to implementation), then re-run the gate. The PR cannot open until the verdict is non-BLOCKING. |
 
-| Check              | What it detects                                              | Enforcement point |
-| ------------------ | ------------------------------------------------------------ | ----------------- |
-| Secrets scan       | API keys, passwords, tokens, private keys in code or config  | Pre-commit hook   |
-| SAST               | Injection flaws, XSS, insecure deserialization, broken auth  | CI pipeline       |
-| Dependency audit   | Known CVEs in direct and transitive dependencies             | CI pipeline       |
-| Security linting   | Insecure function usage, dangerous patterns, missing headers | CI pipeline       |
-| License compliance | Copyleft or restricted licenses in dependencies              | CI pipeline       |
+**Other enforcement contributing to security:**
 
-If any check fails, the PR cannot be created. The LLM must fix the issue or escalate to a human if the fix requires security domain expertise.
+- **`mav-scope-boundaries` skill** prevents the LLM from modifying auth systems, credential stores, or security middleware without explicit issue authorisation. Acts as a structural guardrail before any review can happen.
+- **CI pipelines** that the project ships (SAST, dependency audit, secrets scan) supplement the skill-driven gate. `do-cybersecurity-review` is the agent-side review; project CI is the codified-tools-side review. Both fire on every PR.
+- **Human reviewer** provides final approval after the agent verdicts.
+
+The split between code review and security review is deliberate. Code review checks whether the code does what was asked correctly and is well-tested; security review checks whether the change introduces or exposes vulnerabilities. Folding them into one agent both blurs ownership and makes the PR-level review either too broad to be useful or too narrow to catch everything. Keeping them separate gives each gate a clear, falsifiable contract.
 
 ## OWASP Top 10 Awareness
 

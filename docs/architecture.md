@@ -51,13 +51,12 @@ Agents are autonomous workers that run in isolated context windows. They verify 
 
 | Agent                       | Purpose                                                      | When it runs                            |
 | --------------------------- | ------------------------------------------------------------ | --------------------------------------- |
-| **Code Reviewer**           | Two-stage review: spec compliance, then code quality         | After implementation steps or before PR |
+| **Code Reviewer**           | Two-stage review: spec compliance, then code quality (correctness, test coverage, maintainability — security is out of scope, handled by do-cybersecurity-review) | Against the open PR after pre-push gates |
 | **Issue Analyst**           | Reads a GitHub issue, explores the codebase, produces a solution design | At the start of issue-driven workflows  |
 | **GitHub Issue Planner**    | Takes a solution design and produces an ordered task list    | After solution design for GitHub issues |
-| **Task Planner**            | Takes a solution design and produces an ordered task list    | After solution design for local tasks   |
 | **Session Reviewer**        | Reviews session activity and git diffs for quality issues    | After development sessions              |
 | **Maverick**                | Handles Maverick plugin and CLI management                   | During plugin installation and setup    |
-| **Tech Docs Writer**        | Generate technical documentation with Mermaid diagrams       | After significant architecture changes  |
+| **Tech Docs Writer**        | Generate technical documentation with Mermaid diagrams       | Pre-push, dispatched by the docs review phase |
 
 Agents reference skills for domain knowledge but operate independently - they don't share the main session's context window.
 
