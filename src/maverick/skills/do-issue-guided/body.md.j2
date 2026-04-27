@@ -5,6 +5,16 @@
 
 Work on GitHub issue `{{ ARGUMENTS }}` interactively. Follow every phase in order. Do not skip phases. Proceed autonomously through routine work, but pause for user confirmation at key decision points marked with **🔲 Checkpoint**.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-issue-guided
+```
+
+The check verifies the project is initialised, the mandatory remote code-review workflow is in place, and required tools (`gh`, `git`, `uv`) are on PATH.
+
 ## Before You Begin
 
 If `{{ ARGUMENTS }}` is empty or not a valid issue number, ask the user for the issue number before proceeding. Do not attempt any phase without it.

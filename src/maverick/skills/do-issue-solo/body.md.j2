@@ -8,6 +8,20 @@ with any other Maverick instance that might also hold a claim on this
 issue. Follow every phase in order. Only pause to ask the user when you
 are blocked or need clarification.
 
+## Preflight (mandatory)
+
+Run this **first**, before reading any other phase. If it exits non-zero,
+halt and report the stderr output verbatim to the user. Do not proceed,
+do not work around missing prerequisites.
+
+```bash
+uv run maverick preflight do-issue-solo
+```
+
+The check verifies: the project is initialised, the mandatory remote
+code-review workflow is in place, the maverick-bot is configured,
+and required tools (`gh`, `git`, `uv`) are on PATH.
+
 ## Before You Begin
 
 If `{{ ARGUMENTS }}` is empty or not a valid issue number, ask the user
@@ -16,33 +30,17 @@ for the issue number before proceeding.
 Determine the repo (via `gh repo view --json nameWithOwner`) — you will
 pass it to every `maverick coord` command below.
 
-**Remote code-review gate.** Verify the project ships a CI workflow that
-runs the agent code reviewer on every PR. Per `{{ SKILLS.MAV_BP_REMOTE_CODE_REVIEW }}`,
-look for any file under `.github/workflows/` that contains a line equal to
-`# maverick:code-review` AND has an `on: pull_request:` trigger:
-
-```bash
-grep -lE '^\s*# maverick:code-review\s*$' .github/workflows/*.y*ml 2>/dev/null
-```
-
-If no file matches, **stop and offer the user two paths** before claiming
-the issue or branching:
+If preflight reported a missing `code_review_workflow` flag, offer the
+user two paths before claiming the issue:
 
 1. **Scaffold the reference workflow.** Copy
    `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
    into `.github/workflows/`, commit it on a small setup branch, open a
    PR for it, and wait for the user to merge that PR before continuing
-   with `{{ ARGUMENTS }}`. The workflow gates itself on its own PR — a
-   useful smoke test. After the workflow merges, record the milestone:
-   `uv run maverick integration set code_review_workflow true`.
-2. **Abort.** If the user declines to add the workflow, stop here. Do
-   not claim the issue, do not branch. Report that the project is not
-   compliant with the binary review contract and ask them to run
-   `/maverick:do-maverick-alignment` for context.
-
-There is no silent skip path — the auto-merge in Phase 9 trusts the
-remote review gate, and proceeding without it would let unreviewed
-code land.
+   with `{{ ARGUMENTS }}`. After the workflow merges, run
+   `uv run maverick integration set code_review_workflow true` and
+   re-run `uv run maverick preflight do-issue-solo`.
+2. **Abort.** If the user declines, stop here.
 
 ## Phase 0: Coordination + cold-start
 

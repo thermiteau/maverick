@@ -12,6 +12,16 @@ disable-model-invocation: false
 
 Create, restructure, or update technical documentation. Operates in three modes depending on the current state of the project's documentation.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-docs
+```
+
+The check verifies the project is initialised and `uv` is on PATH.
+
 ## Task Detection
 
 If `` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:

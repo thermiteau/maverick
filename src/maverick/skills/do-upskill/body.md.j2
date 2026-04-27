@@ -5,6 +5,16 @@ Scan the current project's codebase for a given topic and produce a project-spec
 
 **Primary audience: LLMs.** The generated skill is project implementation and usage guidance — what technology is used, how it's configured, and where the code lives. It is NOT best practices (the maverick best-practice skill handles that). Keep it dense, factual, and under 500 lines.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-upskill
+```
+
+The check verifies the project is initialised and `uv` is on PATH.
+
 ## Invocation
 
 When invoked (via `/upskill` or the Skill tool), **process all topics listed in `skills/do-upskill/topics.json` without prompting the user**. Do not present a list of choices or ask which topics to generate — iterate through every entry in the JSON array and generate a project skill for each one.

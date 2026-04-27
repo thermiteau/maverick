@@ -15,51 +15,47 @@ from the epic's child stories, schedules them into waves, runs each wave
 in parallel via per-story worktrees, and drives every story through agent
 code review with binary PASS/FAIL verdicts.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not claim, do not branch, do not start any worktree.
+
+```bash
+uv run maverick preflight do-epic
+```
+
+The check verifies: the project is initialised, the mandatory remote
+code-review workflow is in place, the maverick-bot is configured, git
+worktrees are usable, and required tools (`gh`, `git`, `uv`) are on
+PATH. If the code-review-workflow flag is false, offer to scaffold from
+`${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
+on a small setup PR; after that PR merges, run `uv run maverick
+integration set code_review_workflow true` and re-run preflight.
+
 ## Before You Begin
 
-- `` must be the GitHub issue number of a Maverick **epic**
-  — an issue whose body contains a task table of child stories. If it is
-  a single story, dispatch `do-issue-solo` instead.
-- **Worktrees are required.** If `uv run maverick worktree list` fails,
-  abort with a hard error — this workflow cannot run without them.
-- The `maverick-bot` GitHub App must be configured. Run
-  `uv run maverick bot status` and abort with a hard error if it reports
-  `configured: false`.
+`` must be the GitHub issue number of a Maverick **epic**
+— an issue whose body contains a task table of child stories. If it is
+a single story, dispatch `do-issue-solo` instead.
 
-## Phase 0: Preconditions + coordination
+## Phase 0: Coordination
 
-1. **Worktree check**: `uv run maverick worktree list`. Abort on failure.
-2. **Bot check**: `uv run maverick bot status`. Abort on failure.
-3. **Remote code-review gate** per `mav-bp-remote-code-review`:
-   ```bash
-   grep -lE '^\s*# maverick:code-review\s*$' .github/workflows/*.y*ml 2>/dev/null
-   ```
-   If no file matches, abort. Do not claim, do not branch, do not start
-   any worktree. Tell the user the project must ship the workflow
-   before an epic can run — offer to scaffold from
-   `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
-   on a small setup PR. After that PR merges, record the milestone:
-   `uv run maverick integration set code_review_workflow true`.
-   The auto-merge in Phase 5d trusts this gate; running an epic
-   without it would let unreviewed code land across every story
-   in the wave.
-4. **Resolve repo**: `gh repo view --json nameWithOwner`.
-5. **Cold-start hydrate** per `mav-durability-on-gh`:
+1. **Resolve repo**: `gh repo view --json nameWithOwner`.
+2. **Cold-start hydrate** per `mav-durability-on-gh`:
    - Read the `maverick-dag` marker on the epic.
    - Read the `maverick-state` marker.
    - Read the `maverick-bprop` marker — if present, **resume block
      propagation first** before continuing.
    - Read open PRs for the epic's child-story branches.
-6. **Decide claim scope**:
+3. **Decide claim scope**:
    - Whole epic if no live claim exists.
    - A specific wave if another instance already holds other stories.
    - Single story if another instance holds the epic but not the story
      you were asked about.
-7. **Claim**: `uv run maverick coord claim <repo>  --scope <csv-of-issues>`.
+4. **Claim**: `uv run maverick coord claim <repo>  --scope <csv-of-issues>`.
    On `ClaimRejected`, abort and report per
    `mav-multi-instance-coordination`.
-8. **Start heartbeat** for every issue in the claim scope.
-9. **Register release handler** for every exit path.
+5. **Start heartbeat** for every issue in the claim scope.
+6. **Register release handler** for every exit path.
 
 ## Phase 1: Design + task decomposition (if needed)
 

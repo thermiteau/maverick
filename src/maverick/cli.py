@@ -144,6 +144,19 @@ def main():
         help="Worker action to perform",
     )
 
+    # Preflight — check prerequisites before an action skill runs
+    preflight_parser = subparsers.add_parser(
+        "preflight",
+        help="Check prerequisites for a Maverick action skill (exit 1 if not met)",
+    )
+    preflight_parser.add_argument(
+        "skill",
+        help="Skill name to check (e.g., do-issue-solo, do-epic, do-upskill)",
+    )
+    preflight_parser.add_argument(
+        "--json", action="store_true", help="Emit JSON instead of human-readable text"
+    )
+
     # Integration-status read/write (per-project, committed to .maverick/config.json)
     integration_parser = subparsers.add_parser(
         "integration", help="Read or update Maverick integration milestones"
@@ -224,6 +237,13 @@ def main():
         from maverick.integration_cli import main as integration_main
 
         integration_main(args)
+
+    elif args.command == "preflight":
+        import sys as _sys
+
+        from maverick.preflight_cli import main as preflight_main
+
+        _sys.exit(preflight_main(args))
 
     elif args.command in ("coord", "dag", "state", "worktree", "bot", "gh-state"):
         import sys as _sys

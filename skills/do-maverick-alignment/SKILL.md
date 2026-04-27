@@ -9,6 +9,16 @@ disable-model-invocation: false
 
 Analyze the current project's codebase against Maverick standard practices and write a findings report to `docs/maverick-audit.md`.
 
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-maverick-alignment
+```
+
+The check verifies the project is initialised and `uv` is on PATH.
+
 ## When to Run
 
 - User invokes `/maverick:codebase-audit`
