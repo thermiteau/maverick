@@ -192,4 +192,4 @@ After all steps are complete and the full verification suite passes:
 Do not proceed to code review until every acceptance criterion is met and all checks pass.
 
 
-<!-- maverick-plugin-version: 1.0.1 -->
+<!-- maverick-plugin-version: 1.0.2-dev -->
