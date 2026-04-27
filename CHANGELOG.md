@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-04-27
+
+Housekeeping release.
+
+### Removed
+
+- `temp/` scratch directory containing the four planning notes that informed the 1.0.0 workflow overhaul (`workflow.md`, `plan.md`, `retro.md`, `outstanding.md`). Their content all shipped as skills and docs in 1.0.0; the directory was leftover noise.
+
 ## [1.0.0] - 2026-04-27
 
 First major release. The workflow shape changes substantially: every Maverick action now passes through a unified preflight gate, two mandatory pre-push reviews (docs and cybersecurity), and a tightened code-review contract. Project state — including which Maverick milestones a project has reached — is tracked durably in `.maverick/config.json` and committed to git.
@@ -128,7 +136,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/thermiteau/maverick/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/thermiteau/maverick/compare/v0.5.7...v1.0.0
 [0.5.7]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.7
 [0.5.5]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.5
