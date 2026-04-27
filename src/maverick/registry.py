@@ -130,7 +130,28 @@ def render_skill(
     skill_output_dir.mkdir(parents=True, exist_ok=True)
     output_path = skill_output_dir / "SKILL.md"
     output_path.write_text(frontmatter + "\n" + body + version_marker)
+
+    _copy_skill_assets(skill, templates_dir, skill_output_dir)
     return output_path
+
+
+def _copy_skill_assets(
+    skill: SkillConfig, templates_dir: Path, skill_output_dir: Path
+) -> None:
+    """Copy each declared asset from the skill source dir to the build output."""
+    skill_src_dir = templates_dir / skill.name
+    for asset in skill.assets:
+        src = skill_src_dir / asset
+        if not src.exists():
+            raise FileNotFoundError(
+                f"Skill {skill.name!r} declares asset {asset!r} but {src} does not exist."
+            )
+        dst = skill_output_dir / asset
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+        else:
+            shutil.copy2(src, dst)
 
 
 def _clean_skills_output(output_dir: Path) -> None:

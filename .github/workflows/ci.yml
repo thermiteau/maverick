@@ -66,3 +66,26 @@ jobs:
             echo "::error::Generated files under skills/ or agents/ are out of sync with src/. Run 'make build' locally and commit the result."
             exit 1
           fi
+
+      - name: Verify build is deterministic
+        run: |
+          make build
+          if ! git diff --exit-code -- skills/ agents/; then
+            echo "::error::Running 'make build' twice produced different output. The build has nondeterministic behaviour (e.g. unsorted iteration, embedded timestamps)."
+            exit 1
+          fi
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install the CLI from the plugin directory
+        run: uv tool install --force .
+
+      - name: Verify the CLI runs
+        run: maverick --help

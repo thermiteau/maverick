@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from maverick.models import AgentConfig, GlobalConfig, SkillConfig
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
 from maverick.registry import (
@@ -187,6 +189,34 @@ class TestRenderSkill:
 
         content = result.read_text()
         assert "Version: 2.0" in content
+
+    def test_copies_declared_assets(self, tmp_path: Path):
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "asset-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text("Body")
+        (skill_dir / "helper.sh").write_text("#!/bin/bash\necho hi\n")
+        (skill_dir / "data").mkdir()
+        (skill_dir / "data" / "values.json").write_text('{"x": 1}')
+
+        output_dir = tmp_path / "output"
+        skill = SkillConfig(name="asset-skill", assets=["helper.sh", "data"])
+        render_skill(skill, GlobalConfig(), templates_dir, output_dir)
+
+        out_skill_dir = output_dir / "asset-skill"
+        assert (out_skill_dir / "helper.sh").read_text() == "#!/bin/bash\necho hi\n"
+        assert (out_skill_dir / "data" / "values.json").read_text() == '{"x": 1}'
+
+    def test_missing_asset_raises(self, tmp_path: Path):
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "broken-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text("Body")
+
+        output_dir = tmp_path / "output"
+        skill = SkillConfig(name="broken-skill", assets=["does-not-exist.sh"])
+        with pytest.raises(FileNotFoundError, match="does-not-exist.sh"):
+            render_skill(skill, GlobalConfig(), templates_dir, output_dir)
 
 
 class TestRenderAgent:
