@@ -140,13 +140,13 @@ class TestGenerateReport:
         assert "upskill-generated" in report
 
     def test_report_shows_maverick_version(self, empty_session: SessionData):
-        empty_session.skills_available = ["maverick:do-task-solo"]
+        empty_session.skills_available = ["maverick:do-issue-solo"]
         empty_session.maverick_version = "0.5.0"
         report = generate_report(empty_session, [])
         assert "**Plugin version:** 0.5.0" in report
 
     def test_report_shows_unknown_version(self, empty_session: SessionData):
-        empty_session.skills_available = ["maverick:do-task-solo"]
+        empty_session.skills_available = ["maverick:do-issue-solo"]
         # No maverick_version set
         report = generate_report(empty_session, [])
         assert "unknown (pre-version plugin)" in report

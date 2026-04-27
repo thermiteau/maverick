@@ -14,7 +14,6 @@ DO_ISSUE_SOLO = "do-issue-solo"
 DO_MAVERICK_ALIGNMENT = "do-maverick-alignment"
 DO_PULLREQUEST_REVIEW = "do-pullrequest-review"
 DO_RECOMMEND = "do-recommend"
-DO_TASK_SOLO = "do-task-solo"
 DO_TECH_DOCS = "do-tech-docs"
 DO_UPSKILL = "do-upskill"
 MAV_BP_ACCESSIBILITY = "mav-bp-accessibility"
@@ -68,7 +67,6 @@ ALL_SKILL_NAMES = {
     DO_MAVERICK_ALIGNMENT,
     DO_PULLREQUEST_REVIEW,
     DO_RECOMMEND,
-    DO_TASK_SOLO,
     DO_TECH_DOCS,
     DO_UPSKILL,
     MAV_BP_ACCESSIBILITY,
@@ -121,7 +119,6 @@ AGENT_ISSUE_ANALYST = "agent-issue-analyst"
 AGENT_GITHUB_ISSUE_PLANNER = "agent-github-issue-planner"
 AGENT_MAVERICK = "agent-maverick"
 AGENT_TECH_DOCS_WRITER = "agent-tech-docs-writer"
-AGENT_TASK_PLANNER = "agent-task-planner"
 AGENT_SESSION_REVIEWER = "agent-session-reviewer"
 
 ALL_AGENT_NAMES = {
@@ -130,6 +127,5 @@ ALL_AGENT_NAMES = {
     AGENT_GITHUB_ISSUE_PLANNER,
     AGENT_MAVERICK,
     AGENT_TECH_DOCS_WRITER,
-    AGENT_TASK_PLANNER,
     AGENT_SESSION_REVIEWER,
 }

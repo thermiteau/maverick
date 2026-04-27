@@ -81,7 +81,7 @@ _CORRECTION_SIGNALS = re.compile(
     re.IGNORECASE,
 )
 
-_WORKFLOW_SKILLS = {"do-task-solo", "do-issue-solo", "do-issue-guided"}
+_WORKFLOW_SKILLS = {"do-issue-solo", "do-issue-guided"}
 
 
 def _bash_commands(session: SessionData) -> list[ToolCall]:
@@ -193,8 +193,8 @@ def analyze_commit_without_verification(session: SessionData) -> list[Finding]:
                 f"The Maverick plugin was not loaded for this session."
             ),
             recommendation=(
-                "Load the Maverick plugin and use a workflow skill (do-task-solo, "
-                "do-issue-solo) which includes verification steps."
+                "Load the Maverick plugin and use a workflow skill (do-issue-solo) "
+                "which includes verification steps."
             ),
         ))
 
@@ -407,7 +407,7 @@ def analyze_maverick_not_used(session: SessionData) -> list[Finding]:
                 "invoked during this session."
             ),
             recommendation=(
-                "Use a Maverick workflow skill (do-task-solo, do-issue-solo) "
+                "Use a Maverick workflow skill (do-issue-solo or do-issue-guided) "
                 "for structured task execution with built-in verification and "
                 "review steps."
             ),

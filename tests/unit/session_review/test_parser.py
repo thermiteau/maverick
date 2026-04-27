@@ -207,7 +207,7 @@ class TestParseSession:
                             "type": "tool_use",
                             "id": "t1",
                             "name": "Skill",
-                            "input": {"skill": "do-task-solo"},
+                            "input": {"skill": "do-issue-solo"},
                         },
                     ],
                 },
@@ -215,7 +215,7 @@ class TestParseSession:
         ]
         session_file = self._write_session(tmp_path, events)
         data = parse_session(session_file)
-        assert "do-task-solo" in data.skills_invoked
+        assert "do-issue-solo" in data.skills_invoked
 
     def test_tracks_errors(self, tmp_path: Path):
         events = [

@@ -62,7 +62,7 @@ The output format depends on the number of tasks:
 
 #### Less than 5 tasks: Checklist Comment
 
-Post a single comment on the issue (or write to `tasks.md` in local mode) with a checkbox list:
+Post a single comment on the issue with a checkbox list:
 
 ```markdown
 ## Tasks
@@ -108,17 +108,6 @@ Post a summary comment on the parent issue listing all sub-issues with their exe
 ```
 
 Sub-issues that have no dependency between them can be worked on in any order. Use the `Depends On` column only when one task genuinely requires another to be completed first.
-
-#### Local Mode (do-task-solo)
-
-When working without GitHub issues, write the task list to `.maverick/do-task/<TASK-ID>/tasks.md`:
-
-```markdown
-## Tasks
-
-- [ ] **<imperative title>** — <1-2 sentence description>
-- [ ] **<imperative title>** — <1-2 sentence description>
-```
 
 ## Task Sizing
 

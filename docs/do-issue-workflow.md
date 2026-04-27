@@ -23,7 +23,7 @@ The same per-story execution path is used in both cases. Epics add a planning st
 - **Crash-safe** — if a machine dies mid-flow, leases expire and another instance can take over without losing committed work. GitHub is the source of truth; local files are a derivable cache.
 - **Binary at the review gate** — `agent-code-reviewer` either passes (auto-merge) or fails (eject to human). There is no fix-and-re-review loop.
 
-The local file workflow (`do-task-solo`, no GitHub issue) is out of scope for this document.
+All Maverick development work originates from a GitHub issue. There is no local-file-only workflow.
 
 ## The Workflow
 

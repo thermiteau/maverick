@@ -25,8 +25,8 @@ from maverick.registry import (
 
 class TestBuildNamesDict:
     def test_basic_conversion(self):
-        result = _build_names_dict({"do-task-solo", "mav-bp-logging"})
-        assert result["DO_TASK_SOLO"] == "do-task-solo"
+        result = _build_names_dict({"do-issue-solo", "mav-bp-logging"})
+        assert result["DO_ISSUE_SOLO"] == "do-issue-solo"
         assert result["MAV_BP_LOGGING"] == "mav-bp-logging"
 
     def test_empty_set(self):
@@ -107,7 +107,7 @@ class TestBuildAgentFrontmatter:
             memory="project",
             tools=["Read", "Write", "Bash"],
             disallowed_tools=["Agent"],
-            skills=["do-task-solo", "mav-bp-logging"],
+            skills=["do-issue-solo", "mav-bp-logging"],
         )
         fm = _build_agent_frontmatter(agent)
         assert "model: opus" in fm
@@ -120,7 +120,7 @@ class TestBuildAgentFrontmatter:
         assert "tools: Read, Write, Bash" in fm
         assert "disallowedTools: Agent" in fm
         assert "skills:" in fm
-        assert "  - do-task-solo" in fm
+        assert "  - do-issue-solo" in fm
         assert "  - mav-bp-logging" in fm
 
 
@@ -167,7 +167,7 @@ class TestRenderSkill:
         skill_dir = templates_dir / "jinja-skill"
         skill_dir.mkdir(parents=True)
         (skill_dir / "body.md.j2").write_text(
-            "Depends on: {{ DEPENDS_ON }}\nSkill: {{ SKILLS.DO_TASK_SOLO }}"
+            "Depends on: {{ DEPENDS_ON }}\nSkill: {{ SKILLS.DO_ISSUE_SOLO }}"
         )
 
         output_dir = tmp_path / "output"
@@ -176,7 +176,7 @@ class TestRenderSkill:
 
         content = result.read_text()
         assert "dep-a, dep-b" in content
-        assert "do-task-solo" in content
+        assert "do-issue-solo" in content
 
     def test_render_with_extra_context(self, tmp_path: Path):
         templates_dir = tmp_path / "templates"

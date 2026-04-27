@@ -63,7 +63,7 @@ class TestAgentConfig:
             tools=["Read", "Write"],
             model="opus",
             max_turns=10,
-            skills=["do-task-solo"],
+            skills=["do-issue-solo"],
             background=True,
             isolation="worktree",
         )

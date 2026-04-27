@@ -4,8 +4,8 @@ from maverick.names import (
     AGENT_CODE_REVIEWER,
     ALL_AGENT_NAMES,
     ALL_SKILL_NAMES,
+    DO_ISSUE_GUIDED,
     DO_ISSUE_SOLO,
-    DO_TASK_SOLO,
     MAV_BP_LOGGING,
 )
 
@@ -16,7 +16,7 @@ class TestSkillNames:
 
     def test_known_skills_in_set(self):
         assert DO_ISSUE_SOLO in ALL_SKILL_NAMES
-        assert DO_TASK_SOLO in ALL_SKILL_NAMES
+        assert DO_ISSUE_GUIDED in ALL_SKILL_NAMES
         assert MAV_BP_LOGGING in ALL_SKILL_NAMES
 
     def test_skill_names_are_kebab_case(self):
