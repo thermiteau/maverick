@@ -179,4 +179,4 @@ Keep these strictly local:
 If a piece of state is regenerable within one task, don't mirror it to GitHub.
 The markers are a narrow coordination surface, not a storage layer.
 
-<!-- maverick-plugin-version: 1.0.1-dev -->
+<!-- maverick-plugin-version: 1.0.2-dev -->

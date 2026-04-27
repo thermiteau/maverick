@@ -230,4 +230,4 @@ The two are related but distinct:
 | Deprecated code no longer functions | Broken deprecation contract | Fix deprecated code path — it must work until removal |
 | Multiple breaking changes across minor releases | Death by a thousand cuts for consumers | Batch breaking changes into a single major release |
 
-<!-- maverick-plugin-version: 1.0.1-dev -->
+<!-- maverick-plugin-version: 1.0.2-dev -->

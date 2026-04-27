@@ -164,4 +164,4 @@ When IaC is not possible -- because the platform does not support it, the tool l
 | Destructive changes auto-applied               | Accidental data loss           | Require human approval for destroy/replace actions   |
 | Mixed IaC tools for the same resource layer    | Conflicting state management   | Standardise on one tool per layer                    |
 
-<!-- maverick-plugin-version: 1.0.1-dev -->
+<!-- maverick-plugin-version: 1.0.2-dev -->

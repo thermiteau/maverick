@@ -60,4 +60,4 @@ Print a final summary to the user:
 
 The integration checklist gives the user (and any future Maverick session) a clear view of what's been completed and what's still pending.
 
-<!-- maverick-plugin-version: 1.0.1-dev -->
+<!-- maverick-plugin-version: 1.0.2-dev -->

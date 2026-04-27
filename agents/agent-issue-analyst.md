@@ -74,4 +74,4 @@ Return a structured message containing:
 - **Right-sized design** — scale design depth to the task per the mav-create-solution-design skill's sizing table.
 - **Durable output** — always post the design comment and update the state file before returning, so work is not lost if the caller's session crashes.
 
-<!-- maverick-plugin-version: 1.0.1-dev -->
+<!-- maverick-plugin-version: 1.0.2-dev -->
