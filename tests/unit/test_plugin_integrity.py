@@ -92,6 +92,40 @@ class TestAgentCrossReferences:
         )
 
 
+class TestHookEventNames:
+    """Hook event names in hooks.json must be valid Claude Code event types.
+
+    Catches the bug where hooks.json registered a non-existent event
+    (e.g. 'PostPush'), causing Claude Code to reject the file silently.
+    """
+
+    VALID_EVENTS = frozenset(
+        {
+            "PreToolUse",
+            "PostToolUse",
+            "UserPromptSubmit",
+            "Notification",
+            "Stop",
+            "SubagentStop",
+            "SessionStart",
+            "SessionEnd",
+            "PreCompact",
+        }
+    )
+
+    def test_all_event_names_are_valid(self):
+        hooks_path = PROJECT_ROOT / "hooks" / "hooks.json"
+        if not hooks_path.exists():
+            pytest.skip("no hooks.json shipped")
+        data = json.loads(hooks_path.read_text())
+        events = set(data.get("hooks", {}).keys())
+        invalid = events - self.VALID_EVENTS
+        assert not invalid, (
+            f"hooks.json uses unknown event types: {sorted(invalid)}. "
+            f"Valid events are {sorted(self.VALID_EVENTS)}."
+        )
+
+
 class TestPluginManifests:
     """Path-valued strings in plugin manifests must resolve to real files.
 

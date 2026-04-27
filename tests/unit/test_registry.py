@@ -18,6 +18,7 @@ from maverick.registry import (
     _clean_skills_output,
     _get_version,
     render_agent,
+    render_all_hooks,
     render_skill,
 )
 
@@ -286,3 +287,70 @@ class TestCleanOutput:
         _clean_agents_output(tmp_path)
         assert not (tmp_path / "agent-a.md").exists()
         assert (tmp_path / "keep.txt").exists()
+
+
+class TestRenderAllHooks:
+    def test_copies_files_preserving_subdirs(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        (src / "hooks.json").write_text('{"hooks": {}}')
+        (src / "scripts").mkdir()
+        (src / "scripts" / "check.py").write_text("# script\n")
+
+        out = tmp_path / "out-hooks"
+        written = render_all_hooks(src, out)
+
+        assert (out / "hooks.json").read_text() == '{"hooks": {}}'
+        assert (out / "scripts" / "check.py").read_text() == "# script\n"
+        assert {p.name for p in written} == {"hooks.json", "check.py"}
+
+    def test_clears_stale_files(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        (src / "hooks.json").write_text("{}")
+
+        out = tmp_path / "out-hooks"
+        out.mkdir()
+        (out / "stale.py").write_text("old")
+        (out / "stale-dir").mkdir()
+        (out / "stale-dir" / "x.txt").write_text("x")
+
+        render_all_hooks(src, out)
+
+        assert (out / "hooks.json").exists()
+        assert not (out / "stale.py").exists()
+        assert not (out / "stale-dir").exists()
+
+    def test_preserves_executable_mode(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        script = src / "check.py"
+        script.write_text("#!/usr/bin/env python3\n")
+        script.chmod(0o755)
+
+        out = tmp_path / "out-hooks"
+        render_all_hooks(src, out)
+
+        copied = out / "check.py"
+        assert copied.stat().st_mode & 0o111, "executable bit should be preserved"
+
+    def test_empty_when_source_dir_missing(self, tmp_path: Path):
+        out = tmp_path / "out"
+        result = render_all_hooks(tmp_path / "does-not-exist", out)
+        assert result == []
+        assert not out.exists()
+
+    def test_skips_dunder_files(self, tmp_path: Path):
+        src = tmp_path / "src-hooks"
+        src.mkdir()
+        (src / "hooks.json").write_text("{}")
+        (src / "__pycache__").mkdir()
+        (src / "__pycache__" / "junk.pyc").write_bytes(b"\x00")
+        (src / "__init__.py").write_text("")
+
+        out = tmp_path / "out-hooks"
+        render_all_hooks(src, out)
+
+        assert (out / "hooks.json").exists()
+        assert not (out / "__pycache__").exists()
+        assert not (out / "__init__.py").exists()
