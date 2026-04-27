@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-27
+
+First major release. The workflow shape changes substantially: every Maverick action now passes through a unified preflight gate, two mandatory pre-push reviews (docs and cybersecurity), and a tightened code-review contract. Project state — including which Maverick milestones a project has reached — is tracked durably in `.maverick/config.json` and committed to git.
+
+### Added
+
+- **`do-cybersecurity-review` skill** — full-audit mode at adoption time produces `docs/security-audit.md`; update mode runs as a mandatory pre-push gate against the diff plus its impact set, returning `PASS` / `FINDINGS` / `BLOCKING` verdicts. Eight audit categories covering secrets, dependencies, auth, input validation, transport/headers, data at rest, logging/monitoring, and container/IaC.
+- **`mav-bp-remote-code-review` skill** with a shipped reference workflow YAML — codifies the contract for a CI-side code review on every PR via Anthropic's `claude-code-action` (or any equivalent). Marker comment `# maverick:code-review` decouples the audit from action specifics.
+- **`maverick preflight <skill>` CLI** — single unified gate every action skill calls as its first mandatory step. Checks integration flags, PATH tools (`gh`, `git`, `uv`), and named runtime checks (`bot_configured`, `worktrees_enabled`). Exit-code-driven; no skip path.
+- **`maverick integration get/set` CLI** + the `integration` block in `.maverick/config.json` — durably tracks per-project milestones (`init`, `alignment`, `upskill`, `tech_docs_scaffolded`, `code_review_workflow`, `cybersecurity_reviewed`).
+- **CI workflow (`ci.yml`)** with parallel jobs: test, lint, typecheck, build-drift, build-determinism, install-smoke. Runs on every push and PR.
+- **Plugin-integrity tests** — verify skill `depends_on` cross-references, agent `skills` references, plugin-manifest path resolution, and `hooks.json` event-name validity.
+- **`SkillConfig.assets`** mechanism — declarative non-template files shipped alongside skills, used by `mav-bp-remote-code-review` for its reference YAML.
+- **SessionStart hook** — auto-installs the CLI on first session if missing (Claude Code has no `PluginInstall` lifecycle event; this is the closest fit).
+- **`docs/do-issue-workflow.md`** — full mermaid + phase walkthrough of the GitHub-issue-driven autonomous workflow.
+- Mandatory pre-push **documentation review** (always runs, no skip path) via `agent-tech-docs-writer` update mode.
+- `do-init` Step 6 dispatches `do-cybersecurity-review` after `do-upskill`, producing an audit at adoption time.
+
+### Changed
+
+- **`do-init` rewritten** — now installs the CLI first (dispatching `do-install` if `maverick` is not on PATH), runs `uv run maverick init` to produce `.maverick/config.json` with the integration block, and orchestrates `do-docs`, `do-upskill`, and `do-cybersecurity-review` in sequence.
+- **`do-install` rewritten as a Python module** (`maverick.install_cli`) — replaces the broken bash `install.sh` reference. Type-checked, lint-checked, unit-tested. Verifies `uv` and `gh` are present, runs `uv tool install --force`, idempotently updates `~/.claude/settings.json` permissions.
+- **`agent-code-reviewer` scope tightened** to a pure quality gate: correctness, test coverage, spec compliance, scope discipline, maintainability, consistency. **Security is explicitly out of scope** — handled by the pre-push `do-cybersecurity-review` gate. `mav-bp-code-review` and `docs/code-review.md` aligned with the new boundary.
+- `do-issue-solo` and `do-issue-guided` gain new mandatory pre-push phases (Documentation Review and Pre-push Cybersecurity Review). Existing phases renumbered.
+- `docs/security-review.md` rewritten to ground in `do-cybersecurity-review` and the `mav-bp-application-security` standard, removing duplicated standards content.
+- `docs/overview.md`, `docs/architecture.md`, `docs/code-review.md`, `docs/claude-code-error-handling-and-recovery.md` updated to reflect the new gates and removed components.
+
+### Removed (BREAKING)
+
+- **`do-task-solo` skill** — the local-file workflow is removed. All Maverick development now originates from a GitHub issue. The local-file path bypassed multi-instance coordination, claim/lease, DAG persistence, and the auditable comment trail; maintaining two paths fragmented the workflow and created silent escape hatches around the binary review gate. Migration: switch to `/maverick:do-issue-solo` against a GitHub issue.
+- **`agent-task-planner` agent** — used only by `do-task-solo`, removed alongside it.
+
+### Fixed
+
+- `topics.json` being silently wiped by `make build` (`generate` ran after `generate-topics` and `_clean_skills_output` removed the directory). Makefile build order corrected; `topics.json` is now a tracked artefact.
+- `do-install` skill referenced an `install.sh` that had been deleted in commit `c2a3344`, leaving the skill broken for every user since.
+- `hooks.json` registered an invalid `PostPush` event that Claude Code silently rejected. Replaced with `SessionStart`. Plugin-integrity test now codifies the valid event-name set.
+- `.cursor-plugin/cursor.plugin.json` referenced `./hooks/hooks.json` after the file was temporarily deleted; reference restored alongside the rebuilt hook.
+- `do-init` previously wrote `.maverick/settings.json` by hand and never invoked the CLI, so the integration block was never created. Now uses `maverick init` and only writes settings.json if it doesn't already exist (was overwriting before).
+- `gh` CLI presence is now checked at install time with platform-specific install instructions (was failing at runtime with cryptic errors).
+
 ## [0.5.7] - 2026-04-22
 
 ### Added
@@ -87,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/thermiteau/maverick/compare/v0.5.7...v1.0.0
 [0.5.7]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.7
 [0.5.5]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.5
 [0.5.3]: https://github.com/thermiteau/maverick/compare/v0.5.1...v0.5.3
