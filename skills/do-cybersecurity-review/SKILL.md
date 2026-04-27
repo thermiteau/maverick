@@ -245,4 +245,4 @@ Update mode produces transient findings, not a snapshot of the whole codebase. W
 - **Defer to mav-bp-application-security** for what "good" looks like in each category. This skill is the audit; that one is the standard.
 - **Follow mav-scope-boundaries** — do not run anything that would modify production systems, change auth/permissions, or take destructive action.
 
-<!-- maverick-plugin-version: 1.0.0 -->
+<!-- maverick-plugin-version: 1.0.1-dev -->
