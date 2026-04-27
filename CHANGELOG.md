@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-27
+
 ## [0.5.7] - 2026-04-22
 
 ### Added
@@ -87,7 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/thermiteau/maverick/compare/v0.5.7...v1.0.0
 [0.5.7]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.7
 [0.5.5]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.5
 [0.5.3]: https://github.com/thermiteau/maverick/compare/v0.5.1...v0.5.3

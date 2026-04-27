@@ -310,7 +310,7 @@ wheels = [
 
 [[package]]
 name = "maverick"
-version = "0.5.8.dev0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
