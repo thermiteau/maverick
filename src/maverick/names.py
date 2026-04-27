@@ -37,6 +37,7 @@ MAV_BP_INTEGRATION_TESTING = "mav-bp-integration-testing"
 MAV_BP_LINTING = "mav-bp-linting"
 MAV_BP_LOGGING = "mav-bp-logging"
 MAV_BP_OBSERVABILITY = "mav-bp-observability"
+MAV_BP_REMOTE_CODE_REVIEW = "mav-bp-remote-code-review"
 MAV_BP_SOLUTIONS_DESIGN = "mav-bp-solutions-design"
 MAV_BP_SOURCE_CONTROL = "mav-bp-source-control"
 MAV_BP_TASK_TRACKING = "mav-bp-task-tracking"
@@ -90,6 +91,7 @@ ALL_SKILL_NAMES = {
     MAV_BP_LINTING,
     MAV_BP_LOGGING,
     MAV_BP_OBSERVABILITY,
+    MAV_BP_REMOTE_CODE_REVIEW,
     MAV_BP_SOLUTIONS_DESIGN,
     MAV_BP_SOURCE_CONTROL,
     MAV_BP_TASK_TRACKING,

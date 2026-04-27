@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, do-issue-solo
+**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, do-issue-solo
 
 # Work on GitHub Epic (Autonomous, DAG-scheduled)
 
@@ -30,23 +30,34 @@ code review with binary PASS/FAIL verdicts.
 
 1. **Worktree check**: `uv run maverick worktree list`. Abort on failure.
 2. **Bot check**: `uv run maverick bot status`. Abort on failure.
-3. **Resolve repo**: `gh repo view --json nameWithOwner`.
-4. **Cold-start hydrate** per `mav-durability-on-gh`:
+3. **Remote code-review gate** per `mav-bp-remote-code-review`:
+   ```bash
+   grep -lE '^\s*# maverick:code-review\s*$' .github/workflows/*.y*ml 2>/dev/null
+   ```
+   If no file matches, abort. Do not claim, do not branch, do not start
+   any worktree. Tell the user the project must ship the workflow
+   before an epic can run — offer to scaffold from
+   `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
+   on a small setup PR. The auto-merge in Phase 5d trusts this gate;
+   running an epic without it would let unreviewed code land across
+   every story in the wave.
+4. **Resolve repo**: `gh repo view --json nameWithOwner`.
+5. **Cold-start hydrate** per `mav-durability-on-gh`:
    - Read the `maverick-dag` marker on the epic.
    - Read the `maverick-state` marker.
    - Read the `maverick-bprop` marker — if present, **resume block
      propagation first** before continuing.
    - Read open PRs for the epic's child-story branches.
-5. **Decide claim scope**:
+6. **Decide claim scope**:
    - Whole epic if no live claim exists.
    - A specific wave if another instance already holds other stories.
    - Single story if another instance holds the epic but not the story
      you were asked about.
-6. **Claim**: `uv run maverick coord claim <repo>  --scope <csv-of-issues>`.
+7. **Claim**: `uv run maverick coord claim <repo>  --scope <csv-of-issues>`.
    On `ClaimRejected`, abort and report per
    `mav-multi-instance-coordination`.
-7. **Start heartbeat** for every issue in the claim scope.
-8. **Register release handler** for every exit path.
+8. **Start heartbeat** for every issue in the claim scope.
+9. **Register release handler** for every exit path.
 
 ## Phase 1: Design + task decomposition (if needed)
 

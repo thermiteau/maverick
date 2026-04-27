@@ -16,6 +16,33 @@ for the issue number before proceeding.
 Determine the repo (via `gh repo view --json nameWithOwner`) — you will
 pass it to every `maverick coord` command below.
 
+**Remote code-review gate.** Verify the project ships a CI workflow that
+runs the agent code reviewer on every PR. Per `{{ SKILLS.MAV_BP_REMOTE_CODE_REVIEW }}`,
+look for any file under `.github/workflows/` that contains a line equal to
+`# maverick:code-review` AND has an `on: pull_request:` trigger:
+
+```bash
+grep -lE '^\s*# maverick:code-review\s*$' .github/workflows/*.y*ml 2>/dev/null
+```
+
+If no file matches, **stop and offer the user two paths** before claiming
+the issue or branching:
+
+1. **Scaffold the reference workflow.** Copy
+   `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
+   into `.github/workflows/`, commit it on a small setup branch, open a
+   PR for it, and wait for the user to merge that PR before continuing
+   with `{{ ARGUMENTS }}`. The workflow gates itself on its own PR — a
+   useful smoke test.
+2. **Abort.** If the user declines to add the workflow, stop here. Do
+   not claim the issue, do not branch. Report that the project is not
+   compliant with the binary review contract and ask them to run
+   `/maverick:do-maverick-alignment` for context.
+
+There is no silent skip path — the auto-merge in Phase 9 trusts the
+remote review gate, and proceeding without it would let unreviewed
+code land.
+
 ## Phase 0: Coordination + cold-start
 
 This phase is new in the workflow overhaul. Before any other phase.

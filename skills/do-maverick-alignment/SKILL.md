@@ -158,7 +158,29 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 
 **Additional detail:** Note which CI/CD platform is used and what steps the pipeline runs.
 
-### 6. Source Control
+### 6. Remote Code Review Workflow
+
+Per mav-bp-remote-code-review, every project must ship a GitHub Actions workflow that runs the agent code reviewer on every pull request. Local subagent review is not enough — the remote workflow is the gate the auto-merge path trusts.
+
+**Search for:**
+
+| What | Where to look |
+| --- | --- |
+| Marker comment | A line equal to `# maverick:code-review` (after stripping leading whitespace) in any file under `.github/workflows/` |
+| PR trigger | `on: pull_request:` block in the same file as the marker |
+| Reference action | `anthropics/claude-code-action` reference in the workflow body (informational; not required for compliance — teams may use their own integration) |
+
+**Scoring:**
+
+| Status | Criteria |
+| --- | --- |
+| PASS | A workflow file under `.github/workflows/` contains the `# maverick:code-review` marker AND has an `on: pull_request:` trigger |
+| WARN | A workflow with the marker exists but is missing the `pull_request` trigger, OR a `pull_request`-triggered workflow exists but no marker (likely a different review pipeline that needs the marker added) |
+| FAIL | No workflow under `.github/workflows/` contains the marker |
+
+**Recommendation on WARN/FAIL:** copy the reference template shipped with the plugin: `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml` -> `.github/workflows/code-review.yml`. Set the `ANTHROPIC_API_KEY` repo secret. Open a PR — the workflow itself will run on its own PR as a smoke test.
+
+### 7. Source Control
 
 **Search for:**
 
@@ -176,7 +198,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | WARN | Remote configured but .gitignore missing or incomplete |
 | FAIL | No remote configured (local-only repository) |
 
-### 7. Application Security
+### 8. Application Security
 
 **Search for:**
 
@@ -196,7 +218,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | WARN | Some security measures present but gaps (e.g., no CI scanning, or no input validation) |
 | FAIL | No security measures found |
 
-### 8. Dependency Management
+### 9. Dependency Management
 
 **Search for:**
 
@@ -214,7 +236,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | WARN | Lock file committed but no automated updates or no vulnerability scanning |
 | FAIL | No lock file committed |
 
-### 9. Database Management
+### 10. Database Management
 
 **Search for:**
 
@@ -233,7 +255,7 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 | FAIL | Database dependencies present with no migration tooling at all |
 | N/A | No database dependencies found |
 
-### 10. Error Handling
+### 11. Error Handling
 
 **Search for:**
 
@@ -309,6 +331,11 @@ Create `docs/maverick-audit.md` (create the `docs/` directory if it does not exi
 
 <Evidence: platform, config file, steps found>
 <If WARN/FAIL: one-line recommendation>
+
+### Remote Code Review Workflow -- <STATUS>
+
+<Evidence: workflow file path containing the `# maverick:code-review` marker, or absence noted>
+<If WARN/FAIL: one-line recommendation pointing at the reference template>
 
 ### Source Control -- <STATUS>
 
