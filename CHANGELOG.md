@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-04-27
+
+Tooling release. Fixes two bugs in the release pipeline that surfaced during the 1.0.0 and 1.0.1 cuts.
+
+### Fixed
+
+- **`release-finalize.yml` fast-forwards `stable` via the REST API** instead of `git push`. The previous `git push origin "refs/tags/${TAG}:refs/heads/stable"` step was rejected on every release run with `[remote rejected] (failed)` even when named branch protection and rulesets were disabled. The same fast-forward update via `gh api -X PATCH .../git/refs/heads/stable` succeeds with identical auth, so the workflow now uses the REST endpoint. The fast-forward safety guarantee is preserved (REST `PATCH` on a ref returns 422 on a non-fast-forward unless `force: true` is passed, which we don't). No new dependency — `gh` is preinstalled on GitHub-hosted runners.
+- **`release.sh patch` correctly handles `-dev` suffix.** Running `./scripts/release.sh patch` from a `-dev` version (e.g., `1.0.2-dev`) was producing the next-next patch (`1.0.3`) instead of the in-development target (`1.0.2`). The script now detects the `-dev` suffix and treats the base as the target — patch is a no-op when the current version is `-dev`, since the base IS the target. Minor and major still increment in both cases, so `minor` from a `-dev` cycle correctly skips the in-flight patch (e.g. `1.0.2-dev` → `1.1.0`). Header docstring expanded to spell out the convention.
+
 ## [1.0.1] - 2026-04-27
 
 Housekeeping release.
@@ -136,7 +145,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/thermiteau/maverick/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/thermiteau/maverick/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/thermiteau/maverick/compare/v0.5.7...v1.0.0
 [0.5.7]: https://github.com/thermiteau/maverick/compare/v0.5.3...v0.5.7
