@@ -16,6 +16,16 @@ set -euo pipefail
 #
 # Usage: ./scripts/release.sh [major|minor|patch]
 # Default: patch
+#
+# Version semantics:
+#   - "X.Y.Z-dev" means "in development for the X.Y.Z release". The base is
+#     the target version. `release.sh patch` from "X.Y.Z-dev" produces "X.Y.Z"
+#     (graduates the dev cycle); minor/major from a -dev version skip the
+#     in-flight patch (e.g. patch from 1.0.2-dev -> 1.0.2 but minor -> 1.1.0).
+#   - "X.Y.Z" with no suffix means the previous release was X.Y.Z. Patch then
+#     increments (e.g. patch from 1.0.2 -> 1.0.3).
+#   - The release-finalize workflow always bumps to "X.Y.(Z+1)-dev" after a
+#     release tag, so most invocations will be from a -dev base.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -69,11 +79,24 @@ CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 BASE_VERSION="${CURRENT_VERSION%%-*}"
 IFS='.' read -r V_MAJOR V_MINOR V_PATCH <<< "$BASE_VERSION"
 
-case "$BUMP_TYPE" in
-  major) V_MAJOR=$((V_MAJOR + 1)); V_MINOR=0; V_PATCH=0 ;;
-  minor) V_MINOR=$((V_MINOR + 1)); V_PATCH=0 ;;
-  patch) V_PATCH=$((V_PATCH + 1)) ;;
-esac
+# A "-dev" suffix means "in development for $BASE_VERSION" — the base is the
+# target version. Plain "X.Y.Z" with no suffix means the previous release was
+# X.Y.Z and we want to bump from there. Treat the two cases differently for
+# patch (only); minor and major always increment regardless because skipping
+# the in-flight patch is the right behaviour for a major/minor cut.
+if [[ "$CURRENT_VERSION" == *-dev ]]; then
+  case "$BUMP_TYPE" in
+    major) V_MAJOR=$((V_MAJOR + 1)); V_MINOR=0; V_PATCH=0 ;;
+    minor) V_MINOR=$((V_MINOR + 1)); V_PATCH=0 ;;
+    patch) ;; # no-op: -dev base is already the target patch
+  esac
+else
+  case "$BUMP_TYPE" in
+    major) V_MAJOR=$((V_MAJOR + 1)); V_MINOR=0; V_PATCH=0 ;;
+    minor) V_MINOR=$((V_MINOR + 1)); V_PATCH=0 ;;
+    patch) V_PATCH=$((V_PATCH + 1)) ;;
+  esac
+fi
 
 NEW_VERSION="${V_MAJOR}.${V_MINOR}.${V_PATCH}"
 NEW_TAG="v${NEW_VERSION}"
