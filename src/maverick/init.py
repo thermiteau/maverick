@@ -12,7 +12,10 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
-from maverick.config import PROJECT_CONFIG_DIR
+from maverick.config import (
+    CONFIG_DEFAULTS,
+    PROJECT_CONFIG_DIR,
+)
 
 # Marker files → detected module name
 _DETECTORS: list[tuple[str, str]] = [
@@ -60,8 +63,27 @@ def main(args: Namespace) -> None:
         if args.remove:
             modules = sorted(set(modules) - set(args.remove))
 
+    # Build the integration block. If the file already exists and has flags
+    # set, preserve them — re-running init must not erase milestones the
+    # project has already reached. Always set ``init: true`` since this run
+    # of init counts as "init has happened".
+    config_path = PROJECT_CONFIG_DIR / "config.json"
+    integration: dict[str, Any] = dict(CONFIG_DEFAULTS["integration"])
+    if config_path.exists():
+        try:
+            existing = json.loads(config_path.read_text())
+            existing_block = existing.get("integration")
+            if isinstance(existing_block, dict):
+                for k, v in existing_block.items():
+                    if k in integration and isinstance(v, bool):
+                        integration[k] = v
+        except json.JSONDecodeError:
+            pass
+    integration["init"] = True
+
     config: dict[str, Any] = {
         "modules": modules,
+        "integration": integration,
     }
 
     if args.platform:
@@ -74,7 +96,6 @@ def main(args: Namespace) -> None:
         return
 
     PROJECT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    config_path = PROJECT_CONFIG_DIR / "config.json"
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     print("Detected modules:", ", ".join(modules) if modules else "(none)")
     print(f"Wrote {config_path}")

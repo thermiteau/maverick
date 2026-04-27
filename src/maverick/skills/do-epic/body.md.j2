@@ -31,9 +31,11 @@ code review with binary PASS/FAIL verdicts.
    any worktree. Tell the user the project must ship the workflow
    before an epic can run — offer to scaffold from
    `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
-   on a small setup PR. The auto-merge in Phase 5d trusts this gate;
-   running an epic without it would let unreviewed code land across
-   every story in the wave.
+   on a small setup PR. After that PR merges, record the milestone:
+   `uv run maverick integration set code_review_workflow true`.
+   The auto-merge in Phase 5d trusts this gate; running an epic
+   without it would let unreviewed code land across every story
+   in the wave.
 4. **Resolve repo**: `gh repo view --json nameWithOwner`.
 5. **Cold-start hydrate** per `{{ SKILLS.MAV_DURABILITY_ON_GH }}`:
    - Read the `maverick-dag` marker on the epic.

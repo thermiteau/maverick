@@ -33,7 +33,8 @@ the issue or branching:
    into `.github/workflows/`, commit it on a small setup branch, open a
    PR for it, and wait for the user to merge that PR before continuing
    with `{{ ARGUMENTS }}`. The workflow gates itself on its own PR — a
-   useful smoke test.
+   useful smoke test. After the workflow merges, record the milestone:
+   `uv run maverick integration set code_review_workflow true`.
 2. **Abort.** If the user declines to add the workflow, stop here. Do
    not claim the issue, do not branch. Report that the project is not
    compliant with the binary review contract and ask them to run

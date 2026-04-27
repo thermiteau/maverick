@@ -376,4 +376,17 @@ After writing the report, print a brief summary:
 - Which categories are WARN or FAIL
 - The path to the full report
 
+## Step 5: Record the milestone
+
+Once the report is written, record that the alignment audit has run on this
+project so other skills (and humans running `maverick integration get`) can
+see it:
+
+```bash
+uv run maverick integration set alignment true
+```
+
+This commits the milestone into `.maverick/config.json` — the file is in git
+so the state is durable across machines and contributors.
+
 <!-- maverick-plugin-version: 0.5.8-dev -->
