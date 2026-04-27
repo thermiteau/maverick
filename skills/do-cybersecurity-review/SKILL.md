@@ -1,0 +1,170 @@
+---
+name: do-cybersecurity-review
+description: Run a security audit of the project's existing codebase and write a findings report to docs/security-audit.md. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks. Run as part of do-init or on demand.
+user-invocable: true
+disable-model-invocation: false
+---
+
+# Cybersecurity Review
+
+Run a security audit of the **existing codebase** (not pending changes — see the built-in `/security-review` for per-PR review) and write a findings report to `docs/security-audit.md`.
+
+This is the initial pass. Scope is deliberately broad and somewhat coarse — the goal is to surface obvious risks at adoption time so they become tracked work, not to produce an exhaustive penetration test. Refer to `mav-bp-application-security` for the standards each finding should be measured against.
+
+## Preflight (mandatory)
+
+Run this **first**. If it exits non-zero, halt and report the stderr output to the user verbatim. Do not proceed.
+
+```bash
+uv run maverick preflight do-cybersecurity-review
+```
+
+The check verifies the project is initialised and `uv` is on PATH.
+
+## Process
+
+### 1. Detect the project stack
+
+Identify language, framework, and runtime so subsequent checks know what to look for. Use the same detectors as `do-maverick-alignment`: `package.json`, `pyproject.toml`, `Dockerfile`, etc.
+
+### 2. Walk the audit categories
+
+For each category below, search the codebase and assign one of:
+
+- **PASS** — no concerns surfaced
+- **WARN** — partial coverage or non-critical issues
+- **FAIL** — material risk; needs human attention
+- **N/A** — category does not apply to this project
+
+#### 2.1 Secret exposure
+
+Scan tracked files for committed credentials, tokens, private keys, and connection strings. Patterns to check (extend per stack):
+
+- `AKIA[0-9A-Z]{16}` (AWS access key id), `aws_secret_access_key\s*=`
+- `-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----`
+- `ghp_`, `gho_`, `ghs_`, `github_pat_` (GitHub tokens)
+- `xox[baprs]-` (Slack tokens), `sk-` followed by 20+ alphanumerics (OpenAI/Anthropic-style)
+- Generic `password\s*=\s*['"][^'"]+['"]`, `api[_-]?key\s*=\s*['"][^'"]+['"]`
+
+Also check `.env*` files (any tracked) and history (`git log --all --full-history -- .env`).
+
+#### 2.2 Dependency hygiene
+
+| What | Where to look |
+| --- | --- |
+| Lock file present | `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`, `poetry.lock`, `Cargo.lock`, `go.sum` |
+| Vulnerability scanning configured | `npm audit` in CI, `pip-audit`, `safety`, `cargo audit`, `trivy`, Dependabot, Renovate |
+| Pinned versions | Direct deps pinned to a specific version or range |
+| No supply-chain red flags | typosquats, abandoned packages, unfamiliar registries |
+
+#### 2.3 Authentication and authorisation
+
+- Where is auth implemented? Identify the library / pattern (Passport, NextAuth, Django auth, Spring Security, custom).
+- Are passwords hashed with a modern algorithm (bcrypt, argon2, scrypt) — never plain SHA-x or MD5.
+- Is session management correct (signed cookies, rotation on privilege change, secure + httponly + samesite flags)?
+- Are routes/endpoints protected by middleware/decorators or do they require per-handler checks (latter is error-prone)?
+- Are admin / privileged paths gated separately?
+
+#### 2.4 Input validation and output encoding
+
+- Are inputs validated at the boundary (schema validation: zod, pydantic, joi, Bean Validation)?
+- Are templates auto-escaped (Jinja, JSX, Razor default-on)?
+- Are SQL queries parameterised? Any string-concatenated SQL?
+- Are file paths validated (no untrusted concat into `open()` / `fs.readFile`)?
+- Are command invocations safe (no `shell=True` with untrusted input, no `eval`)?
+
+#### 2.5 Transport, headers, and CORS
+
+- Is HTTPS enforced (HSTS, redirect from HTTP, secure cookies)?
+- Are baseline security headers set (CSP, X-Frame-Options or frame-ancestors, X-Content-Type-Options, Referrer-Policy, Permissions-Policy)?
+- Is CORS scoped explicitly, not `*` for credentialed endpoints?
+
+#### 2.6 Data at rest
+
+- Is sensitive data encrypted at rest (DB-level, app-level)?
+- Are backups encrypted?
+- Is logging redacting PII / credentials? Search log calls for unredacted user input or auth headers.
+
+#### 2.7 Logging, monitoring, and rate limiting
+
+- Are auth failures logged with enough context to detect brute-force?
+- Is there a rate-limit on login / password-reset / signup?
+- Are alerts wired up for repeated auth failures, privilege escalations, or 5xx spikes?
+
+#### 2.8 Container / infrastructure (if applicable)
+
+- Does the Dockerfile run as a non-root user?
+- Is the base image pinned by digest or just by tag?
+- Is `.dockerignore` keeping `.env`, secrets, and `.git` out of layers?
+- For IaC: are S3 buckets / blob stores private by default, encrypted, and versioned?
+
+### 3. Write the report
+
+Create `docs/security-audit.md` (create `docs/` if it doesn't exist). Use this structure:
+
+```markdown
+# Security Audit
+
+**Generated:** <ISO timestamp>
+**Stack detected:** <e.g., Node.js + Express, Python + Django>
+
+## Summary
+
+<1-2 sentences. Highest-severity finding. Headline risk.>
+
+| Category | Status |
+| --- | --- |
+| Secret exposure | PASS / WARN / FAIL / N/A |
+| Dependency hygiene | ... |
+| Authentication / authorisation | ... |
+| Input validation / output encoding | ... |
+| Transport, headers, CORS | ... |
+| Data at rest | ... |
+| Logging, monitoring, rate limiting | ... |
+| Container / infrastructure | ... |
+
+## Details
+
+### <Category> — <STATUS>
+
+<Evidence: file paths, snippets, dependency names. Be concrete.>
+
+<If WARN/FAIL: a one-paragraph recommendation with a concrete next step.>
+
+<repeat per category>
+
+## Recommendations (prioritised)
+
+1. **<Severity: high/medium/low>** — <action>. <File or area>. <Why it matters>.
+2. ...
+```
+
+Use one-line citations (`path/to/file:42`) so a human (or a follow-up agent) can jump straight to evidence.
+
+### 4. Surface the findings to the user
+
+After writing the report, print:
+
+- The number of findings at each severity.
+- The path to the report.
+- A one-line top-recommendation if any FAIL exists.
+
+### 5. Record the milestone
+
+Once the report is written, record that the cybersecurity review has run on this project:
+
+```bash
+uv run maverick integration set cybersecurity_reviewed true
+```
+
+This commits the milestone into `.maverick/config.json` so other Maverick skills (and `maverick integration get`) can see it.
+
+## Rules
+
+- **Surface, do not fix.** Report findings; do not modify code as part of this skill. Fixes are tracked work that go through `do-issue-solo` after the user prioritises them.
+- **Cite evidence.** Every WARN / FAIL must reference a file path or dependency name. Vague findings ("auth could be stronger") are not actionable.
+- **Be honest about coverage.** If a category requires runtime testing or production data the audit cannot reach, mark it N/A and note what would be needed for a thorough review.
+- **Defer to mav-bp-application-security** for what "good" looks like in each category. This skill is the audit; that one is the standard.
+- **Follow mav-scope-boundaries** — do not run anything that would modify production systems, change auth/permissions, or take destructive action.
+
+<!-- maverick-plugin-version: 0.5.8-dev -->

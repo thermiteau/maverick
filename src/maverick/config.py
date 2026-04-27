@@ -114,6 +114,7 @@ class IntegrationStatus(TypedDict):
     upskill: bool  # do-upskill has populated docs/maverick/skills/<topic>/SKILL.md
     tech_docs_scaffolded: bool  # do-docs greenfield/refactor has populated docs/technical/
     code_review_workflow: bool  # .github/workflows/ ships a `# maverick:code-review` workflow
+    cybersecurity_reviewed: bool  # do-cybersecurity-review produced docs/security-audit.md
 
 
 class MaverickConfig(TypedDict):
@@ -166,6 +167,7 @@ CONFIG_DEFAULTS: MaverickConfig = {
         "upskill": False,
         "tech_docs_scaffolded": False,
         "code_review_workflow": False,
+        "cybersecurity_reviewed": False,
     },
 }
 

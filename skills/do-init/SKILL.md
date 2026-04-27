@@ -1,6 +1,6 @@
 ---
 name: do-init
-description: Initialise a project for use with Maverick — installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, and generates project skills.
+description: Initialise a project for use with Maverick — installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, generates project skills, and runs an initial cybersecurity audit.
 user-invocable: true
 ---
 
@@ -44,13 +44,18 @@ Dispatch **/maverick:do-docs**. The greenfield mode of that skill flips `integra
 
 Dispatch **/maverick:do-upskill**. It iterates every topic in `topics.json` and writes per-topic skills under `docs/maverick/skills/`, then flips `integration.upskill` to `true`.
 
-### 6. Report
+### 6. Run the cybersecurity review
+
+Dispatch **/maverick:do-cybersecurity-review**. It scans the existing codebase for common security risks (secrets, dependency vulnerabilities, auth/input-validation patterns), writes findings to `docs/security-audit.md`, and flips `integration.cybersecurity_reviewed` to `true`. The review is surface-only — it reports, it does not modify code. Any FAIL findings should be tracked as follow-up issues by the user.
+
+### 7. Report
 
 Print a final summary to the user:
 
 - Detected modules (from step 2's output)
 - Whether docs were scaffolded greenfield or already existed
 - How many project skills were generated
+- The number of security-audit findings at each severity, and the path to the audit report
 - The current integration state: `uv run maverick integration get`
 
 The integration checklist gives the user (and any future Maverick session) a clear view of what's been completed and what's still pending.

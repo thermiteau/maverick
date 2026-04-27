@@ -25,6 +25,7 @@ class TestSchemaDefaults:
             "upskill": False,
             "tech_docs_scaffolded": False,
             "code_review_workflow": False,
+            "cybersecurity_reviewed": False,
         }
 
 
@@ -73,6 +74,7 @@ class TestWriteIntegrationStatus:
                 "upskill": False,
                 "tech_docs_scaffolded": False,
                 "code_review_workflow": False,
+                "cybersecurity_reviewed": False,
             },
             path=path,
         )
@@ -84,6 +86,7 @@ class TestWriteIntegrationStatus:
                 "upskill": False,
                 "tech_docs_scaffolded": False,
                 "code_review_workflow": False,
+                "cybersecurity_reviewed": False,
             }
         }
 

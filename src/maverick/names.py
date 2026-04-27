@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 
 DO_ADOPT = "do-adopt"
+DO_CYBERSECURITY_REVIEW = "do-cybersecurity-review"
 DO_DOCS = "do-docs"
 DO_EPIC = "do-epic"
 DO_INIT = "do-init"
@@ -58,6 +59,7 @@ MAV_SYSTEMATIC_DEBUGGING = "mav-systematic-debugging"
 
 ALL_SKILL_NAMES = {
     DO_ADOPT,
+    DO_CYBERSECURITY_REVIEW,
     DO_DOCS,
     DO_EPIC,
     DO_INIT,

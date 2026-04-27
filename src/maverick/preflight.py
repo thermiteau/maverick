@@ -77,6 +77,10 @@ PREREQS: dict[str, Prereqs] = {
         flags=("init",),
         tools=("gh", "uv"),
     ),
+    "do-cybersecurity-review": Prereqs(
+        flags=("init",),
+        tools=("uv",),
+    ),
 }
 
 
