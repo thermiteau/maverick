@@ -7,6 +7,8 @@ from argparse import Namespace
 from pathlib import Path
 from unittest.mock import patch
 
+from subprocess import CompletedProcess
+
 from maverick import preflight, preflight_cli
 
 # ---------------------------------------------------------------------------
@@ -287,6 +289,51 @@ class TestPrereqsTableConsistency:
                     f"PREREQS[{skill!r}] references runtime check "
                     f"{name!r} which is not registered in RUNTIME_CHECKS"
                 )
+
+    def test_check_gh_app_configured_parses_real_json(self, monkeypatch):
+        """Regression: the runtime check must parse the JSON output of
+        `maverick gh-app status`, not substring-match. The JSON shape
+        emits `"configured": true` with quotes around the key — earlier
+        code looked for the literal needle `configured: true`, which
+        never matched and made do-issue-solo / do-epic / do-init
+        impossible to preflight-pass.
+        """
+        real_output = json.dumps(
+            {"app_id": 1, "configured": True, "installation_id": 2}, indent=2
+        )
+
+        def fake_run(*args, **kwargs):
+            return CompletedProcess(
+                args=args[0], returncode=0, stdout=real_output, stderr=""
+            )
+
+        monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+        ok, msg = preflight._check_gh_app_configured()
+        assert ok, f"expected pass; got fail with message: {msg}"
+
+    def test_check_gh_app_configured_fails_on_configured_false(self, monkeypatch):
+        real_output = json.dumps(
+            {"configured": False, "reason": "no config at /x"}, indent=2
+        )
+
+        def fake_run(*args, **kwargs):
+            return CompletedProcess(
+                args=args[0], returncode=0, stdout=real_output, stderr=""
+            )
+
+        monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+        ok, _ = preflight._check_gh_app_configured()
+        assert ok is False
+
+    def test_check_gh_app_configured_fails_on_malformed_stdout(self, monkeypatch):
+        def fake_run(*args, **kwargs):
+            return CompletedProcess(
+                args=args[0], returncode=0, stdout="not json at all", stderr=""
+            )
+
+        monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+        ok, _ = preflight._check_gh_app_configured()
+        assert ok is False
 
     def test_every_integration_flag_has_remediation(self):
         """FLAG_REMEDIATION must cover every flag that can appear in a missing list."""
