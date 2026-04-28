@@ -24,6 +24,7 @@ a new tool or runtime check is a one-line addition to TOOLS / RUNTIME_CHECKS.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -128,7 +129,11 @@ def _check_gh_app_configured() -> tuple[bool, str]:
     """Return (ok, message). The GitHub App must report ``configured: true``.
 
     Uses ``maverick gh-app status`` so the check is consistent with what
-    do-epic Phase 0 already runs.
+    do-epic Phase 0 already runs. The subcommand emits JSON on stdout
+    (e.g. ``{"configured": true, "app_id": 123, ...}``); we parse it
+    rather than substring-match because the JSON form ``"configured":
+    true`` is not a substring of any plain-text needle that includes
+    the key without surrounding quotes.
     """
     try:
         result = subprocess.run(
@@ -140,9 +145,13 @@ def _check_gh_app_configured() -> tuple[bool, str]:
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
         return False, f"could not run `maverick gh-app status`: {e}"
-    output = (result.stdout or "") + (result.stderr or "")
-    if result.returncode == 0 and "configured: true" in output.lower():
-        return True, ""
+    if result.returncode == 0 and (result.stdout or "").strip():
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict) and payload.get("configured") is True:
+            return True, ""
     return False, (
         "the Maverick GitHub App is not configured. Create a GitHub App at "
         "https://github.com/settings/apps/new (read access to contents and "
