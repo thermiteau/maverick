@@ -17,9 +17,9 @@ uv run maverick preflight do-epic
 ```
 
 The check verifies: the project is initialised, the mandatory remote
-code-review workflow is in place, the maverick-bot is configured, git
-worktrees are usable, and required tools (`gh`, `git`, `uv`) are on
-PATH. If the code-review-workflow flag is false, offer to scaffold from
+code-review workflow is in place, the Maverick GitHub App is configured
+(`maverick gh-app status` reports `configured: true`), git worktrees
+are usable, and required tools (`gh`, `git`, `uv`) are on PATH. If the code-review-workflow flag is false, offer to scaffold from
 `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
 on a small setup PR; after that PR merges, run `uv run maverick
 integration set code_review_workflow true` and re-run preflight.
@@ -85,11 +85,11 @@ Build a machine-readable DAG of child stories.
 3. **Persist the DAG to GitHub** — this is durable for any instance to
    resume from:
    ```bash
-   # Write the DAG to a tmp file, then post via the bot for consistent audit trail.
-   uv run maverick bot gh -- issue comment {{ ARGUMENTS }} --body-file /tmp/dag-marker.md
+   # Write the DAG to a tmp file, then post via the GitHub App for a consistent audit trail.
+   uv run maverick gh-app gh -- issue comment {{ ARGUMENTS }} --body-file /tmp/dag-marker.md
    ```
    Alternatively, the CLI helper composes the marker for you — preferred:
-   construct the payload JSON and post via the bot's `gh` with a fenced
+   construct the payload JSON and post via the App's `gh` with a fenced
    `maverick-dag` block.
 
 ## Phase 3: Wave grouping
@@ -225,7 +225,7 @@ state.
 ## Rules
 
 - **Worktrees are mandatory.** Abort on entry if unavailable.
-- **The bot is mandatory.** Abort on entry if not configured.
+- **The Maverick GitHub App is mandatory.** Abort on entry if `maverick gh-app status` does not report `configured: true`.
 - **Binary review everywhere.** No story merges without PASS from
   `{{ AGENTS.AGENT_CODE_REVIEWER }}`. No fix loop.
 - **Block propagation is idempotent.** Re-running it after a crash is

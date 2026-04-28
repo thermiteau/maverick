@@ -123,7 +123,7 @@ def post_marker(
     """Post a new comment carrying a marker of `kind`. Returns the comment id.
 
     `preamble` is free-form markdown that appears above the fenced block.
-    `env` lets the caller override credentials (e.g. to post as maverick-bot).
+    `env` lets the caller override credentials (e.g. to post as the Maverick GitHub App).
     """
     body = (preamble + "\n\n" if preamble else "") + format_marker(kind, payload)
     out = _gh(

@@ -15,17 +15,39 @@ from maverick import preflight, preflight_cli
 
 
 class TestEvaluateBootstrap:
-    """Bootstrap skills are exempt — they produce prerequisites, can't require them."""
+    """Bootstrap skills are exempt — they produce prerequisites, can't require them.
 
-    def test_do_init_passes_with_no_config(self, tmp_path: Path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        result = preflight.evaluate("do-init")
-        assert result.passed
-        assert not result.unknown_skill
+    do-init is *not* in this set: it requires `gh_app_configured` so users
+    are forced to set up the GitHub App before any maverick automation runs.
+    """
 
     def test_do_install_passes_with_no_config(self, tmp_path: Path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         result = preflight.evaluate("do-install")
+        assert result.passed
+
+    def test_do_init_requires_gh_app(self, tmp_path: Path, monkeypatch):
+        """do-init must not pass when the GitHub App is unconfigured."""
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(
+            preflight.RUNTIME_CHECKS,
+            {"gh_app_configured": lambda: (False, "App missing")},
+            clear=False,
+        ):
+            result = preflight.evaluate("do-init")
+        assert not result.passed
+        assert ("gh_app_configured", "App missing") in result.failing_runtime
+
+    def test_do_init_passes_when_gh_app_configured(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(
+            preflight.RUNTIME_CHECKS,
+            {"gh_app_configured": lambda: (True, "")},
+            clear=False,
+        ):
+            result = preflight.evaluate("do-init")
         assert result.passed
 
 
@@ -110,13 +132,13 @@ class TestEvaluateRuntimeChecks:
             with patch.dict(
                 preflight.RUNTIME_CHECKS,
                 {
-                    "bot_configured": lambda: (False, "bot says no"),
+                    "gh_app_configured": lambda: (False, "bot says no"),
                     "worktrees_enabled": lambda: (True, ""),
                 },
                 clear=True,
             ):
                 result = preflight.evaluate("do-issue-solo")
-        assert ("bot_configured", "bot says no") in result.failing_runtime
+        assert ("gh_app_configured", "bot says no") in result.failing_runtime
         assert not result.passed
 
     def test_all_passing(self, tmp_path: Path, monkeypatch):
@@ -137,7 +159,7 @@ class TestEvaluateRuntimeChecks:
             with patch.dict(
                 preflight.RUNTIME_CHECKS,
                 {
-                    "bot_configured": lambda: (True, ""),
+                    "gh_app_configured": lambda: (True, ""),
                     "worktrees_enabled": lambda: (True, ""),
                 },
                 clear=True,
@@ -168,6 +190,25 @@ class TestRenderHuman:
         assert "Missing integration flags" in text
         assert "init" in text
 
+    def test_missing_flag_includes_remediation(self):
+        """Each missing flag is rendered with its FLAG_REMEDIATION entry."""
+        result = preflight.PreflightResult(
+            skill="do-issue-solo",
+            missing_flags=["code_review_workflow"],
+        )
+        text = preflight.render_human(result)
+        assert "code_review_workflow" in text
+        assert "do-init" in text  # remediation suggests running /maverick:do-init
+
+    def test_missing_flag_with_no_remediation_falls_back(self, monkeypatch):
+        """Defensive: a flag without an entry doesn't crash render."""
+        monkeypatch.setitem(preflight.FLAG_REMEDIATION, "init", "Run /maverick:do-init")
+        result = preflight.PreflightResult(
+            skill="do-upskill", missing_flags=["__synthetic_no_remedy__"]
+        )
+        text = preflight.render_human(result)
+        assert "no remediation registered" in text
+
     def test_missing_tools_listed(self):
         result = preflight.PreflightResult(
             skill="do-upskill", missing_tools=["gh"]
@@ -178,11 +219,11 @@ class TestRenderHuman:
 
     def test_runtime_failures_listed(self):
         result = preflight.PreflightResult(
-            skill="do-epic", failing_runtime=[("bot_configured", "no token")]
+            skill="do-epic", failing_runtime=[("gh_app_configured", "no token")]
         )
         text = preflight.render_human(result)
         assert "Failing runtime checks" in text
-        assert "bot_configured" in text
+        assert "gh_app_configured" in text
         assert "no token" in text
 
 
@@ -194,7 +235,8 @@ class TestRenderHuman:
 class TestPreflightCli:
     def test_passing_skill_returns_0(self, tmp_path: Path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
-        rc = preflight_cli.main(Namespace(skill="do-init", json=False))
+        # do-install is a true bootstrap skill (no prereqs); always passes.
+        rc = preflight_cli.main(Namespace(skill="do-install", json=False))
         assert rc == 0
         assert "OK" in capsys.readouterr().out
 
@@ -214,11 +256,11 @@ class TestPreflightCli:
 
     def test_json_output(self, tmp_path: Path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)
-        rc = preflight_cli.main(Namespace(skill="do-init", json=True))
+        rc = preflight_cli.main(Namespace(skill="do-install", json=True))
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         assert data["passed"] is True
-        assert data["skill"] == "do-init"
+        assert data["skill"] == "do-install"
 
 
 # ---------------------------------------------------------------------------
@@ -245,3 +287,13 @@ class TestPrereqsTableConsistency:
                     f"PREREQS[{skill!r}] references runtime check "
                     f"{name!r} which is not registered in RUNTIME_CHECKS"
                 )
+
+    def test_every_integration_flag_has_remediation(self):
+        """FLAG_REMEDIATION must cover every flag that can appear in a missing list."""
+        from maverick.config import CONFIG_DEFAULTS
+
+        flags = set(CONFIG_DEFAULTS["integration"].keys())
+        missing = flags - set(preflight.FLAG_REMEDIATION.keys())
+        assert not missing, (
+            f"FLAG_REMEDIATION is missing entries for: {sorted(missing)}"
+        )
