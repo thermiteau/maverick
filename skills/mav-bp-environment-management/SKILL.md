@@ -215,4 +215,4 @@ When both skills apply (e.g., a Docker Compose file used in both local dev and C
 | Database engine differs between dev and production | Environment parity violation | Use the same engine locally via Docker |
 | No health checks in Docker Compose services | Startup race conditions | Add health checks and depends_on with condition |
 
-<!-- maverick-plugin-version: 1.0.4-dev -->
+<!-- maverick-plugin-version: 2.0.0 -->
