@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-04-28
+
 ## [1.0.2] - 2026-04-27
 
 Tooling release. Fixes two bugs in the release pipeline that surfaced during the 1.0.0 and 1.0.1 cuts.
@@ -145,7 +147,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/thermiteau/maverick/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/thermiteau/maverick/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/thermiteau/maverick/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/thermiteau/maverick/compare/v0.5.7...v1.0.0

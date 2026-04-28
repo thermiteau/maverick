@@ -241,4 +241,4 @@ state.
 - **Never auto-close an epic with ejected stories.** Those belong to the
   human.
 
-<!-- maverick-plugin-version: 1.0.3-dev -->
+<!-- maverick-plugin-version: 1.0.3 -->
