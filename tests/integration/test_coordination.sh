@@ -4,12 +4,12 @@ set -euo pipefail
 # Integration test scaffolding for the multi-instance coordination layer.
 #
 # What this verifies:
-#   - The maverick CLI exposes the coord / dag / state / worktree / bot / gh-state
+#   - The maverick CLI exposes the coord / dag / state / worktree / gh-app / gh-state
 #     subcommands and their arguments.
 #   - Help messages print cleanly for every leaf subcommand.
-#   - `bot status` runs and reports missing config without crashing.
+#   - `gh-app status` runs and reports missing config without crashing.
 #
-# What this does NOT verify (requires a sandbox GH repo + maverick-bot App):
+# What this does NOT verify (requires a sandbox GH repo + Maverick GitHub App):
 #   - claim / heartbeat / release against a real issue.
 #   - DAG + state marker round-trips against a real epic.
 #   - Takeover of a stale lease by a second instance.
@@ -37,7 +37,7 @@ echo "=== CLI surface tests ==="
 uv run maverick --help >/dev/null 2>&1 || fail "top-level --help exited non-zero"
 pass "top-level --help"
 
-for sub in coord dag state worktree bot gh-state; do
+for sub in coord dag state worktree gh-app gh-state; do
     uv run maverick "$sub" --help >/dev/null 2>&1 \
         || fail "'$sub --help' failed"
     pass "'$sub --help'"
@@ -56,14 +56,14 @@ for leaf in "coord read" "coord claim" "coord heartbeat" "coord release" \
     pass "'$leaf --help'"
 done
 
-# ── bot status ───────────────────────────────────────────────────────────────
+# ── gh-app status ────────────────────────────────────────────────────────────
 
-echo "=== bot status ==="
+echo "=== gh-app status ==="
 
-status_output="$(uv run maverick bot status 2>&1)"
+status_output="$(uv run maverick gh-app status 2>&1)"
 echo "$status_output" | grep -q '"configured"' \
-    || fail "bot status output missing 'configured' key: $status_output"
-pass "bot status returns JSON with 'configured' key"
+    || fail "gh-app status output missing 'configured' key: $status_output"
+pass "gh-app status returns JSON with 'configured' key"
 
 # ── Live-GH scenarios (skipped unless env set) ───────────────────────────────
 

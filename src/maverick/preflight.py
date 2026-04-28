@@ -15,8 +15,8 @@ Three categories of prerequisite are checked:
   - ``tools``   — commands that must be on PATH (e.g., ``gh``, ``uv``,
                  ``git``). Resolved via ``shutil.which``.
   - ``runtime`` — named functions registered below that perform a
-                 dynamic check (e.g., is the maverick-bot configured,
-                 are git worktrees usable).
+                 dynamic check (e.g., is the Maverick GitHub App
+                 configured, are git worktrees usable).
 
 To extend: add a new entry to PREREQS for the skill that needs it. Adding
 a new tool or runtime check is a one-line addition to TOOLS / RUNTIME_CHECKS.
@@ -47,10 +47,18 @@ class Prereqs:
 
 
 PREREQS: dict[str, Prereqs] = {
+    "do-init": Prereqs(
+        # do-init produces every integration flag; its only prerequisite is
+        # that a Maverick GitHub App is already configured by the user.
+        # Maverick will not create the App — that is a manual human action
+        # (see https://github.com/settings/apps/new). Failing here is the
+        # only signal that pushes the user to perform it.
+        runtime=("gh_app_configured",),
+    ),
     "do-issue-solo": Prereqs(
         flags=("init", "code_review_workflow"),
         tools=("gh", "git", "uv"),
-        runtime=("bot_configured",),
+        runtime=("gh_app_configured",),
     ),
     "do-issue-guided": Prereqs(
         flags=("init", "code_review_workflow"),
@@ -59,7 +67,7 @@ PREREQS: dict[str, Prereqs] = {
     "do-epic": Prereqs(
         flags=("init", "code_review_workflow"),
         tools=("gh", "git", "uv"),
-        runtime=("bot_configured", "worktrees_enabled"),
+        runtime=("gh_app_configured", "worktrees_enabled"),
     ),
     "do-upskill": Prereqs(
         flags=("init",),
@@ -88,8 +96,27 @@ PREREQS: dict[str, Prereqs] = {
 # not require them. Listed for clarity; absence from PREREQS is what makes
 # them exempt at runtime.
 BOOTSTRAP_SKILLS: frozenset[str] = frozenset(
-    {"do-init", "do-install", "do-recommend", "do-adopt"}
+    {"do-install", "do-recommend", "do-adopt"}
 )
+
+
+# Per-flag remediation guidance. Surfaced when render_human() reports a
+# missing integration flag, so the user gets a concrete next step instead
+# of a generic "run the corresponding skill" hint. Every flag in
+# CONFIG_DEFAULTS["integration"] must have an entry — enforced by tests.
+FLAG_REMEDIATION: dict[str, str] = {
+    "init": "Run /maverick:do-init",
+    "alignment": "Run /maverick:do-maverick-alignment",
+    "upskill": "Run /maverick:do-upskill",
+    "tech_docs_scaffolded": "Run /maverick:do-docs",
+    "code_review_workflow": (
+        "Run /maverick:do-init (it scaffolds the workflow), or copy "
+        "${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml "
+        "into .github/workflows/, commit it, then "
+        "`maverick integration set code_review_workflow true`"
+    ),
+    "cybersecurity_reviewed": "Run /maverick:do-cybersecurity-review",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -97,28 +124,38 @@ BOOTSTRAP_SKILLS: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def _check_bot_configured() -> tuple[bool, str]:
-    """Return (ok, message). Bot must report ``configured: true``.
+def _check_gh_app_configured() -> tuple[bool, str]:
+    """Return (ok, message). The GitHub App must report ``configured: true``.
 
-    Uses ``maverick bot status`` so the check is consistent with what
+    Uses ``maverick gh-app status`` so the check is consistent with what
     do-epic Phase 0 already runs.
     """
     try:
         result = subprocess.run(
-            ["uv", "run", "maverick", "bot", "status"],
+            ["uv", "run", "maverick", "gh-app", "status"],
             capture_output=True,
             text=True,
             check=False,
             timeout=15,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-        return False, f"could not run `maverick bot status`: {e}"
+        return False, f"could not run `maverick gh-app status`: {e}"
     output = (result.stdout or "") + (result.stderr or "")
     if result.returncode == 0 and "configured: true" in output.lower():
         return True, ""
     return False, (
-        "maverick-bot is not configured — run `maverick bot install` "
-        "and configure ~/.maverick/config.json `bot` section"
+        "the Maverick GitHub App is not configured. Create a GitHub App at "
+        "https://github.com/settings/apps/new (read access to contents and "
+        "metadata; write access to pull-requests and issues), install it on "
+        "the target repo, then add a `gh_app` block to ~/.maverick/config.json:\n"
+        '            {\n'
+        '              "gh_app": {\n'
+        '                "app_id": <integer>,\n'
+        '                "installation_id": <integer>,\n'
+        '                "private_key_path": "~/.maverick/maverick-gh-app.pem"\n'
+        '              }\n'
+        '            }\n'
+        "        Verify with `maverick gh-app status`"
     )
 
 
@@ -147,7 +184,7 @@ def _check_worktrees_enabled() -> tuple[bool, str]:
 
 
 RUNTIME_CHECKS: dict[str, Callable[[], tuple[bool, str]]] = {
-    "bot_configured": _check_bot_configured,
+    "gh_app_configured": _check_gh_app_configured,
     "worktrees_enabled": _check_worktrees_enabled,
 }
 
@@ -237,9 +274,12 @@ def render_human(result: PreflightResult) -> str:
 
     lines.append(f"preflight: {result.skill} cannot run — prerequisites not met")
     if result.missing_flags:
-        lines.append("  Missing integration flags (run the corresponding skill):")
+        lines.append("  Missing integration flags:")
         for flag in result.missing_flags:
-            lines.append(f"    - {flag}")
+            remedy = FLAG_REMEDIATION.get(
+                flag, "no remediation registered (see maverick.preflight.FLAG_REMEDIATION)"
+            )
+            lines.append(f"    - {flag}: {remedy}")
         lines.append("  Inspect with: maverick integration get")
         lines.append(
             f"  Project config: {project_config_path()}"

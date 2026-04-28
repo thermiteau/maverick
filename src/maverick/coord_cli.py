@@ -19,8 +19,8 @@ Usage shape:
     uv run maverick worktree create <branch> [--base BASE]
     uv run maverick worktree list
     uv run maverick worktree destroy <path>
-    uv run maverick bot status
-    uv run maverick bot gh -- <gh args…>
+    uv run maverick gh-app status
+    uv run maverick gh-app gh -- <gh args…>
 """
 
 from __future__ import annotations
@@ -165,20 +165,20 @@ def _worktree_destroy(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
-# bot
+# gh-app
 # ---------------------------------------------------------------------------
 
 
-def _bot_status(args: argparse.Namespace) -> int:
+def _gh_app_status(args: argparse.Namespace) -> int:
     _json_print(gh_app.check_configured())
     return 0
 
 
-def _bot_gh(args: argparse.Namespace) -> int:
+def _gh_app_gh(args: argparse.Namespace) -> int:
     try:
-        result = gh_app.bot_gh(*args.gh_args)
-    except gh_app.BotNotConfigured as e:
-        print(f"bot not configured: {e}", file=sys.stderr)
+        result = gh_app.gh_app_gh(*args.gh_args)
+    except gh_app.GhAppNotConfigured as e:
+        print(f"GitHub App not configured: {e}", file=sys.stderr)
         return 4
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
@@ -287,16 +287,18 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--force", action="store_true")
     p.set_defaults(_handler=_worktree_destroy)
 
-    # bot
-    b = subparsers.add_parser("bot", help="maverick-bot GitHub App operations")
-    b_sub = b.add_subparsers(dest="bot_cmd", required=True)
+    # gh-app
+    b = subparsers.add_parser(
+        "gh-app", help="Maverick GitHub App operations (auth, status)"
+    )
+    b_sub = b.add_subparsers(dest="gh_app_cmd", required=True)
 
-    p = b_sub.add_parser("status", help="Show bot configuration state")
-    p.set_defaults(_handler=_bot_status)
+    p = b_sub.add_parser("status", help="Show GitHub App configuration state")
+    p.set_defaults(_handler=_gh_app_status)
 
-    p = b_sub.add_parser("gh", help="Run `gh` as the bot")
+    p = b_sub.add_parser("gh", help="Run `gh` authenticated as the GitHub App")
     p.add_argument("gh_args", nargs=argparse.REMAINDER)
-    p.set_defaults(_handler=_bot_gh)
+    p.set_defaults(_handler=_gh_app_gh)
 
     # gh-state raw read
     gs = subparsers.add_parser("gh-state", help="Read raw markers from GitHub")

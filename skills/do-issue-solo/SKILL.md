@@ -26,8 +26,9 @@ uv run maverick preflight do-issue-solo
 ```
 
 The check verifies: the project is initialised, the mandatory remote
-code-review workflow is in place, the maverick-bot is configured,
-and required tools (`gh`, `git`, `uv`) are on PATH.
+code-review workflow is in place, the Maverick GitHub App is configured
+(`maverick gh-app status` reports `configured: true`), and required
+tools (`gh`, `git`, `uv`) are on PATH.
 
 ## Before You Begin
 
@@ -240,14 +241,14 @@ next step is eject-to-human, not iterate.
 
 ## Phase 10: Auto-merge (on PASS)
 
-1. `maverick-bot` posts the approval:
+1. The Maverick GitHub App posts the approval:
    ```bash
-   uv run maverick bot gh -- pr review <pr-url> --approve \
+   uv run maverick gh-app gh -- pr review <pr-url> --approve \
        --body "Approved by agent-code-reviewer at $(date -u +%FT%TZ)"
    ```
 2. Enable auto-merge (squash):
    ```bash
-   uv run maverick bot gh -- pr merge <pr-url> --auto --squash
+   uv run maverick gh-app gh -- pr merge <pr-url> --auto --squash
    ```
    If CI was already green, GitHub merges immediately. Otherwise it
    merges when CI passes.

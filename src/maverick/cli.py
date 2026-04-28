@@ -201,7 +201,7 @@ def main():
         help="New value for the flag",
     )
 
-    # Coordination / state / worktree / bot sub-commands (new workflow)
+    # Coordination / state / worktree / gh-app sub-commands (new workflow)
     from maverick.coord_cli import build_subparsers as _build_coord
 
     _build_coord(subparsers)
@@ -265,7 +265,7 @@ def main():
 
         _sys.exit(preflight_main(args))
 
-    elif args.command in ("coord", "dag", "state", "worktree", "bot", "gh-state"):
+    elif args.command in ("coord", "dag", "state", "worktree", "gh-app", "gh-state"):
         import sys as _sys
 
         from maverick.coord_cli import dispatch as _dispatch

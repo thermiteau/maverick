@@ -32,7 +32,8 @@ maintainability — the things that determine whether the code itself
 is well-written and meets the spec.
 
 - `PASS` — the PR may be auto-merged. The caller will run
-  `gh pr review --approve` as `maverick-bot` and then `gh pr merge --auto`.
+  `gh pr review --approve` as the Maverick GitHub App
+  (`maverick gh-app gh -- pr review`) and then `gh pr merge --auto`.
 - `FAIL` — the PR is ejected for human handling. The caller will apply
   `needs-human`, post your findings as a review comment, and propagate
   `blocked-by:#<issue>` to every downstream story in the epic DAG.

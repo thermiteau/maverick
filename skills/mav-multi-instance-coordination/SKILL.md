@@ -121,7 +121,7 @@ uv run maverick coord release <repo> <issue> --reason abort
 ```
 
 This removes the label, writes a lease-released marker, and unassigns the
-bot. Always release on every exit path. If an instance dies before
+GitHub App. Always release on every exit path. If an instance dies before
 release, the lease expires in ~10 minutes and another instance can take
 over.
 
