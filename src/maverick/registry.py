@@ -38,9 +38,11 @@ def _get_version() -> str:
 SKILLS_TEMPLATES_DIR = Path(__file__).resolve().parent / "skills"
 AGENTS_TEMPLATES_DIR = Path(__file__).resolve().parent / "agents"
 HOOKS_TEMPLATES_DIR = Path(__file__).resolve().parent / "hooks"
+DOCS_SKILLS_TEMPLATE_DIR = Path(__file__).resolve().parent / "docs-skills"
 SKILLS_OUTPUT_DIR = PROJECT_ROOT / "skills"
 AGENTS_OUTPUT_DIR = PROJECT_ROOT / "agents"
 HOOKS_OUTPUT_DIR = PROJECT_ROOT / "hooks"
+DOCS_SKILLS_OUTPUT_PATH = PROJECT_ROOT / "docs" / "skills" / "maverick-skills.md"
 
 GLOBAL_CONFIG = GlobalConfig()
 
@@ -264,6 +266,36 @@ def render_all_agents(
 
 
 # ---------------------------------------------------------------------------
+# Docs — skills index
+# ---------------------------------------------------------------------------
+
+
+def render_docs_skills(
+    template_dir: Path = DOCS_SKILLS_TEMPLATE_DIR,
+    output_path: Path = DOCS_SKILLS_OUTPUT_PATH,
+) -> Path:
+    """Render docs/skills/maverick-skills.md from all skill configs.
+
+    Iterates over every skill registered in ALL_SKILL_NAMES, pulls its
+    description from the corresponding SkillConfig, and feeds the data
+    to the Jinja2 template at src/maverick/docs-skills/body.md.j2.
+    """
+    body = (template_dir / "body.md.j2").read_text()
+
+    by_name = {s.name: s for s in discover_skills()}
+    skills = [
+        {"name": name, "description": (by_name[name].description or "").strip()}
+        for name in sorted(ALL_SKILL_NAMES)
+        if name in by_name
+    ]
+
+    rendered = Jinja2Template(body).render(skills=skills)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(rendered)
+    return output_path
+
+
+# ---------------------------------------------------------------------------
 # CloudFormation templates
 # ---------------------------------------------------------------------------
 
@@ -350,6 +382,7 @@ def main() -> None:
         print(f"Generated {output}")
     for output in render_all_hooks():
         print(f"Generated {output}")
+    print(f"Generated {render_docs_skills()}")
     for output in render_cfn_templates():
         print(f"Generated {output}")
 

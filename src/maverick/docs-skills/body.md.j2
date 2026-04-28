@@ -1,0 +1,10 @@
+# Maverick Skills
+
+This page lists every skill shipped with the Maverick plugin, generated from the source skill configs in `src/maverick/skills/`.
+
+{% for skill in skills %}
+## {{ skill.name }}
+
+{{ skill.description }}
+
+{% endfor %}

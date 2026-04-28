@@ -1,9 +1,6 @@
 # GitHub Labels and Marker Comments
 
-Maverick coordinates multi-instance workflows through labels and
-machine-readable comments on GitHub. This document is the canonical
-reference for those primitives. All skills, agents, and CLI helpers that
-touch workflow state must conform to what is described here.
+Maverick coordinates multi-instance workflows through labels and machine-readable comments on GitHub. This document is the canonical reference for those primitives. All skills, agents, and CLI helpers that touch workflow state must conform to what is described here.
 
 ## Design principles
 
@@ -20,14 +17,13 @@ touch workflow state must conform to what is described here.
 
 ## Labels
 
-| Label | Applied to | Meaning | Who applies |
-| --- | --- | --- | --- |
-| `claude-in-progress` | issue | A Claude Code instance has claimed this issue | Claude Code instance (on claim) |
-| `needs-human` | issue + PR | Code reviewer ejected this for human handling | Claude Code instance (on eject) |
-| `blocked-by:#N` | issue | Depends transitively on ejected issue `#N` | Claude Code instance (via block propagation) |
+| Label                | Applied to | Meaning                                       | Who applies                                  |
+| -------------------- | ---------- | --------------------------------------------- | -------------------------------------------- |
+| `claude-in-progress` | issue      | A Claude Code instance has claimed this issue | Claude Code instance (on claim)              |
+| `needs-human`        | issue + PR | Code reviewer ejected this for human handling | Claude Code instance (on eject)              |
+| `blocked-by:#N`      | issue      | Depends transitively on ejected issue `#N`    | Claude Code instance (via block propagation) |
 
-Labels must be created once per repo. Maverick's `do-init` can create them
-automatically when present.
+Labels must be created once per repo. Maverick's `do-init` can create them automatically when present.
 
 ### Label lifecycle
 
@@ -41,21 +37,20 @@ unblock  → blocked-by:#N removed (human only — Maverick never removes)
 
 ## Marker comments
 
-All state markers are fenced JSON code blocks with a kind-specific
-language tag. The Markdown fence lets GitHub render them as code; the
-language tag lets parsers find them.
+All state markers are fenced JSON code blocks with a kind-specific language tag. The Markdown fence lets GitHub render them as code; the language tag lets parsers find them.
 
 General shape:
 
-```text
+````text
 [optional preamble markdown]
 
 ```maverick-<kind>
 {
   "…": "…"
 }
-```
-```
+````
+
+````
 
 ### Marker kinds
 
@@ -67,9 +62,7 @@ General shape:
 | `maverick-lease` | Each claimed issue | One rolling | Heartbeat timestamp |
 | `maverick-bprop` | Epic issue | One (transient) | Block-propagation in-flight; absent when propagation is complete |
 
-"One rolling" means the single latest comment of that kind is authoritative;
-older ones are historical noise. Use the upsert pattern (update-in-place
-if the kind exists; otherwise post) — see `mav-durability-on-gh`.
+"One rolling" means the single latest comment of that kind is authoritative; older ones are historical noise. Use the upsert pattern (update-in-place if the kind exists; otherwise post) — see `mav-durability-on-gh`.
 
 ### Payload shapes
 
@@ -82,9 +75,10 @@ if the kind exists; otherwise post) — see `mav-durability-on-gh`.
     "142": {"deps": ["140"], "files": ["app/src/admin/guard.ts"]}
   }
 }
-```
+````
 
 **`maverick-state`**
+
 ```json
 {
   "epic": 123,
@@ -101,6 +95,7 @@ if the kind exists; otherwise post) — see `mav-durability-on-gh`.
 Valid status values: `pending`, `in_flight`, `merged`, `ejected`, `blocked`.
 
 **`maverick-claim`**
+
 ```json
 {
   "instance_id": "abc123",
@@ -111,6 +106,7 @@ Valid status values: `pending`, `in_flight`, `merged`, `ejected`, `blocked`.
 ```
 
 **`maverick-lease`**
+
 ```json
 {
   "instance_id": "abc123",
@@ -123,6 +119,7 @@ Valid status values: `pending`, `in_flight`, `merged`, `ejected`, `blocked`.
 refresh every ~2 minutes.
 
 **`maverick-bprop`**
+
 ```json
 {
   "ejected": "142",
@@ -139,8 +136,8 @@ Once every descendant appears in `labelled`, delete the comment.
 Every Maverick CLI helper and skill uses the same parser
 (`src/maverick/gh_state.py`). The contract:
 
-- Marker fence is `` ```maverick-<kind> `` on a line by itself, followed by
-  JSON, followed by a closing `` ``` `` on a line by itself.
+- Marker fence is ` ```maverick-<kind> ` on a line by itself, followed by
+  JSON, followed by a closing ` ``` ` on a line by itself.
 - Only the first marker of a given kind in a comment body is parsed.
 - Comments without a recognised marker kind are ignored.
 - Whitespace inside the fence is tolerated but the tag line is literal.
