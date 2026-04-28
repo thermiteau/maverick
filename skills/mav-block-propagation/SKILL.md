@@ -130,4 +130,4 @@ human-removed label will let the story run on the next wave-selection pass.
 - **Idempotent throughout.** Every step in the walk checks current state
   before writing. Re-running the walk end-to-end is safe.
 
-<!-- maverick-plugin-version: 1.0.4-dev -->
+<!-- maverick-plugin-version: 2.0.0 -->
