@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import patch
-
 from subprocess import CompletedProcess
+from unittest.mock import patch
 
 from maverick import preflight, preflight_cli
 
