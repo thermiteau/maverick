@@ -1,4 +1,8 @@
-.PHONY: generate generate-topics build release lint format typecheck test infra
+.PHONY: generate generate-topics build release lint format typecheck test infra install-hooks
+
+install-hooks: ## Wire the .githooks/ directory into this clone (one-time setup)
+	git config core.hooksPath .githooks
+	@echo "Hooks installed. pre-commit auto-rebuilds on src/ edits; pre-push runs lint+typecheck+tests+build-sync."
 
 lint: ## Run ruff linter
 	uv run ruff check .
