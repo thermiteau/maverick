@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "maverick"
-version = "2.0.1-dev"
+version = "2.0.1"
 description = "Claude Code plugin that enables autonomous AI development while maintaining best practices"
 requires-python = ">=3.10"
 dependencies = [
