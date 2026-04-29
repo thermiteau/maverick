@@ -103,8 +103,10 @@ REPO=$(jq -r '.repo' .claude/issue-state.json)
 COMMENT_ID=$(jq -r '.comments.tasks' .claude/issue-state.json)
 
 CURRENT_BODY=$(gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq '.body')
-# Update the checkbox for the completed task
-gh api "repos/$REPO/issues/comments/$COMMENT_ID" \
+# Update the checkbox for the completed task — write goes through the App
+# identity so the comment's edit history matches its original author (see
+# {{ SKILLS.MAV_GITHUB_ISSUE_WORKFLOW }} for the full identity rule).
+uv run maverick gh-app gh -- api "repos/$REPO/issues/comments/$COMMENT_ID" \
   -X PATCH \
   -f body="$UPDATED_BODY"
 ```

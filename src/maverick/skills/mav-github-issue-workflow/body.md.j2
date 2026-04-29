@@ -98,10 +98,19 @@ gh issue view $ISSUE_NUMBER --json comments -q '.comments | length'
 
 Use one comment per artifact (design, plan, completion). Capture the comment ID so it can be updated later.
 
+### Identity
+
+Maverick-generated comments — design, plan, tasks, completion, PR-review verdicts, and updates to any of those — are posted **as the Maverick GitHub App** so they are visually distinct from the human user's edits. Use `uv run maverick gh-app gh -- <args>` for any write that produces a comment. Plain `gh` is fine for **read** operations (`gh issue view`, `gh api ... --jq '.body'`).
+
+**Failure modes — do not silently switch identity mid-workflow:**
+
+- *App not configured* — `uv run maverick gh-app gh ...` exits with code `4` and a `GitHub App not configured` message. For solo / ad-hoc single-machine use this is acceptable; fall back to plain `gh issue comment ...` (the comment will be authored by the human user). The fallback only applies to the entire session, not per-call: if the App is configured, every comment goes through it.
+- *App configured but missing `issues:write` or `pull_requests:write`* — the underlying `gh` call fails with HTTP 403. This is a **setup error**, not a runtime fallback. Stop the workflow and tell the user to grant the permission via the GitHub App settings, then re-run. Do not retry as the human user.
+
 ### Post and Capture ID
 
 ```bash
-COMMENT_URL=$(gh issue comment $ISSUE_NUMBER --body "$(cat <<'EOF'
+COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<'EOF'
 ## Section Title
 
 Content here
@@ -128,7 +137,7 @@ jq ".comments.design = $COMMENT_ID" .claude/issue-state.json > .claude/issue-sta
 ### Post Design Comment
 
 ```bash
-COMMENT_URL=$(gh issue comment $ISSUE_NUMBER --body "$(cat <<'DESIGN_EOF'
+COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<'DESIGN_EOF'
 ## Solution Design
 
 ### Approach
@@ -155,7 +164,7 @@ jq ".comments.design = $COMMENT_ID | .phase = \"design\"" .claude/issue-state.js
 ### Post Plan Comment
 
 ```bash
-COMMENT_URL=$(gh issue comment $ISSUE_NUMBER --body "$(cat <<'PLAN_EOF'
+COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<'PLAN_EOF'
 ## Implementation Plan
 
 1. **Step name**
@@ -182,7 +191,7 @@ jq ".comments.plan = $COMMENT_ID | .phase = \"plan\"" .claude/issue-state.json >
 ```bash
 BRANCH=$(jq -r '.branch' .claude/issue-state.json)
 
-COMMENT_URL=$(gh issue comment $ISSUE_NUMBER --body "$(cat <<DONE_EOF
+COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<DONE_EOF
 ## Implementation Complete
 
 **Branch:** \`$BRANCH\`
@@ -211,7 +220,7 @@ When a design or plan is revised, update the existing comment instead of posting
 REPO=$(jq -r '.repo' .claude/issue-state.json)
 COMMENT_ID=$(jq -r '.comments.design' .claude/issue-state.json)
 
-gh api "repos/$REPO/issues/comments/$COMMENT_ID" \
+uv run maverick gh-app gh -- api "repos/$REPO/issues/comments/$COMMENT_ID" \
   -X PATCH \
   -f body="$(cat <<'EOF'
 ## Solution Design (Revised)
@@ -223,6 +232,8 @@ gh api "repos/$REPO/issues/comments/$COMMENT_ID" \
 EOF
 )"
 ```
+
+The update goes through the same App identity as the original post, so the comment author stays consistent across edits.
 
 ## Branching
 

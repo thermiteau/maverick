@@ -255,9 +255,10 @@ next step is eject-to-human, not iterate.
 
 ## Phase 11: Eject (on FAIL)
 
-1. Post the reviewer's verdict as a PR comment:
+1. Post the reviewer's verdict as a PR comment (App identity, per
+   `{{ SKILLS.MAV_GITHUB_ISSUE_WORKFLOW }}`):
    ```bash
-   gh pr comment <pr-url> --body-file /tmp/review-verdict.md
+   uv run maverick gh-app gh -- pr comment <pr-url> --body-file /tmp/review-verdict.md
    ```
 2. Apply the `needs-human` label to both the PR and the issue:
    ```bash
