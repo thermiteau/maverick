@@ -56,16 +56,16 @@ PREREQS: dict[str, Prereqs] = {
         runtime=("gh_app_configured",),
     ),
     "do-issue-solo": Prereqs(
-        flags=("init", "code_review_workflow"),
+        flags=("init",),
         tools=("gh", "git", "uv"),
         runtime=("gh_app_configured",),
     ),
     "do-issue-guided": Prereqs(
-        flags=("init", "code_review_workflow"),
+        flags=("init",),
         tools=("gh", "git", "uv"),
     ),
     "do-epic": Prereqs(
-        flags=("init", "code_review_workflow"),
+        flags=("init",),
         tools=("gh", "git", "uv"),
         runtime=("gh_app_configured", "worktrees_enabled"),
     ),
@@ -110,10 +110,12 @@ FLAG_REMEDIATION: dict[str, str] = {
     "upskill": "Run /maverick:do-upskill",
     "tech_docs_scaffolded": "Run /maverick:do-docs",
     "code_review_workflow": (
-        "Run /maverick:do-init (it scaffolds the workflow), or copy "
+        "Optional CI gate — local agent-code-reviewer runs by default. "
+        "If you want the remote workflow as well, copy "
         "${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml "
-        "into .github/workflows/, commit it, then "
-        "`maverick integration set code_review_workflow true`"
+        "into .github/workflows/, set the ANTHROPIC_API_KEY secret, then "
+        "`maverick integration set code_review_workflow true`. See "
+        "mav-bp-remote-code-review for when the gate is worth adopting."
     ),
     "cybersecurity_reviewed": "Run /maverick:do-cybersecurity-review",
 }

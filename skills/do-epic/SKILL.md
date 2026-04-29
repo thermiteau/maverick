@@ -23,13 +23,16 @@ Run this **first**. If it exits non-zero, halt and report the stderr output to t
 uv run maverick preflight do-epic
 ```
 
-The check verifies: the project is initialised, the mandatory remote
-code-review workflow is in place, the Maverick GitHub App is configured
-(`maverick gh-app status` reports `configured: true`), git worktrees
-are usable, and required tools (`gh`, `git`, `uv`) are on PATH. If the code-review-workflow flag is false, offer to scaffold from
-`${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
-on a small setup PR; after that PR merges, run `uv run maverick
-integration set code_review_workflow true` and re-run preflight.
+The check verifies: the project is initialised, the Maverick GitHub
+App is configured (`maverick gh-app status` reports `configured: true`),
+git worktrees are usable, and required tools (`gh`, `git`, `uv`) are on
+PATH. PR code review runs locally inside each story's worktree as the
+`agent-code-reviewer` subagent (delegated from
+`do-issue-solo` Phase 9). For epics that fan out across
+many parallel workers, consider opting into the CI-side re-run
+described in `mav-bp-remote-code-review` so the merge is
+gated by an independent check even if a worker's local review fails to
+fire — that workflow is optional and not enforced by preflight.
 
 ## Before You Begin
 

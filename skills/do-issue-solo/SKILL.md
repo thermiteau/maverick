@@ -25,10 +25,9 @@ do not work around missing prerequisites.
 uv run maverick preflight do-issue-solo
 ```
 
-The check verifies: the project is initialised, the mandatory remote
-code-review workflow is in place, the Maverick GitHub App is configured
-(`maverick gh-app status` reports `configured: true`), and required
-tools (`gh`, `git`, `uv`) are on PATH.
+The check verifies: the project is initialised, the Maverick GitHub
+App is configured (`maverick gh-app status` reports `configured: true`),
+and required tools (`gh`, `git`, `uv`) are on PATH.
 
 ## Before You Begin
 
@@ -38,17 +37,13 @@ for the issue number before proceeding.
 Determine the repo (via `gh repo view --json nameWithOwner`) — you will
 pass it to every `maverick coord` command below.
 
-If preflight reported a missing `code_review_workflow` flag, offer the
-user two paths before claiming the issue:
-
-1. **Scaffold the reference workflow.** Copy
-   `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml`
-   into `.github/workflows/`, commit it on a small setup branch, open a
-   PR for it, and wait for the user to merge that PR before continuing
-   with ``. After the workflow merges, run
-   `uv run maverick integration set code_review_workflow true` and
-   re-run `uv run maverick preflight do-issue-solo`.
-2. **Abort.** If the user declines, stop here.
+PR code review runs locally during Phase 9 as the
+`agent-code-reviewer` subagent — its binary PASS/FAIL
+verdict is the gate. Some projects also opt into a CI-side re-run via
+`mav-bp-remote-code-review` (independent verification for
+multi-machine fleets or audit needs); when present it adds a status
+check the auto-merge in Phase 10 will wait on, but its absence is not
+a blocker.
 
 ## Phase 0: Coordination + cold-start
 
@@ -225,8 +220,9 @@ changes (callers, importers, dependents) must be reviewed by
 
 ## Phase 9: Code Review (binary, hard gate)
 
-This phase has changed. Review is now a **binary verdict** against the
-open PR, not a local-diff advisory loop. See `agent-code-reviewer`.
+The local **agent-code-reviewer** subagent's verdict is the
+review gate the auto-merge path trusts. This is a binary verdict against
+the open PR, not a local-diff advisory loop.
 
 1. Dispatch **agent-code-reviewer** with:
    - The PR URL
@@ -250,8 +246,12 @@ next step is eject-to-human, not iterate.
    ```bash
    uv run maverick gh-app gh -- pr merge <pr-url> --auto --squash
    ```
-   If CI was already green, GitHub merges immediately. Otherwise it
-   merges when CI passes.
+   The merge waits on whatever required status checks the project's
+   branch protection enforces — typically lint, tests, build, and (if
+   the optional `mav-bp-remote-code-review` workflow is
+   adopted) the CI-side re-run of agent-code-reviewer. If all required
+   checks were already green, GitHub merges immediately; otherwise it
+   merges when they pass.
 3. Post the completion comment on the issue per
    `mav-github-issue-workflow`.
 4. Update phase to `complete` in the state file.
