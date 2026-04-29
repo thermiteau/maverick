@@ -166,4 +166,4 @@ digraph lookup {
 | Hard-coded connection strings | Breaks in different environments | Use environment variables or config |
 | Test requires manual environment setup | Not reproducible | Automate with containers or scripts |
 
-<!-- maverick-plugin-version: 2.0.1 -->
+<!-- maverick-plugin-version: 2.0.2-dev -->
