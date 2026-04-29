@@ -33,6 +33,11 @@ claude --plugin-dir ./maverick-plugin
 bash tests/integration/test_cli.sh
 bash tests/integration/test_real_repos.sh
 
+# Wire up local git hooks (one-time per clone). Installs:
+#   - pre-commit: auto-rebuilds skills/agents when src/ templates change
+#   - pre-push:   runs `make lint typecheck test` + build-sync check
+make install-hooks
+
 # Create a release (two-phase: local prep + CI finalize)
 # Phase 1 — run locally from the main branch:
 ./scripts/release.sh patch   # or: minor, major
