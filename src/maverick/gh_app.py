@@ -1,13 +1,25 @@
 """GitHub App authentication — mints installation access tokens.
 
 The Maverick GitHub App (commonly installed as `maverick-bot`) is the identity
-Maverick uses for the actions that must not appear as the human user:
+Maverick uses for everything it generates on GitHub, so AI-authored content
+is visually distinct from edits the human user actually wrote:
 
-- `gh pr review --approve` on PRs the agent-code-reviewer approved
-- `gh pr merge --auto --squash` so auto-merge fires on the App's approval
+- Issue and PR comments: design, plan, tasks list, completion, PR-review verdict
+  (and any updates to those — the App identity is the author across the
+  comment's lifetime).
+- `gh pr review --approve` on PRs the agent-code-reviewer approved.
+- `gh pr merge --auto --squash` so auto-merge fires on the App's approval.
 - `maverick-state`, `maverick-lease`, `maverick-claim`, `maverick-dag`,
   `maverick-bprop` marker comments (so App-authored workflow state is
-  visually distinct from human edits)
+  visually distinct from human edits).
+
+The PR itself is still created by the human user — the bot's job is to
+approve, comment, and merge, which preserves the GitHub-imposed rule that
+a PR cannot be approved by its author.
+
+Required App permissions: `issues: write`, `pull_requests: write`,
+`metadata: read`. Read-only operations (`gh issue view`, `gh api ... -q`)
+go through plain `gh` and do not need the App identity.
 
 Configuration lives in `~/.maverick/config.json`:
 
@@ -24,8 +36,14 @@ The legacy `bot` block name is still accepted for backward compatibility
 should use `gh_app`.
 
 If the section is absent or the pem cannot be read, the helpers raise
-GhAppNotConfigured. Callers should handle that as "fall back to the
-human user" when the action doesn't actually need the App identity.
+GhAppNotConfigured. Two distinct failure modes for callers:
+
+- *App not configured at all* (`GhAppNotConfigured`) — single-machine
+  ad-hoc use is still supported; callers may fall back to plain `gh`
+  (the comment will be authored by the logged-in human user).
+- *App configured but a write fails with HTTP 403* — a missing permission
+  on the App. This is a setup error, not a runtime fallback: surface it
+  and stop, do not retry as the human user mid-workflow.
 """
 
 from __future__ import annotations

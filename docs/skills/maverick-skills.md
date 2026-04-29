@@ -25,7 +25,7 @@ Work on a multi-story GitHub epic end-to-end. Builds a DAG from the child storie
 
 ## do-init
 
-Initialise a project for use with Maverick — verifies the GitHub App, installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, generates project skills, scaffolds the mandatory remote code-review workflow, runs an initial cybersecurity audit, then commits the changes and opens a PR.
+Initialise a project for use with Maverick — verifies the GitHub App, installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, generates project skills, runs an initial cybersecurity audit, then commits the changes and opens a PR.
 
 
 ## do-install

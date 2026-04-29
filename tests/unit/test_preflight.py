@@ -193,14 +193,21 @@ class TestRenderHuman:
         assert "init" in text
 
     def test_missing_flag_includes_remediation(self):
-        """Each missing flag is rendered with its FLAG_REMEDIATION entry."""
+        """Each missing flag is rendered with its FLAG_REMEDIATION entry.
+
+        code_review_workflow is no longer a hard prereq for any skill, but
+        the remediation entry still has to exist (TestPrereqsTableConsistency
+        enforces that), and it must read sensibly when surfaced.
+        """
         result = preflight.PreflightResult(
             skill="do-issue-solo",
             missing_flags=["code_review_workflow"],
         )
         text = preflight.render_human(result)
         assert "code_review_workflow" in text
-        assert "do-init" in text  # remediation suggests running /maverick:do-init
+        # New remediation text points users at the optional-gate skill rather
+        # than do-init, since do-init no longer scaffolds the workflow.
+        assert "code-review.yml" in text
 
     def test_missing_flag_with_no_remediation_falls_back(self, monkeypatch):
         """Defensive: a flag without an entry doesn't crash render."""

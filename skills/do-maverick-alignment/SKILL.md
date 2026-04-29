@@ -168,9 +168,9 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 
 **Additional detail:** Note which CI/CD platform is used and what steps the pipeline runs.
 
-### 6. Remote Code Review Workflow
+### 6. Remote Code Review Workflow (Optional CI Gate)
 
-Per mav-bp-remote-code-review, every project must ship a GitHub Actions workflow that runs the agent code reviewer on every pull request. Local subagent review is not enough — the remote workflow is the gate the auto-merge path trusts.
+Per mav-bp-remote-code-review, the remote workflow is an **optional** CI-side re-run of the local `agent-code-reviewer`. By default, the local subagent's verdict (run during `do-issue-solo` Phase 9) is the gate the auto-merge path trusts. Some projects opt into the remote workflow for an independent CI check — multi-machine fleets, untrusted dev environments, regulatory audit trails — but its absence is not a compliance failure.
 
 **Search for:**
 
@@ -184,11 +184,11 @@ Per mav-bp-remote-code-review, every project must ship a GitHub Actions workflow
 
 | Status | Criteria |
 | --- | --- |
-| PASS | A workflow file under `.github/workflows/` contains the `# maverick:code-review` marker AND has an `on: pull_request:` trigger |
-| WARN | A workflow with the marker exists but is missing the `pull_request` trigger, OR a `pull_request`-triggered workflow exists but no marker (likely a different review pipeline that needs the marker added) |
-| FAIL | No workflow under `.github/workflows/` contains the marker |
+| PASS | A workflow file under `.github/workflows/` contains the `# maverick:code-review` marker AND has an `on: pull_request:` trigger — the project has opted into the CI-side gate and the wiring looks right |
+| WARN | A workflow with the marker exists but is missing the `pull_request` trigger, OR a `pull_request`-triggered workflow exists but no marker (likely a different review pipeline that needs the marker added) — the team's intent is unclear |
+| INFO | No workflow under `.github/workflows/` contains the marker — the project is on the local-review default. Note this in the report and move on; do not flag it as a finding |
 
-**Recommendation on WARN/FAIL:** copy the reference template shipped with the plugin: `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml` -> `.github/workflows/code-review.yml`. Set the `ANTHROPIC_API_KEY` repo secret. Open a PR — the workflow itself will run on its own PR as a smoke test.
+**Recommendation on WARN:** fix the marker / trigger so the workflow's role is unambiguous. **Recommendation on INFO:** none required. If the team later decides they want the optional CI gate, point them at `mav-bp-remote-code-review` for the manual scaffold steps and the `ANTHROPIC_API_KEY` setup.
 
 ### 7. Source Control
 

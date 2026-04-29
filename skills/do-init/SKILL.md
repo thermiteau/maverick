@@ -1,12 +1,12 @@
 ---
 name: do-init
-description: Initialise a project for use with Maverick — verifies the GitHub App, installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, generates project skills, scaffolds the mandatory remote code-review workflow, runs an initial cybersecurity audit, then commits the changes and opens a PR.
+description: Initialise a project for use with Maverick — verifies the GitHub App, installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, generates project skills, runs an initial cybersecurity audit, then commits the changes and opens a PR.
 user-invocable: true
 ---
 
 # Init Maverick Project
 
-Set up the current repository for Maverick — install the CLI if needed, validate the Maverick GitHub App, write the project-level config, scaffold docs and project skills, scaffold the mandatory remote code-review workflow, run the cybersecurity audit, then commit everything and open a pull request for the user to approve.
+Set up the current repository for Maverick — install the CLI if needed, validate the Maverick GitHub App, write the project-level config, scaffold docs and project skills, run the cybersecurity audit, then commit everything and open a pull request for the user to approve.
 
 ## Dispatch
 
@@ -95,30 +95,11 @@ Dispatch **/maverick:do-docs**. The greenfield mode of that skill flips `integra
 
 Dispatch **/maverick:do-upskill**. It iterates every topic in `topics.json` and writes per-topic skills under `docs/maverick/skills/`, then flips `integration.upskill` to `true`.
 
-### 7. Scaffold the remote code-review workflow
-
-The mandatory remote code-review GitHub Actions workflow (described in `mav-bp-remote-code-review`) must exist before `do-issue-solo` or `do-epic` can run. Detect whether the project already has one:
-
-```bash
-grep -lR '^# maverick:code-review$' .github/workflows/ 2>/dev/null
-```
-
-- **If any file is found**, the contract is already satisfied — log "code-review workflow already present" and run `uv run maverick integration set code_review_workflow true` so future preflights agree, then skip the rest of this step. Do not overwrite an existing custom workflow.
-- **If no file is found**, copy the reference template into place:
-
-  ```bash
-  mkdir -p .github/workflows
-  cp "${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-remote-code-review/code-review.yml" .github/workflows/code-review.yml
-  uv run maverick integration set code_review_workflow true
-  ```
-
-The workflow needs the `ANTHROPIC_API_KEY` repository secret to run — call this out in the final report so the user knows to set it before merging the PR.
-
-### 8. Run the cybersecurity review
+### 7. Run the cybersecurity review
 
 Dispatch **/maverick:do-cybersecurity-review**. It scans the existing codebase for common security risks (secrets, dependency vulnerabilities, auth/input-validation patterns), writes findings to `docs/security-audit.md`, and flips `integration.cybersecurity_reviewed` to `true`. The review is surface-only — it reports, it does not modify code. Any FAIL findings should be tracked as follow-up issues by the user.
 
-### 9. Commit changes and open a pull request
+### 8. Commit changes and open a pull request
 
 The earlier steps wrote a number of new and modified files. Commit them on a fresh branch and open a PR for the user to approve.
 
@@ -127,7 +108,6 @@ The earlier steps wrote a number of new and modified files. Commit them on a fre
    - `docs/maverick/skills/...` (from `do-upskill`)
    - `docs/...` content created by `do-docs` greenfield
    - `docs/security-audit.md` (from `do-cybersecurity-review`)
-   - `.github/workflows/code-review.yml` (from step 7, when newly scaffolded)
 
    If `git status` shows changes outside these paths, **abort and report to the user** — they have unrelated uncommitted work that should be handled first.
 
@@ -141,7 +121,6 @@ The earlier steps wrote a number of new and modified files. Commit them on a fre
    ```bash
    git checkout -b chore/maverick-init
    git add .maverick/
-   [ -f .github/workflows/code-review.yml ] && git add .github/workflows/code-review.yml
    [ -d docs/maverick ] && git add docs/maverick/
    [ -f docs/security-audit.md ] && git add docs/security-audit.md
    # Stage anything else under docs/ that do-docs greenfield created.
@@ -168,11 +147,7 @@ The earlier steps wrote a number of new and modified files. Commit them on a fre
    - `.maverick/` — project config and integration tracking
    - `docs/maverick/skills/` — generated project-specific skills
    - `docs/security-audit.md` — initial cybersecurity audit findings (review FAIL items)
-   - `.github/workflows/code-review.yml` — mandatory remote code-review workflow (only when newly scaffolded)
    - Other `docs/` content scaffolded by `do-docs`
-
-   ### Required setup before merging
-   - Set the `ANTHROPIC_API_KEY` repository secret in this repo's GitHub Actions secrets so the code-review workflow can run.
 
    ### Verify after merge
    ```bash
@@ -184,17 +159,17 @@ The earlier steps wrote a number of new and modified files. Commit them on a fre
 
 6. Capture the PR URL from the `gh pr create` output and pass it through to the report in the next step.
 
-### 10. Report
+### 9. Report
 
 Print a final summary to the user:
 
 - Detected modules (from step 3's output)
 - Whether docs were scaffolded greenfield or already existed
 - How many project skills were generated
-- Whether the code-review workflow was newly scaffolded or already present
 - The number of security-audit findings at each severity, and the path to the audit report
 - The current integration state: `uv run maverick integration get`
-- The PR URL from step 9 — and a one-line reminder to set `ANTHROPIC_API_KEY` before merging
+- The PR URL from step 8
+- A one-line note that PR code review now runs locally as the `agent-code-reviewer` subagent during `do-issue-solo` / `do-epic`. If the project later wants the optional CI-side gate (multi-machine workflows, untrusted environments, audit needs), point the user at `mav-bp-remote-code-review` for the manual scaffold steps.
 
 The integration checklist gives the user (and any future Maverick session) a clear view of what's been completed and what's still pending.
 

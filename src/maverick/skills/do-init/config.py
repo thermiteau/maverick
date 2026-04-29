@@ -5,7 +5,6 @@ from maverick.names import (
     DO_INIT,
     DO_INSTALL,
     DO_UPSKILL,
-    MAV_BP_REMOTE_CODE_REVIEW,
 )
 
 CONFIG = SkillConfig(
@@ -13,9 +12,8 @@ CONFIG = SkillConfig(
     description=(
         "Initialise a project for use with Maverick — verifies the GitHub App,"
         " installs the CLI if needed, writes the project config with integration"
-        " tracking, scaffolds docs, generates project skills, scaffolds the"
-        " mandatory remote code-review workflow, runs an initial cybersecurity"
-        " audit, then commits the changes and opens a PR."
+        " tracking, scaffolds docs, generates project skills, runs an initial"
+        " cybersecurity audit, then commits the changes and opens a PR."
     ),
     user_invocable=True,
     disable_model_invocation=True,
@@ -24,6 +22,5 @@ CONFIG = SkillConfig(
         DO_DOCS,
         DO_UPSKILL,
         DO_CYBERSECURITY_REVIEW,
-        MAV_BP_REMOTE_CODE_REVIEW,
     ],
 )

@@ -20,7 +20,7 @@ Run this **first**. If it exits non-zero, halt and report the stderr output to t
 uv run maverick preflight do-issue-guided
 ```
 
-The check verifies the project is initialised, the mandatory remote code-review workflow is in place, and required tools (`gh`, `git`, `uv`) are on PATH.
+The check verifies the project is initialised and required tools (`gh`, `git`, `uv`) are on PATH. PR code review runs locally as the `agent-code-reviewer` subagent (see Phase 6); the optional CI-side re-run described in `mav-bp-remote-code-review` is not required.
 
 ## Before You Begin
 
