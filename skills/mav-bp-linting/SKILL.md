@@ -171,4 +171,4 @@ digraph lookup {
 | No pre-commit formatting | Style inconsistency across commits | Add lint-staged or equivalent |
 | Linter running on generated/vendor code | False positives, slow runs | Update ignore patterns |
 
-<!-- maverick-plugin-version: 2.0.1-dev -->
+<!-- maverick-plugin-version: 2.0.1 -->
