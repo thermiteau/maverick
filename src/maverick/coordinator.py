@@ -28,6 +28,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from maverick.gh_state import (
@@ -87,12 +88,47 @@ def _parse_iso(ts: str) -> datetime | None:
         return None
 
 
+def _instance_id_path() -> Path:
+    """Where the per-user instance id is persisted between CLI invocations."""
+    return Path("~/.maverick/instance_id").expanduser()
+
+
 def instance_id() -> str:
-    """Short, unique id for this Maverick instance. Stable within a session."""
+    """Short, unique id for this Maverick instance.
+
+    Stable across separate CLI invocations on the same machine: persisted to
+    ``~/.maverick/instance_id`` and reused on subsequent calls. Without
+    persistence, harnesses that exec the CLI per call (Claude Code's Bash
+    tool, CI step runners, etc.) see a fresh id every invocation, which
+    breaks heartbeat / claim-retry — every call looks like a different
+    instance.
+
+    Resolution order:
+    1. ``MAVERICK_INSTANCE_ID`` env var — explicit override, wins.
+    2. Cached file at ``~/.maverick/instance_id`` — created on first call.
+    3. Fresh random id — generated, written to the file.
+    """
     cached = os.environ.get("MAVERICK_INSTANCE_ID")
     if cached:
         return cached
+    path = _instance_id_path()
+    try:
+        value = path.read_text().strip()
+        if value:
+            os.environ["MAVERICK_INSTANCE_ID"] = value
+            return value
+    except OSError:
+        # Missing file, unreadable parent, etc — fall through and generate.
+        pass
     value = uuid.uuid4().hex[:10]
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    except OSError:
+        # Persistence failed (read-only home, sandbox, parent is a file).
+        # Fall back to env-only caching so the value is at least stable
+        # within this process.
+        pass
     os.environ["MAVERICK_INSTANCE_ID"] = value
     return value
 
