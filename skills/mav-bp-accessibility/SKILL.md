@@ -308,4 +308,4 @@ When reviewing code for user-facing interfaces, flag these patterns:
 | Custom widget without keyboard handling | Inoperable for keyboard users | Implement full keyboard interaction pattern |
 | Error shown only by colour change | Screen readers cannot detect colour | Add text message and `aria-describedby` |
 
-<!-- maverick-plugin-version: 2.0.2-dev -->
+<!-- maverick-plugin-version: 2.0.2 -->
