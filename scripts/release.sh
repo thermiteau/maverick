@@ -68,7 +68,7 @@ fi
 # Read current version and compute new version
 # =============================================================================
 
-CURRENT_VERSION=$(grep -Po '(?<=^version = ")[^"]+' "$PYPROJECT")
+CURRENT_VERSION=$(awk -F'"' '/^version = "/ {print $2; exit}' "$PYPROJECT")
 if [[ -z "$CURRENT_VERSION" ]]; then
     echo "ERROR: Could not read version from $PYPROJECT." >&2
     exit 1
