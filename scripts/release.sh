@@ -125,7 +125,7 @@ git checkout -b "$RELEASE_BRANCH"
 # Step 2: Bump version, update changelog, rebuild
 # =============================================================================
 
-sed -i "s/^version = \"${CURRENT_VERSION}\"/version = \"${NEW_VERSION}\"/" "$PYPROJECT"
+sed -i.bak "s/^version = \"${CURRENT_VERSION}\"/version = \"${NEW_VERSION}\"/" "$PYPROJECT" && rm "${PYPROJECT}.bak"
 python3 "$SCRIPT_DIR/bump_json_versions.py" "$NEW_VERSION"
 python3 "$SCRIPT_DIR/update_changelog.py" "$NEW_VERSION" "$(date +%Y-%m-%d)" "$CURRENT_TAG"
 
