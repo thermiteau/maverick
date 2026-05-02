@@ -66,3 +66,28 @@ class TestCliParsing:
         with patch("sys.argv", ["maverick", "plugin", "invalid"]):
             with pytest.raises(SystemExit):
                 main()
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["maverick", "issue", "policy"],
+            ["maverick", "task-progress", "read", "owner/repo", "1"],
+            ["maverick", "coord", "read", "owner/repo", "1"],
+        ],
+    )
+    def test_subcommand_dispatches_to_coord_cli(self, monkeypatch, argv):
+        """All coord_cli-owned top-level subcommands must be in the dispatch
+        allow-list in cli.py. Regression for the silent-exit bug where
+        `maverick issue policy` would exit 0 without running anything
+        because the subcommand wasn't routed."""
+        from unittest.mock import MagicMock, patch
+
+        mock_dispatch = MagicMock(return_value=0)
+        monkeypatch.setattr("sys.argv", argv)
+
+        with patch("maverick.coord_cli.dispatch", mock_dispatch):
+            with pytest.raises(SystemExit) as excinfo:
+                main()
+
+        assert excinfo.value.code == 0
+        assert mock_dispatch.called

@@ -159,6 +159,26 @@ class TestValidateConfig:
         errors = config.validate_config(cfg, require_aws=False)
         assert any("queue.max_attempts" in e for e in errors)
 
+    def test_default_close_policy_is_valid(self):
+        cfg = config._apply_defaults({})
+        assert cfg["issue_lifecycle"]["close_policy"] == "on_pr_merge"
+        errors = config.validate_config(cfg, require_aws=False)
+        assert all("issue_lifecycle" not in e for e in errors)
+
+    def test_recognised_close_policies(self):
+        for policy in config.ISSUE_CLOSE_POLICIES:
+            cfg = config._apply_defaults({"issue_lifecycle": {"close_policy": policy}})
+            errors = config.validate_config(cfg, require_aws=False)
+            assert all("issue_lifecycle" not in e for e in errors), (
+                f"valid policy {policy!r} flagged as error: {errors}"
+            )
+
+    def test_unknown_close_policy_is_error(self):
+        cfg = config._apply_defaults({})
+        cfg["issue_lifecycle"]["close_policy"] = "on_full_moon"  # type: ignore[typeddict-item]
+        errors = config.validate_config(cfg, require_aws=False)
+        assert any("issue_lifecycle.close_policy" in e for e in errors)
+
 
 class TestLoadAndHeal:
     def test_clean_config_unchanged(self, tmp_path: Path):

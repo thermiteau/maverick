@@ -24,6 +24,7 @@ Usage shape:
     uv run maverick gh-app gh -- <gh args…>
     uv run maverick task-progress read <repo> <issue>
     uv run maverick task-progress set  <repo> <issue> <phase>
+    uv run maverick issue close-on-merge <repo> <issue> --pr N --target B
 """
 
 from __future__ import annotations
@@ -33,7 +34,15 @@ import json
 import sys
 from pathlib import Path
 
-from maverick import coordinator, dag, epic_state, gh_app, gh_state, worktree
+from maverick import (
+    coordinator,
+    dag,
+    epic_state,
+    gh_app,
+    gh_state,
+    issue_lifecycle,
+    worktree,
+)
 
 
 def _json_print(obj: object) -> None:
@@ -250,6 +259,35 @@ def _task_progress_set(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# issue (#52)
+# ---------------------------------------------------------------------------
+
+
+def _issue_close_on_merge(args: argparse.Namespace) -> int:
+    """Run the post-merge issue-lifecycle steps: audit comment + label
+    are unconditional, close decision follows the per-project policy."""
+    default_branch = args.default_branch or worktree.default_branch()
+    decision = issue_lifecycle.close_on_merge(
+        args.repo,
+        args.issue,
+        pr_num=args.pr,
+        target_branch=args.target,
+        default_branch=default_branch,
+    )
+    print(issue_lifecycle.decision_to_json(decision))
+    return 0
+
+
+def _issue_policy(args: argparse.Namespace) -> int:
+    """Print the per-project issue close policy. Skill bodies query this
+    when they need to make their own close decisions for cases that
+    don't fit `close-on-merge` (notably epic-level close, which spans
+    multiple PRs)."""
+    print(issue_lifecycle.get_policy())
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # wiring
 # ---------------------------------------------------------------------------
 
@@ -422,6 +460,48 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         help="The do-issue-solo phase boundary just completed",
     )
     p.set_defaults(_handler=_task_progress_set)
+
+    # issue — per-project close policy (#52)
+    iss = subparsers.add_parser(
+        "issue",
+        help="Issue lifecycle operations (post-merge close per project policy)",
+    )
+    iss_sub = iss.add_subparsers(dest="issue_cmd", required=True)
+
+    p = iss_sub.add_parser(
+        "close-on-merge",
+        help=(
+            "Run the post-merge issue-lifecycle steps. Always posts the audit "
+            "comment and applies a `merged-to-<branch>` label. Closes the issue "
+            "based on issue_lifecycle.close_policy in .maverick/config.json: "
+            "on_pr_merge (default) closes always; on_default_branch_merge "
+            "closes only when target is the default branch; manual never closes."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument(
+        "--pr",
+        type=int,
+        required=True,
+        help="Number of the PR that just merged (referenced in the audit comment)",
+    )
+    p.add_argument(
+        "--target",
+        required=True,
+        help="The branch the PR merged into (e.g. main, develop)",
+    )
+    p.add_argument(
+        "--default-branch",
+        help="Repo's default branch. If omitted, detected via `gh repo view`.",
+    )
+    p.set_defaults(_handler=_issue_close_on_merge)
+
+    p = iss_sub.add_parser(
+        "policy",
+        help="Print the per-project issue close policy from .maverick/config.json",
+    )
+    p.set_defaults(_handler=_issue_policy)
 
 
 def dispatch(args: argparse.Namespace) -> int:

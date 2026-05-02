@@ -95,6 +95,37 @@ class AmiConfig(TypedDict):
     description: str  # Description for built AMIs
 
 
+class IssueLifecycleConfig(TypedDict):
+    """Per-project policy for what happens to GitHub issues after their PR
+    merges. Different repos use different merge patterns (trunk-based vs
+    Gitflow vs custom promotion chains), so the close decision can't be
+    hard-coded in the skill.
+
+    Fields:
+        close_policy:
+            One of:
+              - "on_pr_merge" (default): close the issue as soon as the PR
+                merges, regardless of which branch was the merge target.
+                Right for trunk-based, GitHub Flow, and Gitflow teams who
+                treat "merged to develop" as "done".
+              - "on_default_branch_merge": only close when the PR target
+                is the repo's default branch. Lets GitHub's native
+                ``Closes #N`` handle default-branch merges; Maverick
+                stays out of the way for non-default merges so the issue
+                stays open until the team's promotion gate runs.
+              - "manual": never close from the skill. Always post the
+                audit comment and apply the ``merged-to-<branch>`` label,
+                but leave the close to the team's own workflow (release
+                tag, environment promotion, manual sign-off).
+    """
+
+    close_policy: str  # "on_pr_merge" | "on_default_branch_merge" | "manual"
+
+
+# Recognised values for issue_lifecycle.close_policy.
+ISSUE_CLOSE_POLICIES = ("on_pr_merge", "on_default_branch_merge", "manual")
+
+
 class IntegrationStatus(TypedDict):
     """Per-project record of which Maverick adoption milestones have been
     carried out. Each flag defaults to ``false`` and is flipped to ``true``
@@ -130,6 +161,7 @@ class MaverickConfig(TypedDict):
     instance: InstanceConfig
     ami: AmiConfig
     integration: IntegrationStatus
+    issue_lifecycle: IssueLifecycleConfig
 
 
 # Defaults applied when sections or keys are missing.
@@ -168,6 +200,9 @@ CONFIG_DEFAULTS: MaverickConfig = {
         "tech_docs_scaffolded": False,
         "code_review_workflow": False,
         "cybersecurity_reviewed": False,
+    },
+    "issue_lifecycle": {
+        "close_policy": "on_pr_merge",
     },
 }
 
@@ -283,6 +318,13 @@ def validate_config(cfg: MaverickConfig, require_aws: bool = True) -> list[str]:
     max_attempts = cfg.get("queue", {}).get("max_attempts")
     if max_attempts is not None and not isinstance(max_attempts, int):
         errors.append("queue.max_attempts must be an integer")
+
+    policy = cfg.get("issue_lifecycle", {}).get("close_policy")
+    if policy is not None and policy not in ISSUE_CLOSE_POLICIES:
+        errors.append(
+            f"issue_lifecycle.close_policy must be one of "
+            f"{', '.join(ISSUE_CLOSE_POLICIES)} (got {policy!r})"
+        )
 
     return errors
 
