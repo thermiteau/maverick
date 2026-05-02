@@ -138,4 +138,4 @@ Before the task list is considered complete:
 - [ ] Dependencies between tasks are minimal and explicitly stated
 - [ ] The sum of all tasks fully implements the solution design
 
-<!-- maverick-plugin-version: 2.0.2 -->
+<!-- maverick-plugin-version: 3.0.0 -->

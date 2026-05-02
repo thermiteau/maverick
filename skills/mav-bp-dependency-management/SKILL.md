@@ -244,4 +244,4 @@ digraph lookup {
 | Large transitive dependency addition | Unexpected supply chain expansion | Investigate and consider lighter alternatives |
 | `--force` or `--legacy-peer-deps` in install commands | Masking resolution conflicts | Fix the underlying version conflict |
 
-<!-- maverick-plugin-version: 2.0.2 -->
+<!-- maverick-plugin-version: 3.0.0 -->

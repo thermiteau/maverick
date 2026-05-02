@@ -288,4 +288,4 @@ When reviewing code, flag these patterns:
 | Different loggers in different files               | Inconsistency                 | Use single logger module                     |
 | `try/catch` that silently swallows                 | Lost errors                   | Log or re-throw                              |
 
-<!-- maverick-plugin-version: 2.0.2 -->
+<!-- maverick-plugin-version: 3.0.0 -->
