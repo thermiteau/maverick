@@ -404,3 +404,75 @@ class TestHeartbeatLoop:
 
         assert rc == 0
         assert captured == {"repo": "me/r", "issue": 7, "interval_seconds": 5}
+
+
+class TestTaskProgressCli:
+    """#41: `task-progress read|set` are the durability primitives that
+    let do-issue-solo resume from a phase checkpoint instead of replaying
+    work against an in-flight or merged PR."""
+
+    def test_set_writes_marker_with_phase_and_instance_id(
+        self, monkeypatch, tmp_path
+    ):
+        import argparse
+
+        from maverick import coord_cli, gh_state
+
+        monkeypatch.setattr(
+            coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
+        )
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "i-abc")
+
+        captured: dict = {}
+
+        def fake_upsert(repo, issue, kind, payload, preamble="", env=None):
+            captured["repo"] = repo
+            captured["issue"] = issue
+            captured["kind"] = kind
+            captured["payload"] = payload
+            captured["preamble"] = preamble
+            return 1
+
+        monkeypatch.setattr(gh_state, "upsert_marker", fake_upsert)
+        args = argparse.Namespace(repo="me/r", issue=42, phase="review")
+
+        rc = coord_cli._task_progress_set(args)
+
+        assert rc == 0
+        assert captured["repo"] == "me/r"
+        assert captured["issue"] == 42
+        assert captured["kind"] == "maverick-task-progress"
+        assert captured["payload"]["phase"] == "review"
+        assert captured["payload"]["instance_id"] == "i-abc"
+        assert captured["payload"]["updated_at"].endswith("Z")
+        assert "task-progress" in captured["preamble"]
+
+    def test_read_returns_latest_marker_payload(self, monkeypatch):
+        import argparse
+
+        from maverick import coord_cli, gh_state
+
+        fake_marker = gh_state.Marker(
+            kind="maverick-task-progress",
+            payload={"phase": "review", "instance_id": "x"},
+            comment_id=99,
+            issue_number=42,
+        )
+        monkeypatch.setattr(gh_state, "latest_marker", lambda *a, **k: fake_marker)
+        args = argparse.Namespace(repo="me/r", issue=42)
+
+        rc = coord_cli._task_progress_read(args)
+
+        assert rc == 0
+
+    def test_read_returns_none_when_no_marker(self, monkeypatch):
+        import argparse
+
+        from maverick import coord_cli, gh_state
+
+        monkeypatch.setattr(gh_state, "latest_marker", lambda *a, **k: None)
+        args = argparse.Namespace(repo="me/r", issue=42)
+
+        rc = coord_cli._task_progress_read(args)
+
+        assert rc == 0

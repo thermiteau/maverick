@@ -71,11 +71,34 @@ This phase is new in the workflow overhaul. Before any other phase.
    that as claim-lost and abort (do not push further work).
 4. Register a release handler that fires on every exit path (success,
    eject, abort): `uv run maverick coord release <repo>  --reason <reason>`.
-5. Cold-start hydrate per `mav-durability-on-gh`:
-   - Read open PRs: `gh pr list --head <branch> --json number,state`
-   - Read the tasks comment on the issue
-   - Check for an existing worktree for this issue under `.maverick/worktrees/`
-   - If any state exists, resume at the appropriate phase rather than re-doing work.
+5. Cold-start hydrate per `mav-durability-on-gh`. The
+   skill is fully resumable — a fresh agent re-entering after a crash,
+   stop, or context-exhaustion must skip phases that already completed
+   rather than re-running them against an in-flight or merged PR (#41).
+
+   Read **all** of:
+   - `uv run maverick task-progress read <repo> ` — the
+     phase boundary the previous agent last passed.
+   - `gh pr list --head <branch> --json number,state,mergedAt` — open or
+     merged PR for this issue's branch.
+   - The tasks comment on the issue.
+   - Existing worktree for this issue under `.maverick/worktrees/`.
+
+   **Resume rules** (apply the first match, in this order):
+
+   | Observed state | Resume at |
+   |---|---|
+   | PR exists, state=`MERGED` | Phase 10 step 4 (post completion comment, close issue, release claim, destroy worktree) |
+   | PR exists, state=`OPEN`, CI failing | Phase 8 step 4 (fix CI, push) |
+   | PR exists, state=`OPEN`, CI green, no review verdict | Phase 9 (dispatch reviewer) |
+   | PR exists, state=`OPEN`, FAIL verdict on PR | Phase 11 (eject) |
+   | task-progress phase ≥ `branch`, no PR | Phase 5 (continue tasks from last completion) |
+   | task-progress phase = `tasks` | Phase 4 (create worktree + branch) |
+   | task-progress phase = `design` | Phase 3 (create tasks) |
+   | nothing | Phase 1 (start fresh) |
+
+   Each phase below ends with a `task-progress set` write so re-entry can
+   advance one boundary at a time without re-running anything.
 
 ## Phase 1-2: Understand the Issue and Solution Design (subagent)
 
@@ -92,6 +115,7 @@ implementation.
    - `.claude/issue-state.json` has `comments.design` set to a comment ID
 4. If the agent flagged ambiguities it could not resolve, ask the user.
    Otherwise continue.
+5. **Checkpoint**: `uv run maverick task-progress set <repo>  design`.
 
 ## Phase 3: Create Tasks (subagent)
 
@@ -105,6 +129,7 @@ Run Phase 3 as a subagent.
    - If < 5 tasks: `.claude/issue-state.json` has `comments.tasks` set to a comment ID
    - If >= 5 tasks: `.claude/issue-state.json` has `has_sub_issues` set to `true`
 3. If the agent flagged scope concerns, ask the user.
+4. **Checkpoint**: `uv run maverick task-progress set <repo>  tasks`.
 
 ## Phase 4: Create Worktree + Branch
 
@@ -120,6 +145,7 @@ dedicated worktree**, not in the main checkout.
    From this point on, all file edits happen inside the worktree path.
 4. `cd` into the worktree path for the rest of the story.
 5. Update phase to `branch` in the state file.
+6. **Checkpoint**: `uv run maverick task-progress set <repo>  branch`.
 
 ## Phase 5: Execute Tasks (push after every task)
 
@@ -149,6 +175,8 @@ This phase has changed. **Push after every task, not at the end.** See
 
 After the last task, run the full verification suite once more.
 
+**Checkpoint**: `uv run maverick task-progress set <repo>  implement`.
+
 Follow `mav-plan-execution` for the broader execution loop,
 verification discipline, failure handling, and crash recovery.
 
@@ -177,6 +205,7 @@ whether work is needed; the workflow decides whether the agent runs.
    per the push-per-task rule.
 5. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
+6. **Checkpoint**: `uv run maverick task-progress set <repo>  docs`.
 
 ## Phase 7: Pre-push Cybersecurity Review (mandatory)
 
@@ -221,8 +250,17 @@ changes (callers, importers, dependents) must be reviewed by
        --title "<conventional title referencing #>" \
        --body "<summary + closes #>"
    ```
-4. Monitor CI per `mav-bp-cicd`. If CI fails, read logs, fix
+4. **Checkpoint**: `uv run maverick task-progress set <repo>  pr_open`.
+5. Monitor CI per `mav-bp-cicd`. If CI fails, read logs, fix
    locally, push. Do not proceed to Phase 9 until CI is green.
+6. **Browser/UI verification is non-blocking.** If the change touches UI
+   and Claude's global instructions or a project skill ask for browser
+   verification, run it with a strict timeout (e.g. 5 min total). On
+   hang, timeout, or failure, post the outcome as a non-blocking PR
+   comment and proceed to Phase 9 — do **not** wait indefinitely (#41).
+   Phase 9's reviewer is the binding gate; CI is the binding regression
+   check; ad-hoc browser runs are advisory.
+7. **Checkpoint**: `uv run maverick task-progress set <repo>  ci_green`.
 
 ## Phase 9: Code Review (binary, hard gate)
 
@@ -237,6 +275,7 @@ the open PR, not a local-diff advisory loop.
    - **PASS** — proceed to Phase 10 (merge).
    - **FAIL** — proceed to Phase 11 (eject). Do not attempt to auto-fix.
 3. Update phase to `review` in the state file.
+4. **Checkpoint**: `uv run maverick task-progress set <repo>  review`.
 
 There is no fix-and-re-review loop. If the reviewer FAILs the PR, the
 next step is eject-to-human, not iterate.
@@ -261,9 +300,10 @@ next step is eject-to-human, not iterate.
 3. **Wait for the merge to land** before continuing — poll
    `gh pr view <pr-url> --json state -q .state` until it reports
    `MERGED`. Cleanup steps below assume the PR is no longer in flight.
-4. Post the completion comment on the issue per
+4. **Checkpoint**: `uv run maverick task-progress set <repo>  merged`.
+5. Post the completion comment on the issue per
    `mav-github-issue-workflow`.
-5. **Close the issue.** GitHub's `Closes #N` auto-close only fires when
+6. **Close the issue.** GitHub's `Closes #N` auto-close only fires when
    the PR merges to the default branch — projects using a `develop`
    tracking branch leave the issue OPEN until the next promotion.
    Always close explicitly so the issue's lifecycle matches the PR's
@@ -273,11 +313,12 @@ next step is eject-to-human, not iterate.
    gh issue close  \
        --comment "Resolved in PR #<P>; merged to <target-branch>."
    ```
-6. Update phase to `complete` in the state file.
-7. Release the claim: `uv run maverick coord release <repo>  --reason merged`.
-8. Clean up:
+7. Update phase to `complete` in the state file.
+8. Release the claim: `uv run maverick coord release <repo>  --reason merged`.
+9. Clean up:
    - Local state file
    - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
+10. **Checkpoint**: `uv run maverick task-progress set <repo>  complete`.
 
 ## Phase 11: Eject (on FAIL)
 

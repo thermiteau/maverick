@@ -11,6 +11,8 @@ Marker kinds (see docs/conventions/github-markers.md):
 - maverick-claim: atomic claim record on a claimed issue
 - maverick-lease: heartbeat lease record on a claimed issue
 - maverick-bprop: block-propagation in-flight marker on the epic issue
+- maverick-task-progress: per-issue do-issue-solo phase checkpoint, so
+  a fresh agent re-entering can resume from N+1 instead of restarting (#41)
 
 Each marker is a fenced code block with a kind-specific language tag, e.g.:
 
@@ -33,6 +35,25 @@ MARKER_KINDS = (
     "maverick-claim",
     "maverick-lease",
     "maverick-bprop",
+    "maverick-task-progress",
+)
+
+# Phase names that may appear in a maverick-task-progress payload's `phase`
+# field. The list mirrors do-issue-solo's phase boundaries; agents resume
+# from the next phase after the recorded one (#41).
+TASK_PROGRESS_PHASES = (
+    "claimed",
+    "design",
+    "tasks",
+    "branch",
+    "implement",
+    "docs",
+    "security",
+    "pr_open",
+    "ci_green",
+    "review",
+    "merged",
+    "complete",
 )
 
 

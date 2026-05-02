@@ -2,7 +2,12 @@
 
 import pytest
 
-from maverick.gh_state import MARKER_KINDS, format_marker, parse_body
+from maverick.gh_state import (
+    MARKER_KINDS,
+    TASK_PROGRESS_PHASES,
+    format_marker,
+    parse_body,
+)
 
 
 class TestParseBody:
@@ -71,4 +76,27 @@ class TestMarkerKinds:
             "maverick-claim",
             "maverick-lease",
             "maverick-bprop",
+            "maverick-task-progress",
         }
+
+
+class TestTaskProgressMarker:
+    """#41: per-issue do-issue-solo phase checkpoint, so a fresh agent
+    re-entering can resume from N+1 instead of restarting."""
+
+    def test_round_trip(self):
+        payload = {
+            "phase": "review",
+            "instance_id": "abc1234567",
+            "updated_at": "2026-05-02T10:00:00Z",
+        }
+        block = format_marker("maverick-task-progress", payload)
+        assert parse_body(block, "maverick-task-progress") == payload
+
+    def test_phase_choices_are_in_order(self):
+        # The CLI's `task-progress set <phase>` validates against this list,
+        # and the do-issue-solo skill's resume table assumes this ordering.
+        assert TASK_PROGRESS_PHASES[0] == "claimed"
+        assert TASK_PROGRESS_PHASES[-1] == "complete"
+        # Each phase must be unique.
+        assert len(TASK_PROGRESS_PHASES) == len(set(TASK_PROGRESS_PHASES))
