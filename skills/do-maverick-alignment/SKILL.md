@@ -399,4 +399,4 @@ uv run maverick integration set alignment true
 This commits the milestone into `.maverick/config.json` — the file is in git
 so the state is durable across machines and contributors.
 
-<!-- maverick-plugin-version: 2.0.2 -->
+<!-- maverick-plugin-version: 3.0.0 -->
