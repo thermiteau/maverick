@@ -311,13 +311,18 @@ def release(
 def takeover(
     repo: str,
     issue: int,
+    scope: list[str] | None = None,
+    reason: str | None = None,
     env: dict[str, str] | None = None,
 ) -> Claim:
     """Take over a stale lease from a crashed instance.
 
     Posts an explicit takeover comment naming the prior instance, then runs
     the normal claim flow with allow_takeover=True to bypass the live-lease
-    check (it is known stale).
+    check (it is known stale). `scope` is forwarded to the inner claim so a
+    multi-story epic can be taken over and re-scoped in one call rather
+    than forcing N+1 round-trips (#42). `reason` is recorded on the
+    takeover marker for the audit trail.
     """
     state = read_claim_state(repo, issue)
     prior_instance = (state["claim"] or {}).get("instance_id", "unknown")
@@ -329,19 +334,24 @@ def takeover(
         f"<!-- maverick takeover -->\n"
         f"Taking over #{issue} from instance `{prior_instance}` — prior lease stale."
     )
+    if reason:
+        preamble += f"\nReason: {reason}"
+    payload: dict[str, Any] = {
+        "instance_id": instance_id(),
+        "takeover_of": prior_instance,
+        "claimed_at": _now_iso(),
+    }
+    if reason:
+        payload["reason"] = reason
     post_marker(
         repo,
         issue,
         "maverick-claim",
-        {
-            "instance_id": instance_id(),
-            "takeover_of": prior_instance,
-            "claimed_at": _now_iso(),
-        },
+        payload,
         preamble=preamble,
         env=env,
     )
-    return claim(repo, issue, env=env, allow_takeover=True)
+    return claim(repo, issue, scope=scope, env=env, allow_takeover=True)
 
 
 def format_lease_summary(lease_payload: dict[str, Any] | None) -> str:
