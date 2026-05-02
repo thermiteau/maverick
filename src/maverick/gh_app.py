@@ -207,9 +207,15 @@ bot_env = gh_app_env
 
 
 def gh_app_gh(*args: str) -> subprocess.CompletedProcess[str]:
-    """Run `gh` as the Maverick GitHub App. Raises on non-zero exit."""
+    """Run `gh` as the Maverick GitHub App.
+
+    Returns the CompletedProcess regardless of exit code so the caller can
+    relay the underlying `gh` stderr verbatim — we used to pass `check=True`,
+    which masked the real error behind a Python `CalledProcessError`
+    traceback (#56).
+    """
     return subprocess.run(
-        ["gh", *args], capture_output=True, text=True, check=True, env=gh_app_env()
+        ["gh", *args], capture_output=True, text=True, env=gh_app_env()
     )
 
 

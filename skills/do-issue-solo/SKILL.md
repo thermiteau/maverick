@@ -244,11 +244,26 @@ changes (callers, importers, dependents) must be reviewed by
 2. Stacked-PR retarget check per `mav-stacked-prs` if the branch
    stacks on a sibling. Retarget before opening the PR if the sibling is now
    merged.
-3. Open the PR:
+3. Open the PR. The body **must** end with a literal `Closes #`
+   line (capitalised; not `Refs`, `Related to`, or any other phrasing).
+   `gh pr merge --squash` carries the PR body verbatim into the squash
+   commit body; GitHub only auto-closes the linked issue when one of
+   `Closes`/`Fixes`/`Resolves` appears in a commit on the default
+   branch. If multiple PRs land via a non-squash promotion (Gitflow:
+   `develop` → `main`), each squash commit's body is what GitHub scans
+   — so omitting the keyword on a single PR leaves *that* story open
+   even after promotion (#56). Use `Refs #N` only for cross-references
+   to *other* issues, never for the primary story:
    ```bash
    gh pr create --base <resolved-base> --head <branch> \
        --title "<conventional title referencing #>" \
-       --body "<summary + closes #>"
+       --body "$(cat <<'PR_EOF'
+   ## Summary
+   <1-3 bullet points>
+
+   Closes #
+   PR_EOF
+   )"
    ```
 4. **Checkpoint**: `uv run maverick task-progress set <repo>  pr_open`.
 5. Monitor CI per `mav-bp-cicd`. If CI fails, read logs, fix
@@ -282,12 +297,22 @@ next step is eject-to-human, not iterate.
 
 ## Phase 10: Auto-merge (on PASS)
 
-1. The Maverick GitHub App posts the approval:
+1. **Verify the PR body still carries the closing keyword.** The body
+   becomes the squash commit body, and the closing keyword must survive
+   into the commit that lands on the default branch (#56). If the body
+   was edited after Phase 8 — by a reviewer, by another subagent, or by
+   a force-push — re-add the line before merging:
+   ```bash
+   uv run maverick gh-app gh -- pr view <pr-url> --json body -q .body \
+       | grep -Eq '(Closes|Fixes|Resolves) #\b' \
+       || { echo "PR body missing 'Closes #' — re-add before merging"; exit 1; }
+   ```
+2. The Maverick GitHub App posts the approval:
    ```bash
    uv run maverick gh-app gh -- pr review <pr-url> --approve \
        --body "Approved by agent-code-reviewer at $(date -u +%FT%TZ)"
    ```
-2. Enable auto-merge (squash):
+3. Enable auto-merge (squash):
    ```bash
    uv run maverick gh-app gh -- pr merge <pr-url> --auto --squash
    ```
@@ -297,13 +322,13 @@ next step is eject-to-human, not iterate.
    adopted) the CI-side re-run of agent-code-reviewer. If all required
    checks were already green, GitHub merges immediately; otherwise it
    merges when they pass.
-3. **Wait for the merge to land** before continuing — poll
+4. **Wait for the merge to land** before continuing — poll
    `gh pr view <pr-url> --json state -q .state` until it reports
    `MERGED`. Cleanup steps below assume the PR is no longer in flight.
-4. **Checkpoint**: `uv run maverick task-progress set <repo>  merged`.
-5. Post the completion comment on the issue per
+5. **Checkpoint**: `uv run maverick task-progress set <repo>  merged`.
+6. Post the completion comment on the issue per
    `mav-github-issue-workflow`.
-6. **Run the post-merge issue-lifecycle step.** This always posts an
+7. **Run the post-merge issue-lifecycle step.** This always posts an
    audit comment ("Resolved in PR #<P>; merged to <branch>.") and
    applies a `merged-to-<branch>` label, then closes the issue per the
    per-project policy in `.maverick/config.json`'s
@@ -319,12 +344,12 @@ next step is eject-to-human, not iterate.
    uv run maverick issue close-on-merge <repo>  \
        --pr <pr-num> --target <target-branch>
    ```
-7. Update phase to `complete` in the state file.
-8. Release the claim: `uv run maverick coord release <repo>  --reason merged`.
-9. Clean up:
-   - Local state file
-   - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
-10. **Checkpoint**: `uv run maverick task-progress set <repo>  complete`.
+8. Update phase to `complete` in the state file.
+9. Release the claim: `uv run maverick coord release <repo>  --reason merged`.
+10. Clean up:
+    - Local state file
+    - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
+11. **Checkpoint**: `uv run maverick task-progress set <repo>  complete`.
 
 ## Phase 11: Eject (on FAIL)
 

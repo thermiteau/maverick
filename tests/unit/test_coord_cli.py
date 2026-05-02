@@ -99,6 +99,29 @@ class TestGhAppGhSeparator:
         assert captured["args"] == ("api", "--", "/repos/x/y")
 
 
+class TestGhAppGhStderrRelay:
+    """#56: when `gh` exits non-zero the wrapper must surface gh's own
+    stderr (so the operator sees `unknown flag --foo` etc.) and return
+    gh's exit code — not bury it under a Python CalledProcessError."""
+
+    def test_nonzero_exit_relays_stderr_and_returncode(self, monkeypatch, capsys):
+        def fake_gh_app_gh(*args):
+            r = MagicMock()
+            r.stdout = ""
+            r.stderr = "gh: unknown flag --bogus\n"
+            r.returncode = 1
+            return r
+
+        monkeypatch.setattr(coord_cli.gh_app, "gh_app_gh", fake_gh_app_gh)
+        args = _parse("gh-app", "gh", "--", "issue", "comment", "42", "--bogus")
+
+        rc = coord_cli._gh_app_gh(args)
+
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "gh: unknown flag --bogus" in captured.err
+
+
 class TestWorktreeDestroyForce:
     """#45: destroy is force-by-default; --no-force opts out."""
 
