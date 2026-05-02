@@ -21,6 +21,7 @@ this and applies the loser-aborts tiebreaker.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
@@ -96,21 +97,31 @@ def _instance_id_path() -> Path:
 def instance_id() -> str:
     """Short, unique id for this Maverick instance.
 
-    Stable across separate CLI invocations on the same machine: persisted to
-    ``~/.maverick/instance_id`` and reused on subsequent calls. Without
-    persistence, harnesses that exec the CLI per call (Claude Code's Bash
-    tool, CI step runners, etc.) see a fresh id every invocation, which
-    breaks heartbeat / claim-retry — every call looks like a different
-    instance.
+    Stable across all CLI invocations within a single Claude Code session,
+    and across separate invocations on the same machine outside one.
+    Without stability, harnesses that exec the CLI per call (Claude Code's
+    Bash tool, CI step runners, etc.) see a fresh id every invocation,
+    which breaks heartbeat / claim-retry — every call looks like a
+    different instance.
 
     Resolution order:
     1. ``MAVERICK_INSTANCE_ID`` env var — explicit override, wins.
-    2. Cached file at ``~/.maverick/instance_id`` — created on first call.
-    3. Fresh random id — generated, written to the file.
+    2. ``CLAUDE_SESSION_ID`` env var — derive a deterministic 10-char id
+       from a hash of the session id. Two different CC sessions get
+       distinct ids; every subagent and subprocess inside one CC session
+       converges on the same id without needing a file write, which
+       sidesteps the first-call race in the file-cache path (#40).
+    3. Cached file at ``~/.maverick/instance_id`` — created on first call.
+    4. Fresh random id — generated, written to the file.
     """
     cached = os.environ.get("MAVERICK_INSTANCE_ID")
     if cached:
         return cached
+    session = os.environ.get("CLAUDE_SESSION_ID")
+    if session:
+        value = hashlib.sha256(session.encode("utf-8")).hexdigest()[:10]
+        os.environ["MAVERICK_INSTANCE_ID"] = value
+        return value
     path = _instance_id_path()
     try:
         value = path.read_text().strip()
@@ -216,16 +227,22 @@ def claim(
     # 3. Start the lease
     _write_lease(repo, issue, env=env)
 
-    # 4. Read-after-write race detection — re-read claim markers and apply
-    #    loser-aborts if another instance also posted one between step 2 and now.
+    # 4. Read-after-write race detection. GitHub assigns strictly-monotonic
+    #    comment ids, so the most recent claim marker is canonical. If a
+    #    concurrent instance posted after us, its marker will be the latest
+    #    and we yield. Earlier markers are either superseded by ours or
+    #    represent already-released/expired claims and must not be counted —
+    #    accumulating historical markers used to permanently lock out new
+    #    claimers, including legitimate takeovers (#38).
     from maverick.gh_state import find_markers
 
     markers = find_markers(repo, issue, "maverick-claim")
-    holders = {m.payload.get("instance_id") for m in markers if m.payload}
-    if len(holders) > 1 and instance_id() != min(str(h) for h in holders if h):
-        raise ClaimRejected(
-            f"#{issue} race with instances {holders}; lower id wins, this instance backs off"
-        )
+    if markers:
+        latest_holder = (markers[-1].payload or {}).get("instance_id")
+        if latest_holder and latest_holder != instance_id():
+            raise ClaimRejected(
+                f"#{issue} race lost — superseded by claim from instance {latest_holder}"
+            )
 
     return c
 
