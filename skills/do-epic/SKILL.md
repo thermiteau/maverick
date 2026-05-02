@@ -57,8 +57,18 @@ a single story, dispatch `do-issue-solo` instead.
 4. **Claim**: `uv run maverick coord claim <repo>  --scope <csv-of-issues>`.
    On `ClaimRejected`, abort and report per
    `mav-multi-instance-coordination`.
-5. **Start heartbeat** for every issue in the claim scope.
-6. **Register release handler** for every exit path.
+5. **Start heartbeat** for every issue in the claim scope. Run the
+   self-terminating foreground loop in the background — it exits cleanly
+   when the matching `coord release` runs at session end, so there is no
+   manual `kill` step:
+   ```bash
+   for issue in <epic> <story1> <story2> …; do
+     uv run maverick coord heartbeat-loop <repo> $issue >/dev/null 2>&1 &
+   done
+   ```
+6. **Register release handler** for every exit path. Run
+   `coord release` for every claimed issue; the matching `heartbeat-loop`
+   detects the cleared label on its next iteration and exits.
 
 ## Phase 1: Design + task decomposition (if needed)
 
@@ -211,7 +221,9 @@ When every story in the wave is terminal (merged or ejected):
 3. Update `maverick-state` one last time.
 4. Release the epic-level claim:
    `uv run maverick coord release <repo>  --reason complete`.
-5. Stop the heartbeat loop.
+5. The `heartbeat-loop` background processes self-terminate within one
+   `--interval` window once their claims are released — `wait` for them
+   if you backgrounded them with PIDs, or just let the parent shell exit.
 6. Close the epic issue only if **no stories were ejected**. If any were
    ejected, leave the epic open for the human to resolve the ejected
    stories and close manually.

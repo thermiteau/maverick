@@ -276,6 +276,51 @@ def heartbeat(repo: str, issue: int, env: dict[str, str] | None = None) -> None:
     _write_lease(repo, issue, env=env)
 
 
+def heartbeat_loop(
+    repo: str,
+    issue: int,
+    interval_seconds: int = HEARTBEAT_INTERVAL_MINUTES * 60,
+    env: dict[str, str] | None = None,
+) -> int:
+    """Run heartbeat in a foreground loop, exiting cleanly when the claim
+    is released or otherwise lost.
+
+    Designed to be backgrounded by a single skill step (e.g. `do-epic`
+    Phase 0) so that the loop owns its own lifecycle: when `coord release`
+    runs at session end the claim label is removed, the next heartbeat
+    raises `ClaimLost`, and this function returns 0 — no separate `kill`
+    step needed (#47).
+
+    Also handles SIGINT/SIGTERM so a parent process killing it gets a
+    clean exit. Sleeps in 1-second slices to keep signals responsive.
+    """
+    import signal
+    import time
+
+    stopping = False
+
+    def _stop(_signum: int, _frame: object | None) -> None:
+        nonlocal stopping
+        stopping = True
+
+    prev_int = signal.signal(signal.SIGINT, _stop)
+    prev_term = signal.signal(signal.SIGTERM, _stop)
+    try:
+        while not stopping:
+            try:
+                heartbeat(repo, issue, env=env)
+            except ClaimLost:
+                return 0
+            slept = 0
+            while slept < interval_seconds and not stopping:
+                time.sleep(1)
+                slept += 1
+        return 0
+    finally:
+        signal.signal(signal.SIGINT, prev_int)
+        signal.signal(signal.SIGTERM, prev_term)
+
+
 def release(
     repo: str,
     issue: int,

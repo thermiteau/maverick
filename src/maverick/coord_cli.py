@@ -9,8 +9,9 @@ Usage shape:
     uv run maverick coord read     <repo> <issue>
     uv run maverick coord claim    <repo> <issue> [--scope N,N,N]
     uv run maverick coord heartbeat <repo> <issue>
+    uv run maverick coord heartbeat-loop <repo> <issue> [--interval SECS]
     uv run maverick coord release  <repo> <issue> [--reason R]
-    uv run maverick coord takeover <repo> <issue>
+    uv run maverick coord takeover <repo> <issue> [--scope N,N,N] [--reason R]
     uv run maverick dag show       <repo> <epic>
     uv run maverick dag waves      <repo> <epic>
     uv run maverick dag descendants <repo> <epic> <story>
@@ -67,6 +68,12 @@ def _coord_heartbeat(args: argparse.Namespace) -> int:
         return 3
     print("ok")
     return 0
+
+
+def _coord_heartbeat_loop(args: argparse.Namespace) -> int:
+    return coordinator.heartbeat_loop(
+        args.repo, args.issue, interval_seconds=args.interval
+    )
 
 
 def _coord_release(args: argparse.Namespace) -> int:
@@ -232,10 +239,24 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--scope", help="Comma-separated issue numbers in scope")
     p.set_defaults(_handler=_coord_claim)
 
-    p = coord_sub.add_parser("heartbeat", help="Refresh a lease")
+    p = coord_sub.add_parser("heartbeat", help="Refresh a lease (one shot)")
     p.add_argument("repo")
     p.add_argument("issue", type=int)
     p.set_defaults(_handler=_coord_heartbeat)
+
+    p = coord_sub.add_parser(
+        "heartbeat-loop",
+        help="Refresh the lease in a foreground loop until the claim is released",
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument(
+        "--interval",
+        type=int,
+        default=coordinator.HEARTBEAT_INTERVAL_MINUTES * 60,
+        help="Seconds between heartbeats (default: HEARTBEAT_INTERVAL_MINUTES * 60)",
+    )
+    p.set_defaults(_handler=_coord_heartbeat_loop)
 
     p = coord_sub.add_parser("release", help="Release a claim")
     p.add_argument("repo")

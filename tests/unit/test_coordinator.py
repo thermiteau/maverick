@@ -323,3 +323,84 @@ class TestClaimRaceDetection:
         c = coordinator.takeover("me/r", 3)
 
         assert c.instance_id == "z-takeover"
+
+
+class TestHeartbeatLoop:
+    """#47: foreground loop self-terminates when the claim is released, so
+    skills don't have to track and kill a backgrounded shell loop."""
+
+    def test_exits_when_heartbeat_raises_claim_lost(self, monkeypatch):
+        """Simulates `coord release` clearing the claim label — the next
+        heartbeat raises ClaimLost and the loop returns 0."""
+        calls = {"n": 0}
+
+        def fake_heartbeat(repo, issue, env=None):
+            calls["n"] += 1
+            raise coordinator.ClaimLost("released")
+
+        monkeypatch.setattr(coordinator, "heartbeat", fake_heartbeat)
+        # Ensure no real sleeping happens.
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+
+        rc = coordinator.heartbeat_loop("me/r", 42, interval_seconds=1)
+
+        assert rc == 0
+        assert calls["n"] == 1
+
+    def test_loops_until_claim_lost(self, monkeypatch):
+        """Heartbeats refresh on a live claim; loop exits once heartbeat
+        signals the claim is gone."""
+        results = iter([None, None, coordinator.ClaimLost("gone")])
+
+        def fake_heartbeat(repo, issue, env=None):
+            r = next(results)
+            if isinstance(r, Exception):
+                raise r
+
+        monkeypatch.setattr(coordinator, "heartbeat", fake_heartbeat)
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+
+        rc = coordinator.heartbeat_loop("me/r", 42, interval_seconds=1)
+
+        assert rc == 0
+
+    def test_restores_signal_handlers(self, monkeypatch):
+        """SIGINT/SIGTERM handlers are restored on exit so the loop doesn't
+        leak handler state into the parent process."""
+        import signal
+
+        original_int = signal.getsignal(signal.SIGINT)
+        original_term = signal.getsignal(signal.SIGTERM)
+
+        def fake_heartbeat(repo, issue, env=None):
+            raise coordinator.ClaimLost("done")
+
+        monkeypatch.setattr(coordinator, "heartbeat", fake_heartbeat)
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+
+        coordinator.heartbeat_loop("me/r", 42, interval_seconds=1)
+
+        assert signal.getsignal(signal.SIGINT) == original_int
+        assert signal.getsignal(signal.SIGTERM) == original_term
+
+    def test_cli_handler_forwards_to_loop(self, monkeypatch):
+        """`coord heartbeat-loop` CLI handler delegates to coordinator.heartbeat_loop."""
+        import argparse
+
+        from maverick import coord_cli
+
+        captured: dict = {}
+
+        def fake_loop(repo, issue, *, interval_seconds):
+            captured["repo"] = repo
+            captured["issue"] = issue
+            captured["interval_seconds"] = interval_seconds
+            return 0
+
+        monkeypatch.setattr(coord_cli.coordinator, "heartbeat_loop", fake_loop)
+        args = argparse.Namespace(repo="me/r", issue=7, interval=5)
+
+        rc = coord_cli._coord_heartbeat_loop(args)
+
+        assert rc == 0
+        assert captured == {"repo": "me/r", "issue": 7, "interval_seconds": 5}
