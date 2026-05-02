@@ -76,8 +76,11 @@ def _coord_release(args: argparse.Namespace) -> int:
 
 
 def _coord_takeover(args: argparse.Namespace) -> int:
+    scope = args.scope.split(",") if args.scope else None
     try:
-        c = coordinator.takeover(args.repo, args.issue)
+        c = coordinator.takeover(
+            args.repo, args.issue, scope=scope, reason=args.reason
+        )
     except coordinator.ClaimRejected as e:
         print(f"takeover rejected: {e}", file=sys.stderr)
         return 2
@@ -175,8 +178,15 @@ def _gh_app_status(args: argparse.Namespace) -> int:
 
 
 def _gh_app_gh(args: argparse.Namespace) -> int:
+    # POSIX "end of options" — argparse.REMAINDER preserves the literal `--`
+    # as the first element. The skill docs (and most users) write
+    # `gh-app gh -- <gh args>` to make the boundary explicit; strip it so
+    # both forms produce the same downstream invocation. (#44)
+    gh_args = list(args.gh_args)
+    if gh_args and gh_args[0] == "--":
+        gh_args = gh_args[1:]
     try:
-        result = gh_app.gh_app_gh(*args.gh_args)
+        result = gh_app.gh_app_gh(*gh_args)
     except gh_app.GhAppNotConfigured as e:
         print(f"GitHub App not configured: {e}", file=sys.stderr)
         return 4
@@ -207,7 +217,11 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     coord = subparsers.add_parser("coord", help="Multi-instance claim/lease primitives")
     coord_sub = coord.add_subparsers(dest="coord_cmd", required=True)
 
-    p = coord_sub.add_parser("read", help="Read claim state for an issue")
+    p = coord_sub.add_parser(
+        "read",
+        aliases=["status"],
+        help="Read claim state for an issue (alias: status)",
+    )
     p.add_argument("repo")
     p.add_argument("issue", type=int)
     p.set_defaults(_handler=_coord_read)
@@ -232,6 +246,14 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p = coord_sub.add_parser("takeover", help="Take over a stale lease")
     p.add_argument("repo")
     p.add_argument("issue", type=int)
+    p.add_argument(
+        "--scope",
+        help="Comma-separated issue numbers in scope (mirrors `coord claim`)",
+    )
+    p.add_argument(
+        "--reason",
+        help="Free-form audit-trail note recorded on the takeover marker",
+    )
     p.set_defaults(_handler=_coord_takeover)
 
     # dag
@@ -282,9 +304,18 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p = w_sub.add_parser("list", help="List worktrees")
     p.set_defaults(_handler=_worktree_list)
 
-    p = w_sub.add_parser("destroy", help="Destroy a worktree")
+    p = w_sub.add_parser(
+        "destroy",
+        help="Destroy a worktree (force-removes by default; --no-force to opt out)",
+    )
     p.add_argument("path")
-    p.add_argument("--force", action="store_true")
+    p.add_argument(
+        "--force",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Force-remove dirty worktrees (default). Use --no-force to keep "
+        "the conservative `git worktree remove` behaviour.",
+    )
     p.set_defaults(_handler=_worktree_destroy)
 
     # gh-app

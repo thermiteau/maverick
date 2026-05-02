@@ -67,9 +67,12 @@ def create(branch: str, base: str | None = None) -> Worktree:
     return Worktree(path=path, branch=branch, head=head)
 
 
-def destroy(path: Path, force: bool = False) -> None:
-    """Remove a worktree. Use `force=True` only if a clean removal fails
-    because the working tree is dirty."""
+def destroy(path: Path, force: bool = True) -> None:
+    """Remove a worktree. Force-removes by default (#45) — the only documented
+    caller is post-merge cleanup, by which point any uncommitted state in
+    the worktree is by definition not part of the merged change. Pass
+    `force=False` for the rare case where dirty-state preservation matters.
+    """
     root = repo_root()
     args = ["worktree", "remove", str(path)]
     if force:
