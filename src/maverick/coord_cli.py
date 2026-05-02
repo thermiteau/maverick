@@ -22,6 +22,8 @@ Usage shape:
     uv run maverick worktree destroy <path>
     uv run maverick gh-app status
     uv run maverick gh-app gh -- <gh args…>
+    uv run maverick task-progress read <repo> <issue>
+    uv run maverick task-progress set  <repo> <issue> <phase>
 """
 
 from __future__ import annotations
@@ -214,6 +216,40 @@ def _gh_state_read(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# task-progress (#41)
+# ---------------------------------------------------------------------------
+
+
+def _task_progress_read(args: argparse.Namespace) -> int:
+    """Print the latest do-issue-solo phase checkpoint for an issue."""
+    m = gh_state.latest_marker(args.repo, args.issue, "maverick-task-progress")
+    _json_print(m.payload if m else None)
+    return 0
+
+
+def _task_progress_set(args: argparse.Namespace) -> int:
+    """Upsert the do-issue-solo phase checkpoint marker. Always rolls one
+    marker per issue, so re-entering instances see the latest phase rather
+    than a paginated history."""
+    from datetime import datetime, timezone
+
+    payload = {
+        "phase": args.phase,
+        "instance_id": coordinator.instance_id(),
+        "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    gh_state.upsert_marker(
+        args.repo,
+        args.issue,
+        "maverick-task-progress",
+        payload,
+        preamble="<!-- maverick task-progress -->",
+    )
+    _json_print(payload)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # wiring
 # ---------------------------------------------------------------------------
 
@@ -361,15 +397,31 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("issue", type=int)
     p.add_argument(
         "kind",
-        choices=[
-            "maverick-dag",
-            "maverick-state",
-            "maverick-claim",
-            "maverick-lease",
-            "maverick-bprop",
-        ],
+        choices=list(gh_state.MARKER_KINDS),
     )
     p.set_defaults(_handler=_gh_state_read)
+
+    # task-progress — per-issue do-issue-solo phase checkpoint (#41)
+    tp = subparsers.add_parser(
+        "task-progress",
+        help="Read or update the do-issue-solo phase checkpoint for an issue",
+    )
+    tp_sub = tp.add_subparsers(dest="tp_cmd", required=True)
+
+    p = tp_sub.add_parser("read", help="Print the latest task-progress marker")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.set_defaults(_handler=_task_progress_read)
+
+    p = tp_sub.add_parser("set", help="Upsert the task-progress marker")
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument(
+        "phase",
+        choices=list(gh_state.TASK_PROGRESS_PHASES),
+        help="The do-issue-solo phase boundary just completed",
+    )
+    p.set_defaults(_handler=_task_progress_set)
 
 
 def dispatch(args: argparse.Namespace) -> int:
