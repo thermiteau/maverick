@@ -118,4 +118,4 @@ Human review time is expensive. Do not spend it on issues that automated tools h
 | Self-approval on protected branch                  | Missing review gate                | Configure branch protection to disallow self-approval |
 | Skipping CI to merge faster                        | Bypassing quality gates            | CI must pass; fix failures, do not skip them         |
 
-<!-- maverick-plugin-version: 3.0.0 -->
+<!-- maverick-plugin-version: 3.0.1-dev -->
