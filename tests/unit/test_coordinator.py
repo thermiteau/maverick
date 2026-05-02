@@ -1,19 +1,23 @@
 """Tests for maverick.coordinator — pure-logic coverage.
 
-Network-facing calls (claim, heartbeat, release) are not exercised here;
-those live under tests/integration/. These tests cover the pure helpers:
-instance-id stability, label/block detection, lease-liveness math,
-payload shape.
+Network-facing calls (claim, heartbeat, release) are exercised here only
+with the gh-touching helpers monkeypatched out; full end-to-end coverage
+lives under tests/integration/. These tests cover the pure helpers
+(instance-id stability, label/block detection, lease-liveness math,
+payload shape) plus the in-process race-detection logic.
 """
 
 from datetime import datetime, timedelta, timezone
 
-from maverick import coordinator
+import pytest
+
+from maverick import coordinator, gh_state
 
 
 class TestInstanceId:
     def test_stable_within_session(self, monkeypatch, tmp_path):
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         monkeypatch.setattr(
             coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
         )
@@ -39,11 +43,13 @@ class TestInstanceId:
 
         # First "process": no env var, no file — generate and persist.
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         first = coordinator.instance_id()
         assert path.read_text() == first
 
         # Second "process": env var cleared, file present — read from file.
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         second = coordinator.instance_id()
         assert second == first
 
@@ -70,11 +76,61 @@ class TestInstanceId:
         (tmp_path / "no-such-dir").write_text("blocking file")
         monkeypatch.setattr(coordinator, "_instance_id_path", lambda: unwritable)
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         a = coordinator.instance_id()
         b = coordinator.instance_id()
         assert a == b
         assert len(a) == 10
         assert not unwritable.exists()
+
+    def test_derives_from_claude_session_id(self, monkeypatch, tmp_path):
+        """#40: when CLAUDE_SESSION_ID is set, every subagent and subprocess
+        within that session derives the same instance id deterministically,
+        with no file write required — sidesteps the first-call file-cache
+        race that produced multiple ids per session.
+        """
+        path = tmp_path / "instance_id"
+        monkeypatch.setattr(coordinator, "_instance_id_path", lambda: path)
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "session-abc-123")
+
+        first = coordinator.instance_id()
+
+        # Fresh "process": clear the in-process env cache, the on-disk
+        # cache is also intentionally absent.
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        second = coordinator.instance_id()
+
+        assert first == second
+        assert len(first) == 10
+        assert not path.exists()
+
+    def test_distinct_sessions_derive_distinct_ids(self, monkeypatch, tmp_path):
+        """Two concurrent Claude Code sessions on the same machine must
+        present as distinct instances to the coordinator."""
+        monkeypatch.setattr(
+            coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
+        )
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "session-A")
+        a = coordinator.instance_id()
+
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "session-B")
+        b = coordinator.instance_id()
+
+        assert a != b
+
+    def test_explicit_env_overrides_session_id(self, monkeypatch, tmp_path):
+        """MAVERICK_INSTANCE_ID still wins over CLAUDE_SESSION_ID, so users
+        can pin a specific id for recovery scenarios."""
+        monkeypatch.setattr(
+            coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
+        )
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "explicit")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "ignored")
+        assert coordinator.instance_id() == "explicit"
 
 
 class TestBlockLabel:
@@ -162,3 +218,108 @@ class TestFormatLeaseSummary:
         msg = coordinator.format_lease_summary({"released_at": "2026-04-23T10:00:00Z"})
         assert "unknown" in msg
         assert "?" in msg
+
+
+@pytest.fixture
+def stub_gh(monkeypatch):
+    """Stub every gh-touching helper so claim()/takeover() can be exercised
+    without network. Returns a dict the test can populate to control what
+    find_markers returns at the read-after-write step."""
+    state: dict = {"find_markers": []}
+
+    monkeypatch.setattr(coordinator, "_gh", lambda *a, **k: "")
+    monkeypatch.setattr(coordinator, "post_marker", lambda *a, **k: 1)
+    monkeypatch.setattr(coordinator, "upsert_marker", lambda *a, **k: 1)
+    # find_markers is imported function-locally inside claim(), so the
+    # patch target is the gh_state module attribute.
+    monkeypatch.setattr(
+        gh_state, "find_markers", lambda *a, **k: state["find_markers"]
+    )
+    return state
+
+
+def _marker(instance: str, comment_id: int, issue: int = 42) -> gh_state.Marker:
+    return gh_state.Marker(
+        kind="maverick-claim",
+        payload={"instance_id": instance},
+        comment_id=comment_id,
+        issue_number=issue,
+    )
+
+
+def _expired_iso() -> str:
+    return (datetime.now(timezone.utc) - timedelta(hours=1)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+class TestClaimRaceDetection:
+    """Issue #38 — race detection counted historical claim markers, so a
+    fresh claim or takeover would lose to long-released holders. The fix
+    only consults the latest marker, since GitHub assigns strictly-monotonic
+    comment ids."""
+
+    def test_historical_released_claims_do_not_block_new_claim(
+        self, monkeypatch, stub_gh
+    ):
+        """Two prior holders released cleanly; we come in fresh. Pre-fix
+        this rejected because lex-min picked one of the historical ids."""
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "z-newcomer")
+        monkeypatch.setattr(coordinator, "_issue_labels", lambda *a, **k: [])
+        monkeypatch.setattr(coordinator, "latest_marker", lambda *a, **k: None)
+        stub_gh["find_markers"] = [
+            _marker("a-old1", 1),
+            _marker("b-old2", 2),
+            _marker("z-newcomer", 3),
+        ]
+
+        c = coordinator.claim("me/r", 42)
+
+        assert c.instance_id == "z-newcomer"
+
+    def test_latest_marker_from_other_instance_rejects(
+        self, monkeypatch, stub_gh
+    ):
+        """A concurrent instance posted after us — its marker is the
+        latest, so we yield."""
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "us")
+        monkeypatch.setattr(coordinator, "_issue_labels", lambda *a, **k: [])
+        monkeypatch.setattr(coordinator, "latest_marker", lambda *a, **k: None)
+        stub_gh["find_markers"] = [
+            _marker("us", 5),
+            _marker("them", 6),
+        ]
+
+        with pytest.raises(coordinator.ClaimRejected, match="superseded"):
+            coordinator.claim("me/r", 42)
+
+    def test_takeover_succeeds_against_accumulated_history(
+        self, monkeypatch, stub_gh
+    ):
+        """Reproducer for #38: a stale lease from instance A, plus several
+        historical claim markers from earlier failed attempts. A new
+        instance B takes over. Pre-fix the historical-min check rejected
+        because B was not lex-min; with the fix, only B's latest marker
+        matters and the takeover succeeds."""
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "z-takeover")
+        # Stale state read by both takeover() and the inner claim().
+        fake_state = {
+            "labels": [coordinator.CLAIM_LABEL],
+            "block_label": None,
+            "in_progress": True,
+            "claim": {"instance_id": "a-stale"},
+            "lease": {"instance_id": "a-stale", "expires_at": _expired_iso()},
+            "lease_live": False,
+        }
+        monkeypatch.setattr(coordinator, "read_claim_state", lambda *a, **k: fake_state)
+        # After the takeover post + claim post, the latest marker is ours.
+        stub_gh["find_markers"] = [
+            _marker("a-stale", 1, issue=3),
+            _marker("b-prior-attempt", 2, issue=3),
+            _marker("z-takeover", 3, issue=3),
+            _marker("z-takeover", 4, issue=3),
+        ]
+
+        c = coordinator.takeover("me/r", 3)
+
+        assert c.instance_id == "z-takeover"
