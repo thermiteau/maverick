@@ -303,15 +303,21 @@ next step is eject-to-human, not iterate.
 4. **Checkpoint**: `uv run maverick task-progress set <repo>  merged`.
 5. Post the completion comment on the issue per
    `mav-github-issue-workflow`.
-6. **Close the issue.** GitHub's `Closes #N` auto-close only fires when
-   the PR merges to the default branch — projects using a `develop`
-   tracking branch leave the issue OPEN until the next promotion.
-   Always close explicitly so the issue's lifecycle matches the PR's
-   (#46). `gh issue close` on an already-closed issue is a no-op, so
-   this is safe even on default-branch merges:
+6. **Run the post-merge issue-lifecycle step.** This always posts an
+   audit comment ("Resolved in PR #<P>; merged to <branch>.") and
+   applies a `merged-to-<branch>` label, then closes the issue per the
+   per-project policy in `.maverick/config.json`'s
+   `issue_lifecycle.close_policy` (#52). The default policy
+   (`on_pr_merge`) closes the issue immediately, which is right for
+   trunk-based and GitHub Flow repos. Repos using Gitflow or custom
+   promotion gates can set the policy to `on_default_branch_merge` or
+   `manual` to keep the issue open until promotion — the audit comment
+   and label still surface the merge so `gh issue list -l merged-to-develop`
+   finds work pending promotion. The CLI is idempotent (re-running it
+   on a closed issue is a no-op), so it is safe to retry:
    ```bash
-   gh issue close  \
-       --comment "Resolved in PR #<P>; merged to <target-branch>."
+   uv run maverick issue close-on-merge <repo>  \
+       --pr <pr-num> --target <target-branch>
    ```
 7. Update phase to `complete` in the state file.
 8. Release the claim: `uv run maverick coord release <repo>  --reason merged`.

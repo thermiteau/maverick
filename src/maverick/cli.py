@@ -265,7 +265,16 @@ def main():
 
         _sys.exit(preflight_main(args))
 
-    elif args.command in ("coord", "dag", "state", "worktree", "gh-app", "gh-state"):
+    elif args.command in (
+        "coord",
+        "dag",
+        "state",
+        "worktree",
+        "gh-app",
+        "gh-state",
+        "task-progress",
+        "issue",
+    ):
         import sys as _sys
 
         from maverick.coord_cli import dispatch as _dispatch

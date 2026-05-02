@@ -217,9 +217,22 @@ When every story in the wave is terminal (merged or ejected):
 5. The `heartbeat-loop` background processes self-terminate within one
    `--interval` window once their claims are released — `wait` for them
    if you backgrounded them with PIDs, or just let the parent shell exit.
-6. Close the epic issue only if **no stories were ejected**. If any were
-   ejected, leave the epic open for the human to resolve the ejected
-   stories and close manually.
+6. Close the epic issue only if **no stories were ejected** AND the
+   per-project close policy allows it (#52). Per-PR closes for child
+   stories already ran via `do-issue-solo` Phase 10, but the epic
+   itself spans multiple branches/PRs, so the simple `close-on-merge`
+   CLI doesn't fit — query the policy and decide:
+   ```bash
+   policy=$(uv run maverick issue policy)
+   if [ "$policy" != "manual" ] && [ "$ejected_count" -eq 0 ]; then
+     gh issue close {{ ARGUMENTS }} \
+       --comment "Epic complete: $merged_count stories merged."
+   fi
+   ```
+   If any stories were ejected, leave the epic open for the human to
+   resolve them and close manually. If the policy is `manual`, leave
+   the epic open regardless — the team's promotion workflow handles
+   final close.
 
 ## Resumption
 
