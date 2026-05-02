@@ -61,8 +61,14 @@ This phase is new in the workflow overhaul. Before any other phase.
    abort.
 3. Start a heartbeat loop that refreshes the lease every
    `HEARTBEAT_INTERVAL_MINUTES` minutes for as long as you hold the
-   claim. If two consecutive heartbeats fail, treat the claim as lost
-   and abort (do not push further work).
+   claim. The CLI provides a self-terminating foreground loop — run it
+   in the background and let it exit on its own when `coord release`
+   clears the claim label:
+   ```bash
+   uv run maverick coord heartbeat-loop <repo>  >/dev/null 2>&1 &
+   ```
+   If two consecutive heartbeats fail, the loop exits non-zero — treat
+   that as claim-lost and abort (do not push further work).
 4. Register a release handler that fires on every exit path (success,
    eject, abort): `uv run maverick coord release <repo>  --reason <reason>`.
 5. Cold-start hydrate per `mav-durability-on-gh`:
@@ -252,11 +258,24 @@ next step is eject-to-human, not iterate.
    adopted) the CI-side re-run of agent-code-reviewer. If all required
    checks were already green, GitHub merges immediately; otherwise it
    merges when they pass.
-3. Post the completion comment on the issue per
+3. **Wait for the merge to land** before continuing — poll
+   `gh pr view <pr-url> --json state -q .state` until it reports
+   `MERGED`. Cleanup steps below assume the PR is no longer in flight.
+4. Post the completion comment on the issue per
    `mav-github-issue-workflow`.
-4. Update phase to `complete` in the state file.
-5. Release the claim: `uv run maverick coord release <repo>  --reason merged`.
-6. Clean up:
+5. **Close the issue.** GitHub's `Closes #N` auto-close only fires when
+   the PR merges to the default branch — projects using a `develop`
+   tracking branch leave the issue OPEN until the next promotion.
+   Always close explicitly so the issue's lifecycle matches the PR's
+   (#46). `gh issue close` on an already-closed issue is a no-op, so
+   this is safe even on default-branch merges:
+   ```bash
+   gh issue close  \
+       --comment "Resolved in PR #<P>; merged to <target-branch>."
+   ```
+6. Update phase to `complete` in the state file.
+7. Release the claim: `uv run maverick coord release <repo>  --reason merged`.
+8. Clean up:
    - Local state file
    - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
 
