@@ -171,4 +171,4 @@ flags a conflict. Either way, B cannot silently merge into an orphan.
 - **Cross-reference `mav-git-workflow`** for conventional commit
   format, branch naming, and conflict resolution.
 
-<!-- maverick-plugin-version: 3.0.2-dev -->
+<!-- maverick-plugin-version: 3.1.0 -->
