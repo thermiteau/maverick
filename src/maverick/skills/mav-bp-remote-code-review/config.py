@@ -11,7 +11,7 @@ CONFIG = SkillConfig(
         "the workflow's presence."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
     assets=["code-review.yml"],
 )

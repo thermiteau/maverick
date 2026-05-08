@@ -9,5 +9,5 @@ CONFIG = SkillConfig(
         " workflow skills."
     ),
     user_invocable=True,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
 )

@@ -8,5 +8,5 @@ CONFIG = SkillConfig(
         " implementable tasks. Used as a dependency from workflow skills."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
 )

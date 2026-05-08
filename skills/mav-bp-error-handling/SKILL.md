@@ -1,7 +1,6 @@
 ---
 name: mav-bp-error-handling
 description: Error handling conventions for all applications. Covers error propagation, retry strategies, circuit breakers, graceful degradation, error boundaries, and typed errors. Applied when writing or reviewing error handling code.
-disable-model-invocation: false
 ---
 
 # Error Handling Standards

@@ -1,7 +1,6 @@
 ---
 name: mav-bp-versioning
 description: Versioning and deprecation conventions for projects producing libraries, APIs, or SDKs. Covers semantic versioning, changelog maintenance, deprecation policies, and breaking change management. Applied when releasing or reviewing versioned artifacts.
-disable-model-invocation: false
 ---
 
 # Versioning & Deprecation Standards
