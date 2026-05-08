@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "API design conventions for projects with API surfaces. Covers REST and GraphQL standards, versioning, error formats, pagination, documentation as code, and backwards compatibility. Applied when designing, implementing, or reviewing APIs."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

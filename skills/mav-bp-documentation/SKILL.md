@@ -1,7 +1,6 @@
 ---
 name: mav-bp-documentation
 description: Documentation conventions for all projects. Covers minimum documentation requirements, documentation freshness enforcement, AI-readable structure, and the relationship between human and machine audiences. Applied when creating or reviewing project documentation.
-disable-model-invocation: false
 ---
 
 # Documentation Standards

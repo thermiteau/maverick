@@ -1,7 +1,6 @@
 ---
 name: mav-bp-observability
 description: Observability conventions for deployed applications. Covers metrics collection, distributed tracing, health checks, SLIs/SLOs, and dashboards. Complements the logging and alerting skills to complete the observability picture. Applied when designing or reviewing operational aspects of services.
-disable-model-invocation: false
 ---
 
 # Observability Standards

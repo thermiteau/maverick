@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Accessibility conventions for projects with user-facing interfaces. Covers WCAG 2.1 AA compliance, semantic HTML, keyboard navigation, colour contrast, screen reader support, and automated a11y testing. Applied when building or reviewing user-facing web or mobile applications."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

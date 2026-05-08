@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Monitoring Azure DevOps pipelines after pushing. Covers checking pipeline status, diagnosing build/release failures, and respecting pipeline boundaries. Used as a dependency from workflow skills."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

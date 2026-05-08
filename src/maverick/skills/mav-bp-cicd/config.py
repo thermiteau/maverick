@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Platform-agnostic CI/CD conventions. Covers pipeline stages, quality gates, environment promotion, secrets management, artifact handling, and deployment boundaries. Applied when configuring or reviewing CI/CD pipelines."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

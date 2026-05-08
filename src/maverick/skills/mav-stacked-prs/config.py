@@ -9,6 +9,6 @@ CONFIG = SkillConfig(
         " orphan-merge incidents when a dependent story is ready before its parent."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[MAV_GIT_WORKFLOW],
 )

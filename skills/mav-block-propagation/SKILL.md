@@ -1,7 +1,6 @@
 ---
 name: mav-block-propagation
 description: Idempotent, resumable propagation of a `blocked-by:#N` block from an ejected story to every transitive downstream story in the epic DAG. Triggered when agent-code-reviewer ejects a PR for human handling.
-disable-model-invocation: false
 ---
 
 **Depends on:** mav-durability-on-gh

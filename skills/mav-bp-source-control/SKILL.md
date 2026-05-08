@@ -1,7 +1,6 @@
 ---
 name: mav-bp-source-control
 description: Source control conventions for all projects. Covers the requirement for remote repositories, repository hygiene, .gitignore standards, and sensitive file protection. Applied as a foundational requirement for all projects.
-disable-model-invocation: false
 ---
 
 # Source Control Standards

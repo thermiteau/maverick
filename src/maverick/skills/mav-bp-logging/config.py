@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Logging conventions for backend and frontend applications. Covers log levels, structured logging, centralised aggregation, and project logging guidance. Applied when writing or reviewing code that includes logging."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

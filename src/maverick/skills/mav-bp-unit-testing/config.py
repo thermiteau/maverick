@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Unit testing conventions for applications. Covers test design, isolation, structure, mocking discipline, and project testing guidance. Applied when writing or reviewing unit tests."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

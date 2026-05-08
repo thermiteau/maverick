@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Dependency management conventions for all projects. Covers lock files, version pinning, vulnerability scanning, license compliance, update strategy, and minimal dependency principle. Applied when adding, updating, or reviewing dependencies."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

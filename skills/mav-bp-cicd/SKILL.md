@@ -1,7 +1,6 @@
 ---
 name: mav-bp-cicd
 description: Platform-agnostic CI/CD conventions. Covers pipeline stages, quality gates, environment promotion, secrets management, artifact handling, and deployment boundaries. Applied when configuring or reviewing CI/CD pipelines.
-disable-model-invocation: false
 ---
 
 # CI/CD Standards

@@ -1,7 +1,6 @@
 ---
 name: mav-bp-cicd-github
 description: Monitoring GitHub Actions pipelines after pushing. Covers checking workflow status, diagnosing CI failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
-disable-model-invocation: false
 ---
 
 # CI Awareness — GitHub Actions

@@ -1,7 +1,6 @@
 ---
 name: mav-multi-instance-coordination
 description: Claim, lease, heartbeat, and release protocols for when multiple Claude Code instances may act on the same issue or epic concurrently. GitHub labels and marker comments are the coordination surface; local state is a cache.
-disable-model-invocation: false
 ---
 
 **Depends on:** mav-durability-on-gh, mav-block-propagation
