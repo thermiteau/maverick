@@ -1,7 +1,6 @@
 ---
 name: mav-bp-environment-management
 description: Environment management conventions for all projects. Covers reproducible local development, environment parity, .env patterns, developer onboarding, and containerised development. Applied when setting up or reviewing development environments.
-disable-model-invocation: false
 ---
 
 # Environment Management Standards

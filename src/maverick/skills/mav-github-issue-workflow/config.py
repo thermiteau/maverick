@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Standard patterns for interacting with GitHub issues — reading, commenting, updating, state tracking, branching, and PR creation. Use as a dependency from workflow skills, not directly."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

@@ -1,7 +1,6 @@
 ---
 name: mav-bp-solutions-design
 description: Solutions design conventions for all projects. Covers the requirement for design before implementation, design documentation persistence, requirements traceability, and Architecture Decision Records. Applied before starting implementation of any non-trivial change.
-disable-model-invocation: false
 ---
 
 # Solutions Design Standards

@@ -1,7 +1,6 @@
 ---
 name: mav-durability-on-gh
 description: Durability conventions for multi-instance Maverick workflows. Covers cold-start hydration from GitHub, marker-write protocols, push-per-task cadence, and recreating worktrees from remote branches. GitHub is the source of truth; local files are a cache.
-disable-model-invocation: false
 ---
 
 # Durability on GitHub

@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Source control conventions for all projects. Covers the requirement for remote repositories, repository hygiene, .gitignore standards, and sensitive file protection. Applied as a foundational requirement for all projects."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

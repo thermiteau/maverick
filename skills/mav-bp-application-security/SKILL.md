@@ -1,7 +1,6 @@
 ---
 name: mav-bp-application-security
 description: Application security conventions for all projects. Covers OWASP Top 10 awareness, input validation, secrets management, dependency scanning, SAST/DAST integration, and security headers. Applied when writing or reviewing any code.
-disable-model-invocation: false
 ---
 
 # Application Security Standards

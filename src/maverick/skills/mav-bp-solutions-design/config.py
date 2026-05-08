@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Solutions design conventions for all projects. Covers the requirement for design before implementation, design documentation persistence, requirements traceability, and Architecture Decision Records. Applied before starting implementation of any non-trivial change."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

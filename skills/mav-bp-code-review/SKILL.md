@@ -1,7 +1,6 @@
 ---
 name: mav-bp-code-review
 description: Code review conventions for all projects. Covers mandatory review requirements, review scope, PR sizing, reviewer and author responsibilities, and automated review integration. Applied when creating or reviewing pull requests.
-disable-model-invocation: false
 ---
 
 # Code Review Standards

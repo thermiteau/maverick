@@ -1,7 +1,6 @@
 ---
 name: mav-bp-integration-testing
 description: Integration testing conventions for applications. Covers test scope, external dependency management, environment setup, data isolation, and project testing guidance. Applied when writing or reviewing integration tests.
-disable-model-invocation: false
 ---
 
 # Integration Testing Standards

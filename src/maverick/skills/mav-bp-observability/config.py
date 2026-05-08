@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Observability conventions for deployed applications. Covers metrics collection, distributed tracing, health checks, SLIs/SLOs, and dashboards. Complements the logging and alerting skills to complete the observability picture. Applied when designing or reviewing operational aspects of services."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

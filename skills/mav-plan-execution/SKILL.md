@@ -1,7 +1,6 @@
 ---
 name: mav-plan-execution
 description: How to execute an implementation plan step-by-step. Covers the execution loop, verification discipline, failure handling, progress tracking, crash recovery, and acceptance criteria. Adapts behaviour based on whether the caller is solo (autonomous) or guided (human checkpoints). Used as a dependency from workflow skills.
-disable-model-invocation: false
 ---
 
 # Plan Execution

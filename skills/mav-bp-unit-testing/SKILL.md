@@ -1,7 +1,6 @@
 ---
 name: mav-bp-unit-testing
 description: Unit testing conventions for applications. Covers test design, isolation, structure, mocking discipline, and project testing guidance. Applied when writing or reviewing unit tests.
-disable-model-invocation: false
 ---
 
 # Unit Testing Standards

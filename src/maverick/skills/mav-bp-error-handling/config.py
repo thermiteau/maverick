@@ -7,6 +7,6 @@ CONFIG = SkillConfig(
         "Error handling conventions for all applications. Covers error propagation, retry strategies, circuit breakers, graceful degradation, error boundaries, and typed errors. Applied when writing or reviewing error handling code."
     ),
     user_invocable=False,
-    disable_model_invocation=False,
+    disable_model_invocation=True,
     depends_on=[],
 )

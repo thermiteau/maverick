@@ -1,7 +1,6 @@
 ---
 name: mav-github-issue-workflow
 description: Standard patterns for interacting with GitHub issues — reading, commenting, updating, state tracking, branching, and PR creation. Use as a dependency from workflow skills, not directly.
-disable-model-invocation: false
 ---
 
 **Depends on:** mav-git-workflow
