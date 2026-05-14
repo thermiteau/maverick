@@ -155,4 +155,4 @@ digraph lookup {
 | Test duplicates implementation logic | Tautological test | Assert on outputs, not reimplemented logic |
 | Commented-out tests | Dead tests hiding failures | Delete or fix |
 
-<!-- maverick-plugin-version: 3.1.1 -->
+<!-- maverick-plugin-version: 3.1.2-dev -->
