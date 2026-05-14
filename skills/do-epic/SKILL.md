@@ -157,11 +157,17 @@ remaining wave is fully blocked.
 
 ### Phase 5b: Create worktrees
 
+Resolve the story base branch from config:
+
+```bash
+STORY_BASE=$(uv run maverick git-workflow story-base)
+```
+
 For each unblocked story in the wave, decide its base branch:
 
 - If the story depends on a sibling in the **same wave** that is still
   unmerged, stack per `mav-stacked-prs`.
-- Otherwise, branch from the repo's default branch.
+- Otherwise, branch from `$STORY_BASE`.
 
 Create the worktree:
 ```bash

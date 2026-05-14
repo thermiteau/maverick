@@ -59,7 +59,11 @@ Run Phase 3 as a subagent to keep the main context window clean for implementati
 ## Phase 4: Create Branch
 
 1. Derive the branch name per the mav-github-issue-workflow skill (branching conventions).
-2. Create the branch from the project's default branch (typically `main`).
+2. Resolve the base branch from config:
+   ```bash
+   STORY_BASE=$(uv run maverick git-workflow story-base)
+   ```
+   Create the branch from `$STORY_BASE`.
 3. Update phase to `branch` in the state file.
 
 ## Phase 5: Execute Tasks
@@ -97,7 +101,7 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 
 ## Phase 6: Code Review
 
-1. Dispatch the agent-code-reviewer agent with the issue requirements and the diff (`git diff main...HEAD`).
+1. Dispatch the agent-code-reviewer agent with the issue requirements and the diff (`git diff $(uv run maverick git-workflow story-base)...HEAD`).
 2. The reviewer performs two-stage review: spec compliance first, then code quality.
 3. If spec compliance fails, stop — fix the gaps before requesting re-review.
 4. Process code quality feedback per the do-pullrequest-review skill:
@@ -118,7 +122,7 @@ This phase **always runs** before push. The agent decides whether any
 docs work is needed; the workflow does not skip the analysis based on
 its own heuristic.
 
-1. Compute the full diff: `git diff main...HEAD`.
+1. Compute the full diff: `git diff $(uv run maverick git-workflow story-base)...HEAD`.
 2. Dispatch the **agent-tech-docs-writer** agent with:
    - **Mode:** `update` (per `do-docs`)
    - **Diff:** the output of step 1
@@ -137,7 +141,7 @@ its own heuristic.
 
 This phase **always runs** before push. Any changed code AND any code that could be impacted by the changes (callers, importers, dependents) must be reviewed by `do-cybersecurity-review` before the push proceeds.
 
-1. Compute the full diff: `git diff main...HEAD`.
+1. Compute the full diff: `git diff $(uv run maverick git-workflow story-base)...HEAD`.
 2. Dispatch the **do-cybersecurity-review** skill with:
    - **Mode:** `update`
    - **Diff:** the output of step 1, passed via stdin or as a file path
@@ -165,7 +169,7 @@ This phase **always runs** before push. Any changed code AND any code that could
 - **Pause at checkpoints** — every phase marked with 🔲 requires user confirmation before continuing.
 - **Work autonomously between checkpoints** — do not ask for permission on routine implementation work. Only ask when uncertain, blocked, or at a checkpoint.
 - **Run verification** after each task and after all tasks. Do not declare success if checks fail.
-- **Never commit directly** to `main`.
+- **Never commit directly** to the story base branch.
 - **Use conventional commits** that reference the issue number (e.g., `feat: add rubric export (#42)`).
 - **Always create a PR** at the end — deliver a complete result.
 

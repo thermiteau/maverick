@@ -126,6 +126,52 @@ class IssueLifecycleConfig(TypedDict):
 ISSUE_CLOSE_POLICIES = ("on_pr_merge", "on_default_branch_merge", "manual")
 
 
+class GitWorkflowConfig(TypedDict):
+    """Per-project git branching configuration.
+
+    Replaces hard-coded ``main`` throughout the skills so that repos using
+    Gitflow, ``develop``-based flows, or multi-stage promotion chains
+    work out of the box.
+
+    Written once by ``maverick init`` (proposed from detection, never
+    re-detected at runtime) and read by skills at execution time.
+
+    Fields:
+        story_base:        Branch to create feature/fix branches from.
+        pr_target:         Default ``--base`` for ``gh pr create``.
+        promotion_chain:   Ordered list of branches in the promotion
+                           pipeline (e.g. ``["develop", "staging", "main"]``).
+                           Used by a future ``promote`` command.
+        branch_prefixes:   Mapping of issue-label keywords to branch-name
+                           prefixes (e.g. ``{"bug": "fix", "feature": "feat"}``).
+                           Overrides the default table in ``mav-git-workflow``.
+    """
+
+    story_base: str
+    pr_target: str
+    promotion_chain: list[str]
+    branch_prefixes: dict[str, str]
+
+
+# Default branch prefixes — matches the table in mav-git-workflow.
+_DEFAULT_BRANCH_PREFIXES: dict[str, str] = {
+    "bug": "fix",
+    "fix": "fix",
+    "defect": "fix",
+    "feature": "feat",
+    "enhancement": "feat",
+    "docs": "docs",
+    "documentation": "docs",
+    "refactor": "refactor",
+    "tech-debt": "refactor",
+    "chore": "chore",
+    "maintenance": "chore",
+    "deps": "chore",
+    "test": "test",
+    "testing": "test",
+}
+
+
 class IntegrationStatus(TypedDict):
     """Per-project record of which Maverick adoption milestones have been
     carried out. Each flag defaults to ``false`` and is flipped to ``true``
@@ -162,6 +208,7 @@ class MaverickConfig(TypedDict):
     ami: AmiConfig
     integration: IntegrationStatus
     issue_lifecycle: IssueLifecycleConfig
+    git_workflow: GitWorkflowConfig
 
 
 # Defaults applied when sections or keys are missing.
@@ -203,6 +250,12 @@ CONFIG_DEFAULTS: MaverickConfig = {
     },
     "issue_lifecycle": {
         "close_policy": "on_pr_merge",
+    },
+    "git_workflow": {
+        "story_base": "main",
+        "pr_target": "main",
+        "promotion_chain": ["main"],
+        "branch_prefixes": dict(_DEFAULT_BRANCH_PREFIXES),
     },
 }
 
@@ -325,6 +378,31 @@ def validate_config(cfg: MaverickConfig, require_aws: bool = True) -> list[str]:
             f"issue_lifecycle.close_policy must be one of "
             f"{', '.join(ISSUE_CLOSE_POLICIES)} (got {policy!r})"
         )
+
+    gw = cfg.get("git_workflow", {})
+    if isinstance(gw, dict):
+        for field in ("story_base", "pr_target"):
+            val = gw.get(field)
+            if val is not None and (not isinstance(val, str) or not val.strip()):
+                errors.append(f"git_workflow.{field} must be a non-empty string")
+        chain = gw.get("promotion_chain")
+        if chain is not None and (
+            not isinstance(chain, list)
+            or not all(isinstance(b, str) and b.strip() for b in chain)
+        ):
+            errors.append(
+                "git_workflow.promotion_chain must be a list of non-empty strings"
+            )
+        prefixes = gw.get("branch_prefixes")
+        if prefixes is not None and (
+            not isinstance(prefixes, dict)
+            or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in prefixes.items()
+            )
+        ):
+            errors.append(
+                "git_workflow.branch_prefixes must be a dict of string → string"
+            )
 
     return errors
 

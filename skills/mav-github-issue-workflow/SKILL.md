@@ -256,10 +256,11 @@ jq ".branch = \"$BRANCH_NAME\" | .phase = \"branch\"" .claude/issue-state.json >
 ```bash
 ISSUE_NUMBER=$(jq -r '.issue' .claude/issue-state.json)
 BRANCH=$(jq -r '.branch' .claude/issue-state.json)
+PR_TARGET=$(uv run maverick git-workflow pr-target)
 
 git push -u origin $BRANCH
 
-gh pr create --base main --title "<concise title>" --body "$(cat <<PR_EOF
+gh pr create --base "$PR_TARGET" --title "<concise title>" --body "$(cat <<PR_EOF
 ## Summary
 <1-3 bullet points>
 
