@@ -13,6 +13,13 @@ set -euo pipefail
 #   - Tagging the squash commit on main
 #   - Creating the GitHub Release
 #   - Opening a follow-up PR that bumps main to the next -dev version
+#   - Fast-forwarding the `stable` branch to the new tag
+#
+# IMPORTANT: never open a PR targeting `stable` directly. `stable` is
+# CI-managed and must remain a strict fast-forward of `main`'s release
+# tags. A PR into `stable` will diverge it from `main` and break the
+# fast-forward step of the next release-finalize run. If `stable` is
+# behind, fix it by cutting a real release — not by merging from main.
 #
 # Usage: ./scripts/release.sh [major|minor|patch]
 # Default: patch
