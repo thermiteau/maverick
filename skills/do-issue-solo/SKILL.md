@@ -137,8 +137,10 @@ This phase has changed in the overhaul. The branch is created **inside a
 dedicated worktree**, not in the main checkout.
 
 1. Derive the branch name per the mav-github-issue-workflow skill.
-2. Resolve the base branch via `mav-git-workflow`'s default-branch
-   lookup (`gh repo view --json defaultBranchRef -q .defaultBranchRef.name`).
+2. Resolve the base branch from the project config:
+   ```bash
+   STORY_BASE=$(uv run maverick git-workflow story-base)
+   ```
    - If this story depends on a sibling story whose PR is open but not
      merged, stack per `mav-stacked-prs` — base = sibling branch.
 3. Create the worktree: `uv run maverick worktree create <branch> [--base <sibling-branch>]`.
@@ -244,7 +246,11 @@ changes (callers, importers, dependents) must be reviewed by
 2. Stacked-PR retarget check per `mav-stacked-prs` if the branch
    stacks on a sibling. Retarget before opening the PR if the sibling is now
    merged.
-3. Open the PR. The body **must** end with a literal `Closes #`
+3. Resolve the PR target from config:
+   ```bash
+   PR_TARGET=$(uv run maverick git-workflow pr-target)
+   ```
+   Open the PR. The body **must** end with a literal `Closes #`
    line (capitalised; not `Refs`, `Related to`, or any other phrasing).
    `gh pr merge --squash` carries the PR body verbatim into the squash
    commit body; GitHub only auto-closes the linked issue when one of
@@ -255,7 +261,7 @@ changes (callers, importers, dependents) must be reviewed by
    even after promotion (#56). Use `Refs #N` only for cross-references
    to *other* issues, never for the primary story:
    ```bash
-   gh pr create --base <resolved-base> --head <branch> \
+   gh pr create --base "$PR_TARGET" --head <branch> \
        --title "<conventional title referencing #>" \
        --body "$(cat <<'PR_EOF'
    ## Summary

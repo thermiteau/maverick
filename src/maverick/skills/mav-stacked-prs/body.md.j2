@@ -4,14 +4,20 @@
 # Stacked PRs
 
 When story B depends on story A and A's PR isn't merged yet, B branches from
-A's branch and opens a PR whose base is `feat/A-…` rather than `main`. This
-is a **stacked PR**. It lets B progress without waiting for A to merge, and
-is essential for throughput inside an epic.
+A's branch and opens a PR whose base is `feat/A-…` rather than the story
+base branch. This is a **stacked PR**. It lets B progress without waiting
+for A to merge, and is essential for throughput inside an epic.
 
 Stacking is safe when it is paired with a **retarget guard** that moves B's
-PR base back to `main` as soon as A lands. Without the retarget guard, a
-specific merge-order sequence can orphan B's commits — see the failure
-mode at the bottom of this document.
+PR base back to the story base as soon as A lands. Without the retarget
+guard, a specific merge-order sequence can orphan B's commits — see the
+failure mode at the bottom of this document.
+
+Resolve the story base once at the start of any stacking operation:
+
+```bash
+STORY_BASE=$(uv run maverick git-workflow story-base)
+```
 
 ## When to stack, when not to
 
@@ -20,12 +26,12 @@ digraph stack_decide {
     "Depends on sibling story?" [shape=diamond];
     "Sibling PR open but unmerged?" [shape=diamond];
     "Stack — branch from sibling" [shape=box];
-    "Default — branch from main/develop" [shape=box];
+    "Default — branch from $STORY_BASE" [shape=box];
 
     "Depends on sibling story?" -> "Sibling PR open but unmerged?" [label="yes"];
-    "Depends on sibling story?" -> "Default — branch from main/develop" [label="no"];
+    "Depends on sibling story?" -> "Default — branch from $STORY_BASE" [label="no"];
     "Sibling PR open but unmerged?" -> "Stack — branch from sibling" [label="yes"];
-    "Sibling PR open but unmerged?" -> "Default — branch from main/develop" [label="no — sibling already merged"];
+    "Sibling PR open but unmerged?" -> "Default — branch from $STORY_BASE" [label="no — sibling already merged"];
 }
 ```
 
@@ -77,48 +83,38 @@ This is the single rule that prevents orphan-merge incidents.
 digraph retarget {
     "Ready to push" [shape=box];
     "Stacked branch?" [shape=diamond];
-    "git merge-base check — base fully in default branch?" [shape=diamond];
-    "Retarget PR base to default branch" [shape=box];
-    "Rebase onto default branch tip" [shape=box];
+    "Sibling PR merged?" [shape=diamond];
+    "Retarget PR base to $STORY_BASE" [shape=box];
+    "Rebase onto $STORY_BASE tip" [shape=box];
     "Push as normal" [shape=box];
 
     "Ready to push" -> "Stacked branch?";
-    "Stacked branch?" -> "git merge-base check — base fully in default branch?" [label="yes"];
+    "Stacked branch?" -> "Sibling PR merged?" [label="yes"];
     "Stacked branch?" -> "Push as normal" [label="no"];
-    "git merge-base check — base fully in default branch?" -> "Retarget PR base to default branch" [label="yes — base merged"];
-    "git merge-base check — base fully in default branch?" -> "Push as normal" [label="no — base still unmerged"];
-    "Retarget PR base to default branch" -> "Rebase onto default branch tip";
-    "Rebase onto default branch tip" -> "Push as normal";
+    "Sibling PR merged?" -> "Retarget PR base to $STORY_BASE" [label="yes — base merged"];
+    "Sibling PR merged?" -> "Push as normal" [label="no — base still unmerged"];
+    "Retarget PR base to $STORY_BASE" -> "Rebase onto $STORY_BASE tip";
+    "Rebase onto $STORY_BASE tip" -> "Push as normal";
 }
 ```
 
 ### The merge-base check
 
-```bash
-# Is every commit from the sibling base now reachable from default branch?
-git fetch origin main feat/140-bootstrap-provider
-if git merge-base --is-ancestor origin/feat/140-bootstrap-provider origin/main; then
-    # The sibling has fully merged. Retarget and rebase.
-    gh pr edit <PR> --base main
-    git rebase --onto origin/main origin/feat/140-bootstrap-provider
-fi
-```
-
-`git merge-base --is-ancestor A B` exits 0 if every commit of A is reachable
-from B. After a squash-merge of A into `main`, the squash commit carries
-the content but not the commit SHAs, so `--is-ancestor` will be false. Use
-instead the `gh pr view --json state` check for the sibling PR:
+Use the `gh pr view --json state` check for the sibling PR — it handles
+both merge-commit and squash-merge cases:
 
 ```bash
+STORY_BASE=$(uv run maverick git-workflow story-base)
 state=$(gh pr view feat/140-bootstrap-provider --json state -q .state)
 if [ "$state" = "MERGED" ]; then
-    gh pr edit <PR> --base main
-    git rebase --onto origin/main origin/feat/140-bootstrap-provider
+    gh pr edit <PR> --base "$STORY_BASE"
+    git rebase --onto "origin/$STORY_BASE" origin/feat/140-bootstrap-provider
 fi
 ```
 
-The PR-state check is the authoritative signal because it handles both
-merge-commit and squash-merge cases.
+The PR-state check is the authoritative signal. `git merge-base
+--is-ancestor` does not work after a squash-merge because the squash
+commit carries the content but not the original commit SHAs.
 
 ## Rebase after retarget
 
@@ -126,11 +122,12 @@ After retargeting, rebase the branch onto the new base so the PR diff stays
 tidy:
 
 ```bash
-git rebase --onto origin/main origin/feat/140-bootstrap-provider
+git rebase --onto "origin/$STORY_BASE" origin/feat/140-bootstrap-provider
 ```
 
-This strips out commits that are already in `main` (from the sibling's
-merge) and replays your commits on top of the current `main`.
+This strips out commits that are already in `$STORY_BASE` (from the
+sibling's merge) and replays your commits on top of the current
+`$STORY_BASE`.
 
 **If rebase produces conflicts:**
 - If the conflict is trivial or auto-generated-file-only, resolve per
@@ -143,17 +140,18 @@ merge) and replays your commits on top of the current `main`.
 Orphan-merge incident (seen in practice; see retro §1.1):
 
 1. B is stacked on A. Both PRs are open and green.
-2. The human merges A → `main` (squash). A's branch still exists on the
+2. The human merges A → story base (squash). A's branch still exists on the
    remote but its commits are no longer the base of anything.
-3. 25 seconds later the human merges B → A (not B → `main`). GitHub says
+3. 25 seconds later the human merges B → A (not B → story base). GitHub says
    "B merged". The commits of B are fast-forwarded into A's now-orphaned
-   branch — **not into `main`**.
-4. `main` has A's content but not B's. Discovered much later when B's code
-   is "missing in production."
+   branch — **not into the story base**.
+4. The story base has A's content but not B's. Discovered much later when
+   B's code is "missing in production."
 
 The retarget guard prevents step 3 from being possible: B's base is moved
-to `main` the moment A merges, and B's next push either rebases cleanly or
-flags a conflict. Either way, B cannot silently merge into an orphan.
+to the story base the moment A merges, and B's next push either rebases
+cleanly or flags a conflict. Either way, B cannot silently merge into an
+orphan.
 
 ## Rules
 

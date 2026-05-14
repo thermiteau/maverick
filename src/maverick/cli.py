@@ -274,6 +274,7 @@ def main():
         "gh-state",
         "task-progress",
         "issue",
+        "git-workflow",
     ):
         import sys as _sys
 

@@ -294,6 +294,86 @@ class TestInitConfig:
         assert (tmp_path / "config.json.bak").exists()
 
 
+class TestGitWorkflowConfig:
+    """Tests for the git_workflow config section."""
+
+    def test_defaults_present(self):
+        cfg = config._apply_defaults({})
+        gw = cfg["git_workflow"]
+        assert gw["story_base"] == "main"
+        assert gw["pr_target"] == "main"
+        assert gw["promotion_chain"] == ["main"]
+        assert isinstance(gw["branch_prefixes"], dict)
+        assert gw["branch_prefixes"]["bug"] == "fix"
+        assert gw["branch_prefixes"]["enhancement"] == "feat"
+
+    def test_user_overrides(self):
+        raw: dict = {"git_workflow": {"story_base": "develop", "pr_target": "develop"}}
+        result = config._apply_defaults(raw)
+        assert result["git_workflow"]["story_base"] == "develop"
+        assert result["git_workflow"]["pr_target"] == "develop"
+
+    def test_partial_override_fills_defaults(self):
+        raw: dict = {"git_workflow": {"story_base": "develop"}}
+        result = config._apply_defaults(raw)
+        assert result["git_workflow"]["story_base"] == "develop"
+        assert result["git_workflow"]["pr_target"] == "main"
+
+    def test_promotion_chain_override(self):
+        raw: dict = {
+            "git_workflow": {
+                "promotion_chain": ["develop", "staging", "main"],
+            }
+        }
+        result = config._apply_defaults(raw)
+        assert result["git_workflow"]["promotion_chain"] == ["develop", "staging", "main"]
+
+    def test_branch_prefixes_override(self):
+        raw: dict = {
+            "git_workflow": {
+                "branch_prefixes": {"bug": "bugfix", "feature": "feature"},
+            }
+        }
+        result = config._apply_defaults(raw)
+        assert result["git_workflow"]["branch_prefixes"]["bug"] == "bugfix"
+
+    def test_validation_empty_story_base(self):
+        cfg = config._apply_defaults({})
+        cfg["git_workflow"]["story_base"] = ""
+        errors = config.validate_config(cfg, require_aws=False)
+        assert any("git_workflow.story_base" in e for e in errors)
+
+    def test_validation_empty_pr_target(self):
+        cfg = config._apply_defaults({})
+        cfg["git_workflow"]["pr_target"] = ""
+        errors = config.validate_config(cfg, require_aws=False)
+        assert any("git_workflow.pr_target" in e for e in errors)
+
+    def test_validation_invalid_promotion_chain(self):
+        cfg = config._apply_defaults({})
+        cfg["git_workflow"]["promotion_chain"] = "not-a-list"
+        errors = config.validate_config(cfg, require_aws=False)
+        assert any("promotion_chain" in e for e in errors)
+
+    def test_validation_invalid_branch_prefixes(self):
+        cfg = config._apply_defaults({})
+        cfg["git_workflow"]["branch_prefixes"] = "not-a-dict"
+        errors = config.validate_config(cfg, require_aws=False)
+        assert any("branch_prefixes" in e for e in errors)
+
+    def test_validation_valid_git_workflow(self):
+        cfg = config._apply_defaults({
+            "git_workflow": {
+                "story_base": "develop",
+                "pr_target": "develop",
+                "promotion_chain": ["develop", "main"],
+                "branch_prefixes": {"bug": "fix"},
+            }
+        })
+        errors = config.validate_config(cfg, require_aws=False)
+        assert all("git_workflow" not in e for e in errors)
+
+
 class TestSaveConfig:
     def test_creates_dir_and_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         cfg_dir = tmp_path / "new_dir"

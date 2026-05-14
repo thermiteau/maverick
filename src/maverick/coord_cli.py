@@ -25,6 +25,11 @@ Usage shape:
     uv run maverick task-progress read <repo> <issue>
     uv run maverick task-progress set  <repo> <issue> <phase>
     uv run maverick issue close-on-merge <repo> <issue> --pr N --target B
+    uv run maverick git-workflow story-base
+    uv run maverick git-workflow pr-target
+    uv run maverick git-workflow branch-prefix <label>
+    uv run maverick git-workflow promotion-chain
+    uv run maverick git-workflow show
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ from maverick import (
     epic_state,
     gh_app,
     gh_state,
+    git_workflow,
     issue_lifecycle,
     worktree,
 )
@@ -288,6 +294,41 @@ def _issue_policy(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# git-workflow
+# ---------------------------------------------------------------------------
+
+
+def _gw_story_base(args: argparse.Namespace) -> int:
+    print(git_workflow.get_story_base())
+    return 0
+
+
+def _gw_pr_target(args: argparse.Namespace) -> int:
+    print(git_workflow.get_pr_target())
+    return 0
+
+
+def _gw_branch_prefix(args: argparse.Namespace) -> int:
+    print(git_workflow.get_branch_prefix(args.label))
+    return 0
+
+
+def _gw_promotion_chain(args: argparse.Namespace) -> int:
+    _json_print(git_workflow.get_promotion_chain())
+    return 0
+
+
+def _gw_show(args: argparse.Namespace) -> int:
+    _json_print({
+        "story_base": git_workflow.get_story_base(),
+        "pr_target": git_workflow.get_pr_target(),
+        "promotion_chain": git_workflow.get_promotion_chain(),
+        "branch_prefixes": git_workflow.get_branch_prefixes(),
+    })
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # wiring
 # ---------------------------------------------------------------------------
 
@@ -502,6 +543,44 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         help="Print the per-project issue close policy from .maverick/config.json",
     )
     p.set_defaults(_handler=_issue_policy)
+
+    # git-workflow — per-project branching config
+    gw = subparsers.add_parser(
+        "git-workflow",
+        help="Resolve git branching parameters from .maverick/config.json",
+    )
+    gw_sub = gw.add_subparsers(dest="gw_cmd", required=True)
+
+    p = gw_sub.add_parser(
+        "story-base",
+        help="Print the branch to create feature/fix branches from",
+    )
+    p.set_defaults(_handler=_gw_story_base)
+
+    p = gw_sub.add_parser(
+        "pr-target",
+        help="Print the default --base for gh pr create",
+    )
+    p.set_defaults(_handler=_gw_pr_target)
+
+    p = gw_sub.add_parser(
+        "branch-prefix",
+        help="Resolve branch prefix for an issue label (e.g. bug → fix)",
+    )
+    p.add_argument("label", help="Issue label or keyword (e.g. bug, enhancement)")
+    p.set_defaults(_handler=_gw_branch_prefix)
+
+    p = gw_sub.add_parser(
+        "promotion-chain",
+        help="Print the ordered promotion chain as JSON",
+    )
+    p.set_defaults(_handler=_gw_promotion_chain)
+
+    p = gw_sub.add_parser(
+        "show",
+        help="Print the full git-workflow config as JSON",
+    )
+    p.set_defaults(_handler=_gw_show)
 
 
 def dispatch(args: argparse.Namespace) -> int:
