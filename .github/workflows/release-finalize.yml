@@ -76,27 +76,11 @@ jobs:
             --notes-file /tmp/release-notes.md \
             --target main
 
-      - name: Fast-forward stable branch to the new release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          # `stable` is the branch that end users clone to install a
-          # released version. It is always fast-forwarded to the most
-          # recent tag commit — never moves during -dev cycles.
-          #
-          # Updated via the REST API rather than `git push` because
-          # the runner's git transport hits a `[remote rejected]` even
-          # when named branch protection / rulesets are disabled,
-          # while the REST endpoint accepts the same fast-forward
-          # update with the same auth. Diagnosed during the 1.0.0
-          # and 1.0.1 releases (see commit history for context).
-          COMMIT_SHA=$(git rev-parse "${TAG}^{commit}")
-          gh api -X PATCH \
-            "repos/${REPO}/git/refs/heads/stable" \
-            -f sha="$COMMIT_SHA"
-
+      # Open the dev-cycle PR BEFORE updating `stable`. The stable
+      # update can fail if `stable` has diverged from `main` (e.g.,
+      # a stray PR landed directly on `stable`), and we don't want
+      # that failure to block the dev-cycle bump — users can pull
+      # the release via the tag in the meantime.
       - name: Open PR to bump main to next -dev cycle
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -136,3 +120,59 @@ jobs:
               --head "$BRANCH" \
               --title "chore: begin ${DEV_VERSION} cycle" \
               --body "Automated follow-up to the ${VERSION} release. Bumps main to the next in-development version."
+
+      - name: Fast-forward stable branch to the new release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          # `stable` is the branch that end users clone to install a
+          # released version. It is always fast-forwarded to the most
+          # recent tag commit — never moves during -dev cycles.
+          #
+          # Updated via the REST API rather than `git push` because
+          # the runner's git transport hits a `[remote rejected]` even
+          # when named branch protection / rulesets are disabled,
+          # while the REST endpoint accepts the same fast-forward
+          # update with the same auth. Diagnosed during the 1.0.0
+          # and 1.0.1 releases (see commit history for context).
+          COMMIT_SHA=$(git rev-parse "${TAG}^{commit}")
+
+          # Pre-check: is the new commit a descendant of the current
+          # `stable` tip? If not, a FF update will fail — print a
+          # detailed remediation note before exiting so the human
+          # reading the failed run doesn't have to reverse-engineer
+          # the 422 from the REST API. Divergence usually means a
+          # PR landed directly on `stable` (see PR #64 from the 3.1.1
+          # cycle as a worked example).
+          STABLE_SHA=$(gh api "repos/${REPO}/git/refs/heads/stable" --jq .object.sha)
+          if ! git merge-base --is-ancestor "$STABLE_SHA" "$COMMIT_SHA"; then
+            cat >&2 <<EOF
+          ERROR: Cannot fast-forward 'stable' to ${TAG}.
+
+            stable      = ${STABLE_SHA}
+            ${TAG}      = ${COMMIT_SHA}
+
+          The current 'stable' tip is not an ancestor of the release
+          commit, so a fast-forward is impossible. This typically
+          means someone pushed or merged a PR directly to 'stable'.
+          'stable' is CI-managed — humans should never push to it.
+
+          To recover (verify the SHAs first!), force-update stable to
+          the release commit:
+
+            gh api -X PATCH \\
+              repos/${REPO}/git/refs/heads/stable \\
+              -f sha=${COMMIT_SHA} \\
+              -F force=true
+
+          Then audit recent activity on 'stable' to find the
+          out-of-band change and prevent a recurrence.
+          EOF
+            exit 1
+          fi
+
+          gh api -X PATCH \
+            "repos/${REPO}/git/refs/heads/stable" \
+            -f sha="$COMMIT_SHA"
