@@ -122,20 +122,72 @@ This phase **always runs** before push. The agent decides whether any
 docs work is needed; the workflow does not skip the analysis based on
 its own heuristic.
 
-1. Compute the full diff: `git diff $(uv run maverick git-workflow story-base)...HEAD`.
-2. Dispatch the **agent-tech-docs-writer** agent with:
+The agent is dispatched with a **pre-filtered shortlist** of docs the
+diff plausibly touches, not the open-ended "audit every doc" brief.
+On prior issues the unbounded brief ate ~6 min of wall clock on a
+15-file diff. The agent still reports any out-of-shortlist docs it
+believes are impacted; those surface as a follow-up note for you to
+review.
+
+1. Compute the diff and changed paths:
+
+   ```bash
+   BASE=$(uv run maverick git-workflow story-base)
+   git diff "origin/${BASE}...HEAD" > /tmp/diff.patch
+   git diff --name-only "origin/${BASE}...HEAD" > /tmp/changed-paths.txt
+   ```
+
+2. **Build the candidate doc shortlist.** Derive search terms from the
+   diff (basenames + top-level directories from changed paths, plus
+   identifier-like tokens introduced or removed in added/removed lines).
+   Grep every `docs/` tree in the repo. An empty shortlist is valid.
+
+   ```bash
+   {
+     cut -d/ -f1 /tmp/changed-paths.txt
+     sed 's|.*/||; s|\.[^.]*$||' /tmp/changed-paths.txt
+     grep -E '^[+-][^+-]' /tmp/diff.patch \
+       | grep -Eo '\b(function|def|class|interface|type|const|export)[[:space:]]+[A-Za-z_][A-Za-z0-9_]+' \
+       | awk '{print $NF}'
+   } | awk 'length($0) >= 3' | sort -u > /tmp/doc-terms.txt
+
+   mapfile -t DOC_ROOTS < <(find . -type d -name docs \
+     -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.venv/*')
+
+   : > /tmp/doc-shortlist.txt
+   if [[ ${#DOC_ROOTS[@]} -gt 0 && -s /tmp/doc-terms.txt ]]; then
+     while IFS= read -r term; do
+       grep -rlF -- "$term" "${DOC_ROOTS[@]}" 2>/dev/null || true
+     done < /tmp/doc-terms.txt \
+       | grep -E '\.(md|mdx)$' \
+       | sort -u > /tmp/doc-shortlist.txt
+   fi
+   ```
+
+3. Dispatch the **agent-tech-docs-writer** agent with:
    - **Mode:** `update` (per `do-docs`)
-   - **Diff:** the output of step 1
-   - **Instructions:** review every changed file. Update existing
-     `docs/` content that is now stale, and create new documents for
-     any new component, subsystem, or architectural change with no
-     existing coverage. Return "no doc changes required" explicitly if
-     neither applies — do not skip silently.
-3. **Checkpoint — Review docs outcome with the user:** show what was
-   updated or created (or the explicit no-op decision) and confirm
-   before pushing. If updates are inaccurate or out of scope, push back
-   and ask the agent to revise.
-4. Commit any doc changes with a `docs:` conventional commit.
+   - **Diff:** `/tmp/diff.patch`
+   - **Candidate docs:** the contents of `/tmp/doc-shortlist.txt`. If
+     the file is empty, pass the literal string
+     `<empty — scan only for gaps requiring new coverage>`.
+   - **Instructions:**
+     - Read each candidate doc. Update only sections rendered stale by
+       the diff; do **not** refactor unrelated content.
+     - If the diff introduces a component, subsystem, or architectural
+       change with no coverage anywhere in `docs/`, create the new
+       document.
+     - If you find a doc **outside the candidate list** that you
+       believe is impacted, **list its path in your return payload —
+       do not edit it.** One-pass dispatch: no widen-and-retry; the
+       caller surfaces these as a follow-up note for the user.
+     - Returning "no doc changes required" is a valid outcome and must
+       be reported explicitly.
+4. **Checkpoint — Review docs outcome with the user:** show what was
+   updated or created (or the explicit no-op decision), surface any
+   out-of-shortlist docs the agent flagged, and confirm before pushing.
+   If updates are inaccurate or out of scope, push back and ask the
+   agent to revise.
+5. Commit any doc changes with a `docs:` conventional commit.
 
 ## Phase 8: Pre-push Cybersecurity Review (mandatory)
 
