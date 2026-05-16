@@ -33,4 +33,4 @@ Dispatch the **maverick** agent with task `install` and any user-provided argume
 
 4. **Report.** Return a structured result: install path, whether the settings file was modified or already had the permission entry, and any PATH warnings.
 
-<!-- maverick-plugin-version: 3.1.2-dev -->
+<!-- maverick-plugin-version: 3.2.0 -->
