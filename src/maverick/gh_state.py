@@ -54,6 +54,7 @@ TASK_PROGRESS_PHASES = (
     "review",
     "merged",
     "complete",
+    "ejected",
 )
 
 

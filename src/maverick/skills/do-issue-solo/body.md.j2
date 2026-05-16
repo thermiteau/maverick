@@ -100,29 +100,40 @@ implementation.
 
 1. Initialise the issue state file per the
    {{ SKILLS.MAV_GITHUB_ISSUE_WORKFLOW }} skill.
-2. Dispatch the **{{ AGENTS.AGENT_ISSUE_ANALYST }}** agent with:
+2. Log subagent start: `uv run maverick report log subagent-start --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_ISSUE_ANALYST }}`.
+3. Dispatch the **{{ AGENTS.AGENT_ISSUE_ANALYST }}** agent with:
    - Issue number: `{{ ARGUMENTS }}`
    - Mode: `solo`
-3. When the agent returns, verify:
+4. Log subagent end: `uv run maverick report log subagent-end --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_ISSUE_ANALYST }}`.
+5. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `design`
    - `.claude/issue-state.json` has `comments.design` set to a comment ID
-4. If the agent flagged ambiguities it could not resolve, ask the user.
+6. If the agent flagged ambiguities it could not resolve:
+   - Log question start: `uv run maverick report log question-start --issue {{ ARGUMENTS }} --topic ambiguity-resolution`.
+   - Ask the user.
+   - Log question end: `uv run maverick report log question-end --issue {{ ARGUMENTS }} --topic ambiguity-resolution`.
+
    Otherwise continue.
-5. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} design`.
+7. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} design`.
 
 ## Phase 3: Create Tasks (subagent)
 
 Run Phase 3 as a subagent.
 
-1. Dispatch the **{{ AGENTS.AGENT_GITHUB_ISSUE_PLANNER }}** agent with:
+1. Log subagent start: `uv run maverick report log subagent-start --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_GITHUB_ISSUE_PLANNER }}`.
+2. Dispatch the **{{ AGENTS.AGENT_GITHUB_ISSUE_PLANNER }}** agent with:
    - Issue number: `{{ ARGUMENTS }}`
    - Design comment ID from `.claude/issue-state.json`
-2. When the agent returns, verify:
+3. Log subagent end: `uv run maverick report log subagent-end --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_GITHUB_ISSUE_PLANNER }}`.
+4. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `tasks`
    - If < 5 tasks: `.claude/issue-state.json` has `comments.tasks` set to a comment ID
    - If >= 5 tasks: `.claude/issue-state.json` has `has_sub_issues` set to `true`
-3. If the agent flagged scope concerns, ask the user.
-4. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} tasks`.
+5. If the agent flagged scope concerns:
+   - Log question start: `uv run maverick report log question-start --issue {{ ARGUMENTS }} --topic scope-concerns`.
+   - Ask the user.
+   - Log question end: `uv run maverick report log question-end --issue {{ ARGUMENTS }} --topic scope-concerns`.
+6. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} tasks`.
 
 ## Phase 4: Create Worktree + Branch
 
@@ -225,7 +236,8 @@ PR body as a follow-up note rather than being silently rewritten.
    fi
    ```
 {% endraw %}
-3. Dispatch **{{ AGENTS.AGENT_TECH_DOCS_WRITER }}** with:
+3. Log subagent start: `uv run maverick report log subagent-start --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_TECH_DOCS_WRITER }}`.
+4. Dispatch **{{ AGENTS.AGENT_TECH_DOCS_WRITER }}** with:
    - **Mode:** `update` (per `{{ SKILLS.DO_DOCS }}`)
    - **Diff:** `/tmp/diff.patch`
    - **Candidate docs:** the contents of `/tmp/doc-shortlist.txt`. If
@@ -244,18 +256,19 @@ PR body as a follow-up note rather than being silently rewritten.
        human reviewer.
      - Returning "no doc changes required" is a valid outcome and must
        be reported explicitly (not silently inferred).
-4. **Record the outcome** in the PR body or as a one-line PR comment so
+5. Log subagent end: `uv run maverick report log subagent-end --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_TECH_DOCS_WRITER }}`.
+6. **Record the outcome** in the PR body or as a one-line PR comment so
    the gate is auditable:
    - If docs were updated or created: list the files changed.
    - If the agent flagged out-of-shortlist docs: append a
      `Docs follow-up: <paths>` line to the PR body so the reviewer
      sees them.
    - If no changes were required: post `Docs review: no changes required.`
-5. Commit any doc changes with a `docs:` conventional commit and push
+7. Commit any doc changes with a `docs:` conventional commit and push
    per the push-per-task rule.
-6. The PR cannot proceed to Phase 7 until this phase has produced
+8. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
-7. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} docs`.
+9. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} docs`.
 
 ## Phase 7: Pre-push Cybersecurity Review (mandatory)
 
@@ -265,14 +278,16 @@ changes (callers, importers, dependents) must be reviewed by
 `{{ SKILLS.DO_CYBERSECURITY_REVIEW }}` before the PR can be opened.
 
 1. Compute the full diff: `git diff origin/<base>...HEAD`.
-2. Dispatch the **{{ SKILLS.DO_CYBERSECURITY_REVIEW }}** skill with:
+2. Log skill start: `uv run maverick report log skill-start --issue {{ ARGUMENTS }} --name {{ SKILLS.DO_CYBERSECURITY_REVIEW }}`.
+3. Dispatch the **{{ SKILLS.DO_CYBERSECURITY_REVIEW }}** skill with:
    - **Mode:** `update`
    - **Diff:** the output of step 1, passed via stdin or as a file path
    - **Instructions:** review the changed code AND the impact set
      (callers, importers, dependents — bounded to one or two hops).
      Return the structured outcome (verdict + findings) defined in the
      skill's Update Mode contract.
-3. **Act on the verdict:**
+4. Log skill end: `uv run maverick report log skill-end --issue {{ ARGUMENTS }} --name {{ SKILLS.DO_CYBERSECURITY_REVIEW }}`.
+5. **Act on the verdict:**
    - **BLOCKING** — halt. Surface the findings to the user verbatim.
      Do not open the PR. The user resolves the BLOCKING items by
      returning to Phase 5 (implement, test, commit, push). Re-run
@@ -283,7 +298,7 @@ changes (callers, importers, dependents) must be reviewed by
      visible to the human reviewer and to {{ AGENTS.AGENT_CODE_REVIEWER }}.
    - **PASS** — record `Security review: no concerns.` in the PR body
      draft so the gate is auditable.
-4. The PR cannot proceed to Phase 8 until this phase has returned a
+6. The PR cannot proceed to Phase 8 until this phase has returned a
    non-BLOCKING verdict and the outcome has been folded into the PR
    body draft.
 
@@ -337,14 +352,16 @@ The local **{{ AGENTS.AGENT_CODE_REVIEWER }}** subagent's verdict is the
 review gate the auto-merge path trusts. This is a binary verdict against
 the open PR, not a local-diff advisory loop.
 
-1. Dispatch **{{ AGENTS.AGENT_CODE_REVIEWER }}** with:
+1. Log subagent start: `uv run maverick report log subagent-start --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_CODE_REVIEWER }}`.
+2. Dispatch **{{ AGENTS.AGENT_CODE_REVIEWER }}** with:
    - The PR URL
    - The issue body, design comment, and tasks list (so it has the spec)
-2. The agent returns exactly one of two verdicts:
+3. Log subagent end: `uv run maverick report log subagent-end --issue {{ ARGUMENTS }} --name {{ AGENTS.AGENT_CODE_REVIEWER }}`.
+4. The agent returns exactly one of two verdicts:
    - **PASS** — proceed to Phase 10 (merge).
    - **FAIL** — proceed to Phase 11 (eject). Do not attempt to auto-fix.
-3. Update phase to `review` in the state file.
-4. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} review`.
+5. Update phase to `review` in the state file.
+6. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} review`.
 
 There is no fix-and-re-review loop. If the reviewer FAILs the PR, the
 next step is eject-to-human, not iterate.
@@ -404,6 +421,21 @@ next step is eject-to-human, not iterate.
     - Local state file
     - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
 11. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} complete`.
+12. **Generate the timing report** (#83). The report is written to the
+    **main repo's** `.maverick/reports/` (resolved via `git rev-parse
+    --git-common-dir`), not the destroyed worktree's:
+    ```bash
+    uv run maverick report generate <repo> {{ ARGUMENTS }} --branch <branch>
+    ```
+13. **Fill in the per-phase narratives.** Read
+    `.maverick/reports/do-issue-solo-{{ ARGUMENTS }}.md`. For each phase
+    row whose Activity cell starts with `PLACEHOLDER`, replace the
+    `PLACEHOLDER` prefix with a single sentence summarising what
+    actually happened in that phase (from your session memory — e.g.
+    "Issue analyst summarised the bug and proposed three rollout
+    options."). Keep the structured facts that follow the `—` and
+    leave timestamps, durations, sub-task rows, and the summary table
+    untouched. Write the file back.
 
 ## Phase 11: Eject (on FAIL)
 
@@ -427,8 +459,19 @@ next step is eject-to-human, not iterate.
    - Trigger block propagation per `{{ SKILLS.MAV_BLOCK_PROPAGATION }}`:
      apply `blocked-by:#{{ ARGUMENTS }}` to every transitive descendant.
    - Cancel any in-flight subagent work for stories now in the blocked set.
-5. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason ejected`.
-6. Do **not** destroy the worktree — the human may want to inspect it.
+5. **Checkpoint the eject** (#83): `uv run maverick task-progress set <repo> {{ ARGUMENTS }} ejected`.
+6. **Generate the timing report** for the run so the human reviewer
+   can see how time was spent leading up to the eject:
+   ```bash
+   uv run maverick report generate <repo> {{ ARGUMENTS }} --branch <branch>
+   ```
+7. **Fill in the per-phase narratives.** Same as the PASS path: read
+   `.maverick/reports/do-issue-solo-{{ ARGUMENTS }}.md` and replace each
+   `PLACEHOLDER` prefix with a one-sentence narrative from session
+   memory. Write the file back. Generate the report **before**
+   releasing the claim so it lands even if release errors.
+8. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason ejected`.
+9. Do **not** destroy the worktree — the human may want to inspect it.
    Log the worktree path so the user can find it.
 
 ## Rules
