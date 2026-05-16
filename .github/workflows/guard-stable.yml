@@ -1,0 +1,70 @@
+name: Guard Stable
+
+# Hard-block PRs targeting `stable`. `stable` is CI-managed and is only
+# ever advanced by `release-finalize.yml` via a REST PATCH on the ref —
+# there is no legitimate PR-into-stable flow. Any PR opened against
+# `stable` is the failure mode that caused the 3.1.2-dev drift (see
+# PRs #71 and #73), so we fail the check, leave a breadcrumb on the PR,
+# and close it.
+#
+# The ruleset on `stable` makes this check required, so the merge button
+# is disabled even before the workflow finishes.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches: [stable]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  block:
+    # Pinned name so the required-status-check context in the
+    # 'Protect Stable' ruleset stays stable across refactors.
+    name: guard-stable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail, comment, and close
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "::error::PRs into 'stable' are not permitted."
+          echo "::error::PR #${PR_NUMBER} targets stable; closing."
+
+          BODY=$(cat <<'EOF'
+          ## This PR will not be merged
+
+          The `stable` branch is **CI-managed** and is only ever advanced by
+          `release-finalize.yml` via a REST `PATCH` on the ref — there is no
+          legitimate PR-into-`stable` flow.
+
+          A PR targeting `stable` is the exact failure mode that caused the
+          3.1.2-dev drift (see PRs #71 and #73): the merge advances `stable`
+          to a non-release-tag commit, and `/plugin update` immediately
+          starts delivering an in-development version to every end user.
+
+          ### What you probably meant to do
+
+          - **Releasing a new version?** Run `./scripts/release.sh <patch|minor|major>`.
+            That opens a PR targeting `main`. Squash-merging it triggers
+            `release-finalize.yml`, which tags the commit and force-FFs
+            `stable` to the tag.
+          - **Landing a regular change?** Re-open this PR with `--base main`.
+
+          This PR is being closed automatically. If you believe this is in
+          error, open an issue.
+          EOF
+          )
+
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$BODY" \
+            || echo "::warning::failed to comment on PR; closing anyway"
+
+          gh pr close "$PR_NUMBER" --repo "$REPO" \
+            || echo "::warning::failed to close PR"
+
+          exit 1
