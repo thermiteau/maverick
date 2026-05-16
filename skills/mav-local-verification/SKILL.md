@@ -102,4 +102,4 @@ Not every change needs the full suite:
 
 For the final push before PR creation, always run the full suite regardless of change type.
 
-<!-- maverick-plugin-version: 3.2.2-dev -->
+<!-- maverick-plugin-version: 3.3.0 -->
