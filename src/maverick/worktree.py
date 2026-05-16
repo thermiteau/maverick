@@ -7,9 +7,12 @@ at the repo root so they are easy to find and clean up.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from . import config
 
 WORKTREE_ROOT = Path(".maverick/worktrees")
 
@@ -64,7 +67,53 @@ def create(branch: str, base: str | None = None) -> Worktree:
     path.parent.mkdir(parents=True, exist_ok=True)
     _git("worktree", "add", "-b", branch, str(path), f"origin/{base}", cwd=root)
     head = _git("rev-parse", "HEAD", cwd=path).strip()
+    _run_post_create_hook(root, path, branch, base)
     return Worktree(path=path, branch=branch, head=head)
+
+
+def _run_post_create_hook(
+    root: Path, worktree_path: Path, branch: str, base: str
+) -> None:
+    """Run the project's ``hooks.worktree_post_create`` script, if configured.
+
+    The hook receives ``worktree_path`` as ``$1`` plus the env vars
+    ``MAVERICK_WORKTREE_PATH``, ``MAVERICK_BRANCH``, ``MAVERICK_BASE_BRANCH``,
+    and ``MAVERICK_REPO_ROOT``. Any non-zero exit, missing script, or
+    non-executable script raises ``RuntimeError`` so the CLI fails clearly;
+    the worktree is left on disk for inspection.
+    """
+    hooks = config.read_hooks_config(root / ".maverick" / "config.json")
+    hook_rel = hooks.get("worktree_post_create", "")
+    if not hook_rel:
+        return
+    hook_abs = (root / hook_rel).resolve()
+    if not hook_abs.is_file():
+        raise RuntimeError(
+            f"worktree_post_create hook not found at {hook_abs}. "
+            f"Worktree left at {worktree_path} for inspection."
+        )
+    if not os.access(hook_abs, os.X_OK):
+        raise RuntimeError(
+            f"worktree_post_create hook is not executable: {hook_abs}. "
+            f"Worktree left at {worktree_path} for inspection."
+        )
+    env = {
+        **os.environ,
+        "MAVERICK_WORKTREE_PATH": str(worktree_path),
+        "MAVERICK_BRANCH": branch,
+        "MAVERICK_BASE_BRANCH": base,
+        "MAVERICK_REPO_ROOT": str(root),
+    }
+    result = subprocess.run(
+        [str(hook_abs), str(worktree_path)],
+        cwd=root,
+        env=env,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"worktree_post_create hook failed (exit {result.returncode}): "
+            f"{hook_abs}. Worktree left at {worktree_path} for inspection."
+        )
 
 
 def destroy(path: Path, force: bool = True) -> None:

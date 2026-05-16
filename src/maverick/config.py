@@ -172,6 +172,25 @@ _DEFAULT_BRANCH_PREFIXES: dict[str, str] = {
 }
 
 
+class HooksConfig(TypedDict):
+    """Repo-specific scripts to run at maverick CLI lifecycle points.
+
+    Each value is a path (relative to the repo root) to an executable.
+    An empty string disables the hook.
+
+    Fields:
+        worktree_post_create: Runs after ``maverick worktree create`` succeeds.
+                              Receives the worktree path as ``$1`` plus the
+                              env vars ``MAVERICK_WORKTREE_PATH``,
+                              ``MAVERICK_BRANCH``, ``MAVERICK_BASE_BRANCH``,
+                              and ``MAVERICK_REPO_ROOT``. A non-zero exit
+                              causes ``worktree create`` to fail with the
+                              worktree left on disk for inspection.
+    """
+
+    worktree_post_create: str
+
+
 class IntegrationStatus(TypedDict):
     """Per-project record of which Maverick adoption milestones have been
     carried out. Each flag defaults to ``false`` and is flipped to ``true``
@@ -209,6 +228,7 @@ class MaverickConfig(TypedDict):
     integration: IntegrationStatus
     issue_lifecycle: IssueLifecycleConfig
     git_workflow: GitWorkflowConfig
+    hooks: HooksConfig
 
 
 # Defaults applied when sections or keys are missing.
@@ -256,6 +276,9 @@ CONFIG_DEFAULTS: MaverickConfig = {
         "pr_target": "main",
         "promotion_chain": ["main"],
         "branch_prefixes": dict(_DEFAULT_BRANCH_PREFIXES),
+    },
+    "hooks": {
+        "worktree_post_create": "",
     },
 }
 
@@ -547,6 +570,29 @@ def write_integration_status(
     raw: dict[str, Any] = _load_json(target) if target.exists() else {}
     raw["integration"] = dict(status)
     target.write_text(json.dumps(raw, indent=2) + "\n")
+
+
+def _default_hooks() -> HooksConfig:
+    """Return a fresh HooksConfig with every hook unset."""
+    return dict(CONFIG_DEFAULTS["hooks"])  # type: ignore[return-value]
+
+
+def read_hooks_config(path: Path | None = None) -> HooksConfig:
+    """Read the hooks block from the project config.
+
+    Returns the defaults (all hooks empty) if the file does not exist or has
+    no hooks block. Missing individual hooks are filled with their default.
+    Unknown hook names are dropped.
+    """
+    target = path or project_config_path()
+    raw = _load_json(target)
+    block = raw.get("hooks") if isinstance(raw, dict) else None
+    hooks = _default_hooks()
+    if isinstance(block, dict):
+        for key in hooks:
+            if key in block and isinstance(block[key], str):
+                hooks[key] = block[key]  # type: ignore[literal-required]
+    return hooks
 
 
 def set_integration_flag(key: str, value: bool, path: Path | None = None) -> None:

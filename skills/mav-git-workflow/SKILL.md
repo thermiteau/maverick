@@ -67,6 +67,41 @@ Leaving stale worktrees inflates disk usage and confuses future
 if a PR was ejected and the human may want to inspect the in-flight
 state — note the path in the eject comment.
 
+### Repo-specific post-create setup
+
+A freshly created worktree shares the main checkout's `.git`, but **not**
+its dependency installs, generated files, or untracked secrets. Many repos
+need to materialise those before the first build can run inside the new
+worktree (e.g. `pnpm install`, `pip install -e .`, symlinking `.env`).
+
+If `.maverick/config.json` declares `hooks.worktree_post_create`, the CLI
+runs that script after `git worktree add` succeeds. The hook receives:
+
+- `$1` — absolute worktree path
+- `MAVERICK_WORKTREE_PATH` — same as `$1`
+- `MAVERICK_BRANCH` — newly created branch name
+- `MAVERICK_BASE_BRANCH` — branch the new branch was forked from
+- `MAVERICK_REPO_ROOT` — main checkout's absolute path
+
+A non-zero exit, missing script, or non-executable script causes
+`maverick worktree create` to exit non-zero with a clear error. The
+worktree is **left on disk** so an engineer can inspect what the hook
+produced — clean up with `maverick worktree destroy` once diagnosed.
+
+Example wiring (`.maverick/config.json`):
+
+```json
+{
+  "hooks": {
+    "worktree_post_create": "scripts/worktree-setup.sh"
+  }
+}
+```
+
+The hook is optional. Repos that don't declare one see exactly today's
+behaviour. The Maverick CLI stays language-agnostic — the hook can be
+any executable.
+
 ### Stacked branches
 
 If a story depends on a sibling story whose PR is still open, stack per
