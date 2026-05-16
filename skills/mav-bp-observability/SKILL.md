@@ -207,4 +207,4 @@ Every deployed service should have a dashboard showing the **four golden signals
 | Dashboard with no link to traces or logs         | Slow investigation              | Add drill-down links from dashboard panels                 |
 | Custom metric collection instead of standard library | Maintenance burden, incompatibility | Migrate to OpenTelemetry or equivalent             |
 
-<!-- maverick-plugin-version: 3.2.0 -->
+<!-- maverick-plugin-version: 3.2.1-dev -->
