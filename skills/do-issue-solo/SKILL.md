@@ -185,29 +185,84 @@ verification discipline, failure handling, and crash recovery.
 ## Phase 6: Documentation Review (mandatory)
 
 This phase **always runs** before the PR is opened. There is no skip
-path — the heuristic-gated version of this phase used to let stale docs
-ship when Claude's affected-or-not call was wrong. The agent decides
-whether work is needed; the workflow decides whether the agent runs.
+path — the heuristic-gated version used to let stale docs ship when
+Claude's affected-or-not call was wrong. The agent decides whether
+work is needed; the workflow decides whether the agent runs.
 
-1. Compute the full diff: `git diff origin/<base>...HEAD`.
-2. Dispatch **agent-tech-docs-writer** with:
+The agent is dispatched with a **pre-filtered shortlist** of docs the
+diff plausibly touches, not the open-ended "audit every doc" brief
+that made this phase the longest single subagent cost on prior issues
+(observed: ~6 min on a 15-file diff). The agent still reports any
+out-of-shortlist docs it believes are impacted — those surface in the
+PR body as a follow-up note rather than being silently rewritten.
+
+1. Compute the diff and changed paths:
+
+   ```bash
+   BASE=$(uv run maverick git-workflow story-base)
+   git diff "origin/${BASE}...HEAD" > /tmp/diff.patch
+   git diff --name-only "origin/${BASE}...HEAD" > /tmp/changed-paths.txt
+   ```
+
+2. **Build the candidate doc shortlist.** Derive search terms from the
+   diff (basenames + top-level directories from changed paths, plus
+   identifier-like tokens introduced or removed in added/removed lines).
+   Grep every `docs/` tree in the repo. The shortlist may legitimately
+   be empty — that is a valid input to step 3.
+
+   ```bash
+   {
+     cut -d/ -f1 /tmp/changed-paths.txt
+     sed 's|.*/||; s|\.[^.]*$||' /tmp/changed-paths.txt
+     grep -E '^[+-][^+-]' /tmp/diff.patch \
+       | grep -Eo '\b(function|def|class|interface|type|const|export)[[:space:]]+[A-Za-z_][A-Za-z0-9_]+' \
+       | awk '{print $NF}'
+   } | awk 'length($0) >= 3' | sort -u > /tmp/doc-terms.txt
+
+   mapfile -t DOC_ROOTS < <(find . -type d -name docs \
+     -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/.venv/*')
+
+   : > /tmp/doc-shortlist.txt
+   if [[ ${#DOC_ROOTS[@]} -gt 0 && -s /tmp/doc-terms.txt ]]; then
+     while IFS= read -r term; do
+       grep -rlF -- "$term" "${DOC_ROOTS[@]}" 2>/dev/null || true
+     done < /tmp/doc-terms.txt \
+       | grep -E '\.(md|mdx)$' \
+       | sort -u > /tmp/doc-shortlist.txt
+   fi
+   ```
+
+3. Dispatch **agent-tech-docs-writer** with:
    - **Mode:** `update` (per `do-docs`)
-   - **Diff:** the output of step 1
-   - **Instructions:** review every changed file. Decide for each whether
-     existing `docs/` content is now stale, or whether a new document is
-     needed for a new component, subsystem, or architectural change with
-     no existing coverage. Update or create accordingly. Returning
-     "no doc changes required" is a valid outcome and must be reported
-     explicitly (not silently inferred).
-3. **Record the outcome** in the PR body or as a one-line PR comment so
+   - **Diff:** `/tmp/diff.patch`
+   - **Candidate docs:** the contents of `/tmp/doc-shortlist.txt`. If
+     the file is empty, pass the literal string
+     `<empty — scan only for gaps requiring new coverage>`.
+   - **Instructions:**
+     - Read each candidate doc. Update only sections rendered stale by
+       the diff; do **not** refactor unrelated content.
+     - If the diff introduces a component, subsystem, or architectural
+       change with no coverage anywhere in `docs/`, create the new
+       document.
+     - If you find a doc **outside the candidate list** that you
+       believe is impacted, **list its path in your return payload —
+       do not edit it.** One-pass dispatch: no widen-and-retry; the
+       caller folds these into a follow-up note on the PR for the
+       human reviewer.
+     - Returning "no doc changes required" is a valid outcome and must
+       be reported explicitly (not silently inferred).
+4. **Record the outcome** in the PR body or as a one-line PR comment so
    the gate is auditable:
    - If docs were updated or created: list the files changed.
+   - If the agent flagged out-of-shortlist docs: append a
+     `Docs follow-up: <paths>` line to the PR body so the reviewer
+     sees them.
    - If no changes were required: post `Docs review: no changes required.`
-4. Commit any doc changes with a `docs:` conventional commit and push
+5. Commit any doc changes with a `docs:` conventional commit and push
    per the push-per-task rule.
-5. The PR cannot proceed to Phase 7 until this phase has produced
+6. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
-6. **Checkpoint**: `uv run maverick task-progress set <repo>  docs`.
+7. **Checkpoint**: `uv run maverick task-progress set <repo>  docs`.
 
 ## Phase 7: Pre-push Cybersecurity Review (mandatory)
 
