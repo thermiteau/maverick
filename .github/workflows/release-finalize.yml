@@ -30,6 +30,20 @@ jobs:
         with:
           enable-cache: true
 
+      # Mint a Maverick GitHub App installation token. The default
+      # GITHUB_TOKEN authenticates as `github-actions[bot]`, which is
+      # NOT in the `Protect Stable` ruleset bypass list — so the REST
+      # PATCH that fast-forwards `stable` is rejected with HTTP 422
+      # ("Required status check 'guard-stable' is expected"). The
+      # Maverick App is in the bypass list, so a token minted for it
+      # is accepted. See releases 3.2.0, 3.2.1, 3.3.0 for prior
+      # failures of this step.
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.MAVERICK_APP_ID }}
+          private-key: ${{ secrets.MAVERICK_APP_PRIVATE_KEY }}
+
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -123,7 +137,10 @@ jobs:
 
       - name: Fast-forward stable branch to the new release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use the Maverick App installation token so the PATCH is
+          # authenticated as an identity in the `Protect Stable`
+          # ruleset bypass list. The default GITHUB_TOKEN is not.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
