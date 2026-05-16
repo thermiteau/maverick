@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - run: uv sync --extra test
+
+      - run: uv run pytest tests/unit/ -v
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - run: uv sync
+
+      - run: make lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - run: uv sync
+
+      - run: make typecheck
+
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - run: uv sync
+
+      - run: make build
+
+      - name: Verify generated skills/agents are committed
+        run: |
+          if ! git diff --exit-code -- skills/ agents/; then
+            echo "::error::Generated files under skills/ or agents/ are out of sync with src/. Run 'make build' locally and commit the result."
+            exit 1
+          fi
+
+      - name: Verify build is deterministic
+        run: |
+          make build
+          if ! git diff --exit-code -- skills/ agents/; then
+            echo "::error::Running 'make build' twice produced different output. The build has nondeterministic behaviour (e.g. unsorted iteration, embedded timestamps)."
+            exit 1
+          fi
+
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Install the CLI from the plugin directory
+        run: uv tool install --force .
+
+      - name: Verify the CLI runs
+        run: maverick --help

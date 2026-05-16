@@ -1,0 +1,195 @@
+name: Release Finalize
+
+# Runs after a release/* PR is squash-merged into main.
+# Tags the merge commit, creates a GitHub Release, and opens a
+# follow-up PR that bumps main to the next -dev version.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  finalize:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      # Mint a Maverick GitHub App installation token. The default
+      # GITHUB_TOKEN authenticates as `github-actions[bot]`, which is
+      # NOT in the `Protect Stable` ruleset bypass list — so the REST
+      # PATCH that fast-forwards `stable` is rejected with HTTP 422
+      # ("Required status check 'guard-stable' is expected"). The
+      # Maverick App is in the bypass list, so a token minted for it
+      # is accepted. See releases 3.2.0, 3.2.1, 3.3.0 for prior
+      # failures of this step.
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.MAVERICK_APP_ID }}
+          private-key: ${{ secrets.MAVERICK_APP_PRIVATE_KEY }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Extract version from branch name
+        id: version
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          VERSION="${BRANCH#release/}"
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          # Compute next dev version
+          IFS='.' read -r V_MAJOR V_MINOR V_PATCH <<< "$VERSION"
+          DEV_VERSION="${V_MAJOR}.${V_MINOR}.$((V_PATCH + 1))-dev"
+          echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Tag the merge commit on main
+        run: |
+          git checkout main
+          git pull origin main
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Extract release notes from changelog
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{ /^## \[${VERSION}\]/d; /^## \[/d; p; }" CHANGELOG.md)
+          # Use a file to avoid escaping issues
+          echo "$NOTES" > /tmp/release-notes.md
+          if [[ ! -s /tmp/release-notes.md ]]; then
+            echo "Release ${VERSION}" > /tmp/release-notes.md
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes-file /tmp/release-notes.md \
+            --target main
+
+      # Open the dev-cycle PR BEFORE updating `stable`. The stable
+      # update can fail if `stable` has diverged from `main` (e.g.,
+      # a stray PR landed directly on `stable`), and we don't want
+      # that failure to block the dev-cycle bump — users can pull
+      # the release via the tag in the meantime.
+      - name: Open PR to bump main to next -dev cycle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DEV_VERSION: ${{ steps.version.outputs.dev_version }}
+        run: |
+          BRANCH="chore/begin-${DEV_VERSION}-cycle"
+
+          git checkout main
+          git pull origin main
+          git checkout -b "$BRANCH"
+
+          # Bump version in pyproject.toml
+          sed -i "s/^version = \"${VERSION}\"/version = \"${DEV_VERSION}\"/" pyproject.toml
+
+          # Bump version in plugin JSON files
+          python3 scripts/bump_json_versions.py "$DEV_VERSION"
+
+          # Lock and rebuild
+          uv sync
+          uv lock
+          make build
+
+          git add pyproject.toml \
+              .claude-plugin/plugin.json \
+              .claude-plugin/marketplace.json \
+              .cursor-plugin/cursor.plugin.json \
+              uv.lock \
+              skills/ \
+              agents/
+
+          git commit -m "chore: begin ${DEV_VERSION} cycle"
+          git push origin "$BRANCH"
+
+          gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: begin ${DEV_VERSION} cycle" \
+              --body "Automated follow-up to the ${VERSION} release. Bumps main to the next in-development version."
+
+      - name: Fast-forward stable branch to the new release
+        env:
+          # Use the Maverick App installation token so the PATCH is
+          # authenticated as an identity in the `Protect Stable`
+          # ruleset bypass list. The default GITHUB_TOKEN is not.
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          # `stable` is the branch that end users clone to install a
+          # released version. It is always fast-forwarded to the most
+          # recent tag commit — never moves during -dev cycles.
+          #
+          # Updated via the REST API rather than `git push` because
+          # the runner's git transport hits a `[remote rejected]` even
+          # when named branch protection / rulesets are disabled,
+          # while the REST endpoint accepts the same fast-forward
+          # update with the same auth. Diagnosed during the 1.0.0
+          # and 1.0.1 releases (see commit history for context).
+          COMMIT_SHA=$(git rev-parse "${TAG}^{commit}")
+
+          # Pre-check: is the new commit a descendant of the current
+          # `stable` tip? If not, a FF update will fail — print a
+          # detailed remediation note before exiting so the human
+          # reading the failed run doesn't have to reverse-engineer
+          # the 422 from the REST API. Divergence usually means a
+          # PR landed directly on `stable` (see PR #64 from the 3.1.1
+          # cycle as a worked example).
+          STABLE_SHA=$(gh api "repos/${REPO}/git/refs/heads/stable" --jq .object.sha)
+          if ! git merge-base --is-ancestor "$STABLE_SHA" "$COMMIT_SHA"; then
+            cat >&2 <<EOF
+          ERROR: Cannot fast-forward 'stable' to ${TAG}.
+
+            stable      = ${STABLE_SHA}
+            ${TAG}      = ${COMMIT_SHA}
+
+          The current 'stable' tip is not an ancestor of the release
+          commit, so a fast-forward is impossible. This typically
+          means someone pushed or merged a PR directly to 'stable'.
+          'stable' is CI-managed — humans should never push to it.
+
+          To recover (verify the SHAs first!), force-update stable to
+          the release commit:
+
+            gh api -X PATCH \\
+              repos/${REPO}/git/refs/heads/stable \\
+              -f sha=${COMMIT_SHA} \\
+              -F force=true
+
+          Then audit recent activity on 'stable' to find the
+          out-of-band change and prevent a recurrence.
+          EOF
+            exit 1
+          fi
+
+          gh api -X PATCH \
+            "repos/${REPO}/git/refs/heads/stable" \
+            -f sha="$COMMIT_SHA"
