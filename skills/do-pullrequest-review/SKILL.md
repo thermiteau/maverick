@@ -154,4 +154,4 @@ When receiving review during a do-issue workflow:
 4. If the review came from the agent-code-reviewer agent and had spec compliance failures, request a re-review after fixing
 5. Update the plan comment on the issue if fixes changed the implementation approach
 
-<!-- maverick-plugin-version: 3.1.2-dev -->
+<!-- maverick-plugin-version: 3.2.0 -->

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-05-16
+
 ### Added
 
 - **`hooks.worktree_post_create` config field** — projects can declare a repo-relative path to an executable script that runs after `maverick worktree create` succeeds. The script receives the worktree absolute path as `$1` plus `MAVERICK_WORKTREE_PATH`, `MAVERICK_BRANCH`, `MAVERICK_BASE_BRANCH`, and `MAVERICK_REPO_ROOT` env vars. Non-zero exit, missing script, or non-executable script causes `worktree create` to fail with a clear `RuntimeError`; the worktree is left on disk for inspection. The field is optional and empty by default, so repos that don't declare a hook see today's behaviour. The Maverick CLI stays language-agnostic — hooks can be any executable. Useful for repos that need to materialise per-worktree state (e.g. `pnpm install`, symlinks to untracked secrets) before the first build runs.
@@ -165,7 +167,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/thermiteau/maverick/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/thermiteau/maverick/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/thermiteau/maverick/compare/v3.0.1...v3.1.0
 [3.0.1]: https://github.com/thermiteau/maverick/compare/v3.0.0...v3.0.1
