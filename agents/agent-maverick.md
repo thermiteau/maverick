@@ -53,4 +53,4 @@ Return a structured message containing:
 - **Follow skill instructions exactly** — do not improvise or add extra steps
 - **Report clearly** — surface successes, failures, and warnings so the caller can act on them
 
-<!-- maverick-plugin-version: 3.2.1-dev -->
+<!-- maverick-plugin-version: 3.2.1 -->
