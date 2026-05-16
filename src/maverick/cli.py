@@ -206,6 +206,11 @@ def main():
 
     _build_coord(subparsers)
 
+    # do-issue-solo timing reports (#83)
+    from maverick.report_cli import build_subparsers as _build_report
+
+    _build_report(subparsers)
+
     args = parser.parse_args()
 
     if args.command == "init":
@@ -275,6 +280,7 @@ def main():
         "task-progress",
         "issue",
         "git-workflow",
+        "report",
     ):
         import sys as _sys
 

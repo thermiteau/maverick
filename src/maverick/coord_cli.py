@@ -260,6 +260,22 @@ def _task_progress_set(args: argparse.Namespace) -> int:
         payload,
         preamble="<!-- maverick task-progress -->",
     )
+    # Best-effort timeline append for the `maverick report generate`
+    # path (#83). Local history; never fails the durable marker write.
+    try:
+        from maverick import report_cli
+
+        report_cli.append_event(
+            args.issue,
+            {
+                "type": "phase-checkpoint",
+                "phase": args.phase,
+                "ts": payload["updated_at"],
+                "instance_id": payload["instance_id"],
+            },
+        )
+    except Exception as e:  # noqa: BLE001 — best-effort
+        print(f"warning: timeline append failed: {e}", file=sys.stderr)
     _json_print(payload)
     return 0
 

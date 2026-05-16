@@ -97,6 +97,9 @@ class TestTaskProgressMarker:
         # The CLI's `task-progress set <phase>` validates against this list,
         # and the do-issue-solo skill's resume table assumes this ordering.
         assert TASK_PROGRESS_PHASES[0] == "claimed"
-        assert TASK_PROGRESS_PHASES[-1] == "complete"
+        # `complete` and `ejected` are both terminal phases (PASS and FAIL
+        # paths). Either may be the final value depending on how the run
+        # ended.
+        assert {"complete", "ejected"}.issubset(TASK_PROGRESS_PHASES)
         # Each phase must be unique.
         assert len(TASK_PROGRESS_PHASES) == len(set(TASK_PROGRESS_PHASES))

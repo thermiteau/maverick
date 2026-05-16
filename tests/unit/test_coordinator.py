@@ -416,7 +416,7 @@ class TestTaskProgressCli:
     ):
         import argparse
 
-        from maverick import coord_cli, gh_state
+        from maverick import coord_cli, gh_state, report_cli
 
         monkeypatch.setattr(
             coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
@@ -434,6 +434,16 @@ class TestTaskProgressCli:
             return 1
 
         monkeypatch.setattr(gh_state, "upsert_marker", fake_upsert)
+        # Redirect the timeline append (#83) to tmp_path so the test
+        # doesn't litter the working tree's .maverick/reports/.
+        timeline_events: list[dict] = []
+
+        def fake_append(issue, event, repo_root=None):
+            timeline_events.append({"issue": issue, **event})
+            return True
+
+        monkeypatch.setattr(report_cli, "append_event", fake_append)
+
         args = argparse.Namespace(repo="me/r", issue=42, phase="review")
 
         rc = coord_cli._task_progress_set(args)
@@ -446,6 +456,13 @@ class TestTaskProgressCli:
         assert captured["payload"]["instance_id"] == "i-abc"
         assert captured["payload"]["updated_at"].endswith("Z")
         assert "task-progress" in captured["preamble"]
+        # #83: task-progress set must also append a phase-checkpoint
+        # event to the local timeline JSONL so the report generator
+        # can reconstruct per-phase timestamps.
+        assert len(timeline_events) == 1
+        assert timeline_events[0]["type"] == "phase-checkpoint"
+        assert timeline_events[0]["phase"] == "review"
+        assert timeline_events[0]["issue"] == 42
 
     def test_read_returns_latest_marker_payload(self, monkeypatch):
         import argparse
