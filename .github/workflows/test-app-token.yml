@@ -11,6 +11,9 @@ name: Test App Token (transient)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/release-finalize-app-token
 
 permissions:
   contents: read
