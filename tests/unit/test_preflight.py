@@ -133,6 +133,7 @@ class TestEvaluateRuntimeChecks:
             with patch.dict(
                 preflight.RUNTIME_CHECKS,
                 {
+                    "cli_version_compatible": lambda: (True, ""),
                     "gh_app_configured": lambda: (False, "bot says no"),
                     "worktrees_enabled": lambda: (True, ""),
                 },
@@ -160,6 +161,7 @@ class TestEvaluateRuntimeChecks:
             with patch.dict(
                 preflight.RUNTIME_CHECKS,
                 {
+                    "cli_version_compatible": lambda: (True, ""),
                     "gh_app_configured": lambda: (True, ""),
                     "worktrees_enabled": lambda: (True, ""),
                 },
@@ -350,3 +352,72 @@ class TestPrereqsTableConsistency:
         assert not missing, (
             f"FLAG_REMEDIATION is missing entries for: {sorted(missing)}"
         )
+
+    def test_every_non_bootstrap_skill_checks_cli_version(self):
+        """Every action skill must guard against CLI/plugin version skew.
+
+        Bootstrap skills are exempt — they cannot require a CLI version
+        gate because their job is to provide the path to fix that gate.
+        """
+        for skill, prereqs in preflight.PREREQS.items():
+            assert "cli_version_compatible" in prereqs.runtime, (
+                f"PREREQS[{skill!r}] is missing the cli_version_compatible "
+                "runtime check. Without it, a stale CLI can land inside a "
+                "skill that calls subcommands the CLI does not have."
+            )
+
+    def test_do_install_remains_bootstrap_exempt(self):
+        """The CLI version remediation is `/maverick:do-install`, so
+        do-install itself must never be gated by the version check, or
+        the user has no path out of a stale install.
+        """
+        assert "do-install" in preflight.BOOTSTRAP_SKILLS
+        assert "do-install" not in preflight.PREREQS
+
+
+# ---------------------------------------------------------------------------
+# CLI version compatibility runtime check
+# ---------------------------------------------------------------------------
+
+
+class TestCheckCliVersionCompatible:
+    def test_propagates_ok(self, monkeypatch):
+        from maverick import version_check
+
+        monkeypatch.setattr(
+            preflight,
+            "check_cli_compatibility",
+            lambda: version_check.CompatibilityResult(
+                ok=True,
+                reason="ok",
+                installed_version="3.1.2-dev",
+                required_version="3.1.2-dev",
+                remediation="",
+            ),
+        )
+        ok, msg = preflight._check_cli_version_compatible()
+        assert ok is True
+        assert msg == ""
+
+    def test_propagates_failure_with_remediation(self, monkeypatch):
+        from maverick import version_check
+
+        monkeypatch.setattr(
+            preflight,
+            "check_cli_compatibility",
+            lambda: version_check.CompatibilityResult(
+                ok=False,
+                reason="cli_older",
+                installed_version="2.0.1",
+                required_version="3.1.2-dev",
+                remediation=(
+                    "Installed Maverick CLI v2.0.1 is older than plugin "
+                    "v3.1.2-dev. Run /maverick:do-install to upgrade."
+                ),
+            ),
+        )
+        ok, msg = preflight._check_cli_version_compatible()
+        assert ok is False
+        assert "v2.0.1" in msg
+        assert "v3.1.2-dev" in msg
+        assert "/maverick:do-install" in msg

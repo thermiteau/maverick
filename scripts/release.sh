@@ -15,11 +15,26 @@ set -euo pipefail
 #   - Opening a follow-up PR that bumps main to the next -dev version
 #   - Fast-forwarding the `stable` branch to the new tag
 #
-# IMPORTANT: never open a PR targeting `stable` directly. `stable` is
-# CI-managed and must remain a strict fast-forward of `main`'s release
-# tags. A PR into `stable` will diverge it from `main` and break the
-# fast-forward step of the next release-finalize run. If `stable` is
-# behind, fix it by cutting a real release — not by merging from main.
+# IMPORTANT: never open a PR targeting `stable` directly, and never merge
+# `main` into `stable` manually. `stable` is CI-managed and must remain a
+# strict fast-forward of `main`'s release tags. Any non-tag commit on
+# stable (merge, hotfix, manual push) instantly breaks `/plugin update`
+# for end users — they will receive whichever -dev version they happen
+# to fetch from a non-release commit.
+#
+# This includes the seemingly-innocent case of "I just want to land a
+# workflow fix on stable so the next release works". Don't. Workflow
+# changes belong on `main` and land on `stable` automatically via the
+# next release tag's fast-forward. There is no manual path.
+#
+# A PR or merge into `stable` will also diverge it from `main` and
+# break the fast-forward step of the next release-finalize run. If
+# `stable` is behind a release tag, the only correct recovery is to
+# cut a real release. If it has diverged ahead of a release tag, use
+# `gh api -X PATCH ... -F force=true` to point it back at the most
+# recent v* tag commit (see release-finalize.yml's remediation block
+# for the exact command). The `verify-stable.yml` workflow opens a
+# tracking issue when stable lands at a non-tag commit.
 #
 # Usage: ./scripts/release.sh [major|minor|patch]
 # Default: patch

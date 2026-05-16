@@ -1,0 +1,63 @@
+name: Verify Stable
+
+# Catches the failure mode that broke the 3.1.1 cycle: a non-tag commit
+# landing on `stable` (a merge from main, a hotfix, a manual push) and
+# silently causing `/plugin update` to deliver an in-development version
+# to end users.
+#
+# `release-finalize.yml` already pre-checks the forward direction (the
+# FF step refuses to advance stable to a non-ancestor commit). This
+# workflow watches the inbound direction — every push to `stable` is
+# verified to land at a `v*` release-tag commit. Anything else fails
+# the build and opens a tracking issue.
+
+on:
+  push:
+    branches: [stable]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify stable HEAD is a release-tag commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          STABLE_SHA="$(git rev-parse HEAD)"
+          TAG="$(git tag --points-at "$STABLE_SHA" 'v*' | head -n1)"
+
+          if [[ -n "$TAG" ]]; then
+            echo "OK: stable points to release tag $TAG ($STABLE_SHA)"
+            exit 0
+          fi
+
+          echo "::error::stable@${STABLE_SHA} is not a v* release-tag commit."
+          echo "::error::stable must only ever be fast-forwarded to a v* tag via release-finalize.yml."
+
+          # Leave a tracking issue so the failure is visible outside the
+          # Actions tab. release-finalize.yml documents the recovery
+          # command (force-update via gh api PATCH).
+          gh issue create \
+            --repo "$REPO" \
+            --title "stable branch is not a release-tag commit (${STABLE_SHA:0:7})" \
+            --label "release,bug" \
+            --body "stable@${STABLE_SHA} is not at a v* release tag.
+
+          This means /plugin update is delivering an in-development version
+          of the Maverick plugin to end users.
+
+          Recovery: force-update stable to the latest v* tag commit. The
+          exact gh-api command is documented in .github/workflows/release-finalize.yml
+          (the Fast-forward stable branch step's error remediation block)."
+
+          exit 1

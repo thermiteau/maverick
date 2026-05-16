@@ -36,6 +36,7 @@ from maverick.config import (
     project_config_path,
     read_integration_status,
 )
+from maverick.version_check import check_cli_compatibility
 
 
 @dataclass(frozen=True)
@@ -49,46 +50,56 @@ class Prereqs:
 
 PREREQS: dict[str, Prereqs] = {
     "do-init": Prereqs(
-        # do-init produces every integration flag; its only prerequisite is
-        # that a Maverick GitHub App is already configured by the user.
-        # Maverick will not create the App — that is a manual human action
-        # (see https://github.com/settings/apps/new). Failing here is the
-        # only signal that pushes the user to perform it.
-        runtime=("gh_app_configured",),
+        # do-init produces every integration flag; its prerequisites are
+        # that the Maverick GitHub App is already configured (manual setup
+        # by the user — see https://github.com/settings/apps/new) and
+        # that the installed CLI matches the plugin floor (otherwise
+        # do-init's own subcommand calls may not exist yet).
+        runtime=("cli_version_compatible", "gh_app_configured"),
     ),
     "do-issue-solo": Prereqs(
         flags=("init",),
         tools=("gh", "git", "uv"),
-        runtime=("gh_app_configured",),
+        runtime=("cli_version_compatible", "gh_app_configured"),
     ),
     "do-issue-guided": Prereqs(
         flags=("init",),
         tools=("gh", "git", "uv"),
+        runtime=("cli_version_compatible",),
     ),
     "do-epic": Prereqs(
         flags=("init",),
         tools=("gh", "git", "uv"),
-        runtime=("gh_app_configured", "worktrees_enabled"),
+        runtime=(
+            "cli_version_compatible",
+            "gh_app_configured",
+            "worktrees_enabled",
+        ),
     ),
     "do-upskill": Prereqs(
         flags=("init",),
         tools=("uv",),
+        runtime=("cli_version_compatible",),
     ),
     "do-docs": Prereqs(
         flags=("init",),
         tools=("uv",),
+        runtime=("cli_version_compatible",),
     ),
     "do-maverick-alignment": Prereqs(
         flags=("init",),
         tools=("uv",),
+        runtime=("cli_version_compatible",),
     ),
     "do-pullrequest-review": Prereqs(
         flags=("init",),
         tools=("gh", "uv"),
+        runtime=("cli_version_compatible",),
     ),
     "do-cybersecurity-review": Prereqs(
         flags=("init",),
         tools=("uv",),
+        runtime=("cli_version_compatible",),
     ),
 }
 
@@ -194,7 +205,22 @@ def _check_worktrees_enabled() -> tuple[bool, str]:
     return True, ""
 
 
+def _check_cli_version_compatible() -> tuple[bool, str]:
+    """Return (ok, message). The installed CLI must satisfy the plugin floor.
+
+    Claude Code's ``/plugin update`` refreshes the markdown skills but
+    not the system-wide CLI, so the two artefacts can drift. This check
+    is the hard gate that catches drift before a skill calls a
+    subcommand the stale CLI does not have.
+    """
+    result = check_cli_compatibility()
+    if result.ok:
+        return True, ""
+    return False, result.remediation
+
+
 RUNTIME_CHECKS: dict[str, Callable[[], tuple[bool, str]]] = {
+    "cli_version_compatible": _check_cli_version_compatible,
     "gh_app_configured": _check_gh_app_configured,
     "worktrees_enabled": _check_worktrees_enabled,
 }
