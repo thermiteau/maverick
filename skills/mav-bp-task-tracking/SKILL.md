@@ -162,4 +162,4 @@ When reviewing workflow and project management practices, flag these patterns:
 | Local TODO list used instead of tracker | Invisible work | Move tasks to the external system |
 | Task marked done but PR not merged | Status does not reflect reality | Update status to match actual state |
 
-<!-- maverick-plugin-version: 3.3.1 -->
+<!-- maverick-plugin-version: 3.3.2-dev -->
