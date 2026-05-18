@@ -214,4 +214,4 @@ Not every change needs a 10-page design document. The investment in design shoul
 | Design doc exists but is stale | Documentation rot | Update the design doc to reflect what was actually built |
 | Requirements ambiguity resolved by guessing | Risk of building the wrong thing | Clarify with stakeholder before proceeding |
 
-<!-- maverick-plugin-version: 3.3.1 -->
+<!-- maverick-plugin-version: 3.3.2-dev -->
