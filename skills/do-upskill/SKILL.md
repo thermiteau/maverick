@@ -370,4 +370,4 @@ When no scan hints are provided by the calling skill, use these defaults:
 - **grep**: `dotenv|process\.env|os\.environ|docker-compose|devcontainer|CONTRIBUTING`
 - **files**: `.env.example`, `.env.sample`, `.env.template`, `.devcontainer/**`, `docker-compose*.yml`, `Vagrantfile`, `flake.nix`, `shell.nix`, `CONTRIBUTING.md`
 
-<!-- maverick-plugin-version: 3.3.2 -->
+<!-- maverick-plugin-version: 3.3.3-dev -->
