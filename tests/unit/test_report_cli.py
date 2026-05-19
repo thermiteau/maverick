@@ -238,7 +238,9 @@ class TestFormatters:
         assert report_cli._fmt_duration(secs) == expected
 
     def test_fmt_time(self):
-        assert report_cli._fmt_time("2026-01-01T08:17:35Z") == "08:17:35"
+        # #91: include the date so cross-day rows are obvious instead of
+        # looking like time running backwards.
+        assert report_cli._fmt_time("2026-01-01T08:17:35Z") == "2026-01-01 08:17:35"
 
     def test_fmt_time_invalid_passes_through(self):
         assert report_cli._fmt_time("garbage") == "garbage"
@@ -308,3 +310,145 @@ class TestRender:
         ]
         md = report_cli.render(issue=1, events=events, commits=commits)
         assert "a\\|b" in md
+
+
+class TestCommitEvents:
+    """Event-sourced commit rows replace `git log <base>..<branch>` (#91).
+
+    `_fetch_commits` had a hardcoded `origin/main` base that over-counted
+    on Gitflow-style repos. Reading commits from the JSONL timeline gives
+    us deterministic, in-issue-scoped rows that travel with the timeline.
+    """
+
+    def test_commit_events_render_under_implement_phase(self):
+        events = [
+            {"ts": "2026-01-01T00:00:00Z", "type": "phase-checkpoint", "phase": "branch"},
+            {"ts": "2026-01-01T00:03:00Z", "type": "commit", "sha": "abc1234567",
+             "subject": "feat: add helper"},
+            {"ts": "2026-01-01T00:07:00Z", "type": "commit", "sha": "def4567890",
+             "subject": "test: cover helper"},
+            {"ts": "2026-01-01T00:10:00Z", "type": "phase-checkpoint", "phase": "implement"},
+        ]
+        md = report_cli.render(
+            issue=99,
+            events=events,
+            claim_created_at="2026-01-01T00:00:00Z",
+        )
+        assert "↳ commit" in md
+        assert "abc1234" in md
+        assert "feat: add helper" in md
+        assert "def4567" in md
+        # Preamble reflects the event-driven source.
+        assert "commit events in the timeline JSONL" in md
+
+    def test_event_commits_route_to_their_owning_phase(self):
+        """A Phase 6 `docs:` commit should land under the docs row, not implement."""
+        events = [
+            {"ts": "2026-01-01T00:00:00Z", "type": "phase-checkpoint", "phase": "branch"},
+            {"ts": "2026-01-01T00:05:00Z", "type": "commit", "sha": "aaa1111",
+             "subject": "feat: thing"},
+            {"ts": "2026-01-01T00:10:00Z", "type": "phase-checkpoint", "phase": "implement"},
+            {"ts": "2026-01-01T00:12:00Z", "type": "commit", "sha": "bbb2222",
+             "subject": "docs: explain the thing"},
+            {"ts": "2026-01-01T00:15:00Z", "type": "phase-checkpoint", "phase": "docs"},
+        ]
+        md = report_cli.render(
+            issue=42,
+            events=events,
+            claim_created_at="2026-01-01T00:00:00Z",
+        )
+        lines = md.splitlines()
+        impl_idx = next(i for i, ln in enumerate(lines) if "Phase 5 — execute tasks" in ln)
+        docs_idx = next(i for i, ln in enumerate(lines) if "Phase 6 — documentation review" in ln)
+        # The implement-phase commit appears between its phase row and the next phase row.
+        impl_window = "\n".join(lines[impl_idx:docs_idx])
+        docs_window = "\n".join(lines[docs_idx:])
+        assert "aaa1111" in impl_window
+        assert "aaa1111" not in docs_window
+        assert "bbb2222" in docs_window
+        assert "bbb2222" not in impl_window
+
+    def test_empty_commit_events_falls_back_to_git_log_commits(self):
+        """Legacy timelines with no commit events still render via the `commits` arg."""
+        events = [
+            {"ts": "2026-01-01T00:00:00Z", "type": "phase-checkpoint", "phase": "branch"},
+            {"ts": "2026-01-01T00:10:00Z", "type": "phase-checkpoint", "phase": "implement"},
+        ]
+        commits = [
+            {"sha": "legacy01", "committed_at": "2026-01-01T00:03:00Z",
+             "subject": "feat: legacy"},
+        ]
+        md = report_cli.render(
+            issue=7,
+            events=events,
+            commits=commits,
+            claim_created_at="2026-01-01T00:00:00Z",
+        )
+        assert "legacy0" in md
+        assert "feat: legacy" in md
+        assert "git-log fallback (legacy timeline)" in md
+
+    def test_commit_events_take_priority_over_legacy_commits_arg(self):
+        """When both are present, event-sourced commits win."""
+        events = [
+            {"ts": "2026-01-01T00:00:00Z", "type": "phase-checkpoint", "phase": "branch"},
+            {"ts": "2026-01-01T00:03:00Z", "type": "commit", "sha": "newev01",
+             "subject": "feat: new path"},
+            {"ts": "2026-01-01T00:10:00Z", "type": "phase-checkpoint", "phase": "implement"},
+        ]
+        commits = [
+            {"sha": "legacy01", "committed_at": "2026-01-01T00:03:00Z",
+             "subject": "feat: legacy"},
+        ]
+        md = report_cli.render(
+            issue=7,
+            events=events,
+            commits=commits,
+            claim_created_at="2026-01-01T00:00:00Z",
+        )
+        assert "newev01" in md
+        assert "legacy01" not in md
+
+    def test_log_commit_subcommand_writes_event(self, tmp_path: Path, monkeypatch):
+        """The `report log commit --sha --subject` form round-trips through the JSONL."""
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="cmd", required=True)
+        report_cli.build_subparsers(sub)
+        args = parser.parse_args([
+            "report", "log", "commit",
+            "--issue", "55",
+            "--sha", "abc1234",
+            "--subject", "feat: log the commit",
+        ])
+        rc = args._handler(args)
+        assert rc == 0
+        events = report_cli.load_timeline(report_cli.timeline_path(55, repo_root=tmp_path))
+        commit_events = [e for e in events if e["type"] == "commit"]
+        assert len(commit_events) == 1
+        assert commit_events[0]["sha"] == "abc1234"
+        assert commit_events[0]["subject"] == "feat: log the commit"
+
+
+class TestCommitRowsHelper:
+    def test_extracts_commit_events_in_order(self):
+        events = [
+            {"ts": "2026-01-01T00:00:00Z", "type": "phase-checkpoint", "phase": "branch"},
+            {"ts": "2026-01-01T00:01:00Z", "type": "commit", "sha": "111",
+             "subject": "feat: a"},
+            {"ts": "2026-01-01T00:02:00Z", "type": "phase-checkpoint", "phase": "implement"},
+            {"ts": "2026-01-01T00:03:00Z", "type": "commit", "sha": "222",
+             "subject": "feat: b"},
+        ]
+        rows = report_cli._commit_rows(events)
+        assert rows == [
+            ("111", "2026-01-01T00:01:00Z", "feat: a"),
+            ("222", "2026-01-01T00:03:00Z", "feat: b"),
+        ]
+
+    def test_ignores_non_commit_events(self):
+        events = [
+            {"ts": "2026-01-01T00:00:00Z", "type": "phase-checkpoint", "phase": "branch"},
+            {"ts": "2026-01-01T00:01:00Z", "type": "subagent-start", "name": "x"},
+        ]
+        assert report_cli._commit_rows(events) == []

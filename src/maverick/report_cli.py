@@ -209,11 +209,41 @@ def _fmt_duration(seconds: float) -> str:
 
 
 def _fmt_time(ts: str) -> str:
-    """Render an ISO timestamp as HH:MM:SS (UTC)."""
+    """Render an ISO timestamp as YYYY-MM-DD HH:MM:SS (UTC).
+
+    Including the date makes cross-day rows obvious instead of looking
+    like time going backwards (#91).
+    """
     try:
-        return _parse_ts(ts).strftime("%H:%M:%S")
+        return _parse_ts(ts).strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
         return ts
+
+
+def _commit_rows(
+    events: Sequence[dict[str, Any]],
+) -> list[tuple[str, str, str]]:
+    """Extract commit events from the timeline as (sha, ts, subject) tuples.
+
+    Phase attribution is intentionally not done here — `render` matches
+    each commit's ts against the phase intervals from `_phase_intervals`.
+    Doing it that way is correct under the do-issue-solo convention that
+    a `phase-checkpoint` marks the **end** of its phase: a commit at
+    time `t` belongs to the phase whose [start_ts, end_ts] contains `t`,
+    i.e. the phase the agent was working on when the commit landed —
+    not the previous phase that just finished.
+    """
+    out: list[tuple[str, str, str]] = []
+    for e in events:
+        if e.get("type") == "commit":
+            out.append(
+                (
+                    str(e.get("sha", "")),
+                    str(e.get("ts", "")),
+                    str(e.get("subject", "")),
+                )
+            )
+    return out
 
 
 def _pair_intervals(
@@ -322,7 +352,6 @@ def render(
     - `claim_created_at` — ISO timestamp from the maverick-claim marker.
       Anchors the first phase's start.
     """
-    commits = list(commits or [])
     if not events:
         return f"# Issue #{issue} — time breakdown\n\nNo timeline events recorded.\n"
 
@@ -331,6 +360,25 @@ def render(
     skills = _pair_intervals(events, "skill-start", "skill-end", "name")
     phases = _phase_intervals(events, claim_created_at)
 
+    # Prefer event-sourced commits (deterministic, in-issue scope, per-phase
+    # attribution). Fall back to git-log commits for older timelines that
+    # pre-date #91. In both cases the renderer matches each commit's ts
+    # against phase intervals — no hardcoded "implement" assumption.
+    event_commits = _commit_rows(events)
+    if event_commits:
+        commit_rows = event_commits
+        commits_from_events = True
+    else:
+        commit_rows = [
+            (
+                str(c.get("sha") or ""),
+                str(c.get("committed_at") or ""),
+                str(c.get("subject") or ""),
+            )
+            for c in (commits or [])
+        ]
+        commits_from_events = False
+
     first_ts = claim_created_at or events[0]["ts"]
     last_ts = events[-1]["ts"]
     total = _seconds_between(first_ts, last_ts)
@@ -338,11 +386,16 @@ def render(
     out: list[str] = []
     out.append(f"# Issue #{issue} — time breakdown")
     out.append("")
+    commit_source = (
+        "commit events in the timeline JSONL"
+        if commits_from_events
+        else "git-log fallback (legacy timeline)"
+    )
     out.append(
         f"Wall-clock: **{_fmt_duration(total)}** from "
         f"{first_ts} to {last_ts}. All timestamps below are UTC. "
         "Phase boundaries come from `maverick task-progress` checkpoints; "
-        "sub-task rows in the implement phase come from commit times; "
+        f"commit sub-rows come from {commit_source}; "
         "PR open/merge timestamps come from `gh pr view`."
     )
     out.append("")
@@ -351,26 +404,34 @@ def render(
     out.append("| Phase | Activity | Start | End | Duration |")
     out.append("|---|---|---|---|---|")
 
-    implement_seen = False
+    emitted_commit_indices: set[int] = set()
     for phase, s, e in phases:
         label = PHASE_LABELS.get(phase, phase)
         facts = _facts_for_phase(phase, events, subagents, questions, skills)
         activity = f"PLACEHOLDER — {facts}" if facts else "PLACEHOLDER"
         dur = _fmt_duration(_seconds_between(s, e))
         out.append(f"| {label} | {activity} | {_fmt_time(s)} | {_fmt_time(e)} | {dur} |")
-        if phase == "implement" and commits and not implement_seen:
-            implement_seen = True
+        # Match each commit to the phase interval whose [start_ts, end_ts]
+        # contains its ts. Each commit emits at most once — when a phase
+        # repeats (e.g. implement → review → implement during recovery),
+        # commits land under the first matching occurrence.
+        phase_commits = [
+            (i, sha, ts, subj)
+            for i, (sha, ts, subj) in enumerate(commit_rows)
+            if i not in emitted_commit_indices and ts and s <= ts <= e
+        ]
+        if phase_commits:
             prev_ts = s
-            for c in commits:
-                sub = (c.get("subject") or "").replace("|", "\\|")
-                sha = (c.get("sha") or "")[:7]
-                c_ts = c.get("committed_at") or ""
+            for i, sha, c_ts, subject in phase_commits:
+                sub = subject.replace("|", "\\|")
+                short_sha = sha[:7]
                 dur_c = _fmt_duration(_seconds_between(prev_ts, c_ts)) if c_ts else "—"
                 out.append(
-                    f"| ↳ commit | `{sha}` — {sub} | "
+                    f"| ↳ commit | `{short_sha}` — {sub} | "
                     f"{_fmt_time(prev_ts)} | {_fmt_time(c_ts)} | {dur_c} |"
                 )
                 prev_ts = c_ts
+                emitted_commit_indices.add(i)
 
     out.append("")
     out.append("## Where the time actually went")
@@ -383,16 +444,16 @@ def render(
     question_total = sum(_seconds_between(s, e) for _, s, e, _ in questions)
 
     impl_total = 0.0
-    if commits and phases:
-        for phase, s, _e in phases:
-            if phase == "implement":
-                prev_ts = s
-                for c in commits:
-                    c_ts = c.get("committed_at") or ""
-                    if c_ts:
-                        impl_total += _seconds_between(prev_ts, c_ts)
-                        prev_ts = c_ts
-                break
+    if commit_rows and phases:
+        for phase, s, e in phases:
+            if phase != "implement":
+                continue
+            prev_ts = s
+            for _sha, c_ts, _subj in commit_rows:
+                if c_ts and s <= c_ts <= e:
+                    impl_total += _seconds_between(prev_ts, c_ts)
+                    prev_ts = c_ts
+            break
 
     coord_total = total - subagent_total - skill_total - question_total - impl_total
     if coord_total < 0:
@@ -519,6 +580,8 @@ def _report_log(args: argparse.Namespace) -> int:
         event["phase"] = args.phase
     if args.sha:
         event["sha"] = args.sha
+    if args.subject:
+        event["subject"] = args.subject
     if args.task:
         event["task"] = args.task
     for raw in args.meta or []:
@@ -545,9 +608,16 @@ def _report_generate(args: argparse.Namespace) -> int:
         print(f"no timeline data for issue {issue} at {tpath}", file=sys.stderr)
         return 2
 
-    branch = args.branch
-    base = args.base or "origin/main"
-    commits = _fetch_commits(branch, base)
+    # New runs emit `commit` events into the timeline (#91), so the
+    # git-log fallback is only consulted when no commit events were
+    # recorded (e.g. older runs that pre-date the change).
+    has_commit_events = any(e.get("type") == "commit" for e in events)
+    if has_commit_events:
+        commits: list[dict[str, Any]] = []
+    else:
+        branch = args.branch
+        base = args.base or "origin/main"
+        commits = _fetch_commits(branch, base)
     pr = _fetch_pr(args.repo, issue) if args.repo else None
     claim_ts = _fetch_claim_created_at(args.repo, issue) if args.repo else None
 
@@ -596,6 +666,7 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--topic", help="Question topic (question-*)")
     p.add_argument("--phase", help="Phase name (phase-checkpoint)")
     p.add_argument("--sha", help="Commit SHA (commit)")
+    p.add_argument("--subject", help="Commit subject line (commit)")
     p.add_argument("--task", help="Task label (subagent-* / commit)")
     p.add_argument(
         "--meta",
