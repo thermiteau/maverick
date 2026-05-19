@@ -175,8 +175,17 @@ This phase has changed. **Push after every task, not at the end.** See
      `git push -u origin <branch>`.
    - If on a stacked branch, run the retarget check per
      `{{ SKILLS.MAV_STACKED_PRS }}` **before every push**.
-6. Update the tasks comment (or close the sub-issue).
-7. Heartbeat: `uv run maverick coord heartbeat <repo> {{ ARGUMENTS }}` if it
+6. **Log the commit** to the timing report so Phase 5 sub-rows match
+   what the agent actually pushed (#91 — `git log` previously over-counted
+   on Gitflow-style repos):
+   ```bash
+   SHA=$(git rev-parse HEAD)
+   SUBJECT=$(git log -1 --pretty=%s)
+   uv run maverick report log commit --issue {{ ARGUMENTS }} \
+       --sha "$SHA" --subject "$SUBJECT"
+   ```
+7. Update the tasks comment (or close the sub-issue).
+8. Heartbeat: `uv run maverick coord heartbeat <repo> {{ ARGUMENTS }}` if it
    is time for a refresh.
 
 After the last task, run the full verification suite once more.
@@ -265,7 +274,14 @@ PR body as a follow-up note rather than being silently rewritten.
      sees them.
    - If no changes were required: post `Docs review: no changes required.`
 7. Commit any doc changes with a `docs:` conventional commit and push
-   per the push-per-task rule.
+   per the push-per-task rule. If a commit was made, log it so the
+   docs phase row carries its own sub-task (#91):
+   ```bash
+   SHA=$(git rev-parse HEAD)
+   SUBJECT=$(git log -1 --pretty=%s)
+   uv run maverick report log commit --issue {{ ARGUMENTS }} \
+       --sha "$SHA" --subject "$SUBJECT"
+   ```
 8. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
 9. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} docs`.
