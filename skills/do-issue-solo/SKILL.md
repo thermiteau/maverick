@@ -59,7 +59,12 @@ This phase is new in the workflow overhaul. Before any other phase.
 2. Claim the issue: `uv run maverick coord claim <repo> `.
    The command exits non-zero if the claim is rejected — treat that as
    abort.
-3. Start a heartbeat loop that refreshes the lease every
+3. **Start the workflow report** (writes a `run-start` row that later
+   `report` calls inherit `maverick_skill` from):
+   ```bash
+   uv run maverick report run-start do-issue-solo --issue  --phase claimed
+   ```
+4. Start a heartbeat loop that refreshes the lease every
    `HEARTBEAT_INTERVAL_MINUTES` minutes for as long as you hold the
    claim. The CLI provides a self-terminating foreground loop — run it
    in the background and let it exit on its own when `coord release`
@@ -69,9 +74,9 @@ This phase is new in the workflow overhaul. Before any other phase.
    ```
    If two consecutive heartbeats fail, the loop exits non-zero — treat
    that as claim-lost and abort (do not push further work).
-4. Register a release handler that fires on every exit path (success,
+5. Register a release handler that fires on every exit path (success,
    eject, abort): `uv run maverick coord release <repo>  --reason <reason>`.
-5. Cold-start hydrate per `mav-durability-on-gh`. The
+6. Cold-start hydrate per `mav-durability-on-gh`. The
    skill is fully resumable — a fresh agent re-entering after a crash,
    stop, or context-exhaustion must skip phases that already completed
    rather than re-running them against an in-flight or merged PR (#41).
@@ -107,18 +112,19 @@ implementation.
 
 1. Initialise the issue state file per the
    mav-github-issue-workflow skill.
-2. Log subagent start: `uv run maverick report log subagent-start --issue  --name agent-issue-analyst`.
+2. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase design --agent agent-issue-analyst`.
 3. Dispatch the **agent-issue-analyst** agent with:
    - Issue number: ``
    - Mode: `solo`
-4. Log subagent end: `uv run maverick report log subagent-end --issue  --name agent-issue-analyst`.
+4. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase design --agent agent-issue-analyst --outcome success`.
+   (Use `--outcome failure` if the agent returned an error rather than a design.)
 5. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `design`
    - `.claude/issue-state.json` has `comments.design` set to a comment ID
 6. If the agent flagged ambiguities it could not resolve:
-   - Log question start: `uv run maverick report log question-start --issue  --topic ambiguity-resolution`.
+   - Open the question interval: `uv run maverick report begin question --issue  --phase design --topic ambiguity-resolution`.
    - Ask the user.
-   - Log question end: `uv run maverick report log question-end --issue  --topic ambiguity-resolution`.
+   - Close it: `uv run maverick report end question --issue  --phase design --topic ambiguity-resolution --outcome success`.
 
    Otherwise continue.
 7. **Checkpoint**: `uv run maverick task-progress set <repo>  design`.
@@ -127,19 +133,19 @@ implementation.
 
 Run Phase 3 as a subagent.
 
-1. Log subagent start: `uv run maverick report log subagent-start --issue  --name agent-github-issue-planner`.
+1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase tasks --agent agent-github-issue-planner`.
 2. Dispatch the **agent-github-issue-planner** agent with:
    - Issue number: ``
    - Design comment ID from `.claude/issue-state.json`
-3. Log subagent end: `uv run maverick report log subagent-end --issue  --name agent-github-issue-planner`.
+3. Close it: `uv run maverick report end agent-dispatch --issue  --phase tasks --agent agent-github-issue-planner --outcome success`.
 4. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `tasks`
    - If < 5 tasks: `.claude/issue-state.json` has `comments.tasks` set to a comment ID
    - If >= 5 tasks: `.claude/issue-state.json` has `has_sub_issues` set to `true`
 5. If the agent flagged scope concerns:
-   - Log question start: `uv run maverick report log question-start --issue  --topic scope-concerns`.
+   - Open the question interval: `uv run maverick report begin question --issue  --phase tasks --topic scope-concerns`.
    - Ask the user.
-   - Log question end: `uv run maverick report log question-end --issue  --topic scope-concerns`.
+   - Close it: `uv run maverick report end question --issue  --phase tasks --topic scope-concerns --outcome success`.
 6. **Checkpoint**: `uv run maverick task-progress set <repo>  tasks`.
 
 ## Phase 4: Create Worktree + Branch
@@ -182,8 +188,16 @@ This phase has changed. **Push after every task, not at the end.** See
      `git push -u origin <branch>`.
    - If on a stacked branch, run the retarget check per
      `mav-stacked-prs` **before every push**.
-6. Update the tasks comment (or close the sub-issue).
-7. Heartbeat: `uv run maverick coord heartbeat <repo> ` if it
+6. **Log the commit** to the workflow report. SHA and subject come from
+   git; the timestamp is wall-clock at the moment of this CLI call:
+   ```bash
+   SHA=$(git rev-parse HEAD)
+   SUBJECT=$(git log -1 --pretty=%s)
+   uv run maverick report commit --issue  \
+       --phase implement --sha "$SHA" --subject "$SUBJECT"
+   ```
+7. Update the tasks comment (or close the sub-issue).
+8. Heartbeat: `uv run maverick coord heartbeat <repo> ` if it
    is time for a refresh.
 
 After the last task, run the full verification suite once more.
@@ -243,7 +257,7 @@ PR body as a follow-up note rather than being silently rewritten.
    fi
    ```
 
-3. Log subagent start: `uv run maverick report log subagent-start --issue  --name agent-tech-docs-writer`.
+3. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase docs --agent agent-tech-docs-writer`.
 4. Dispatch **agent-tech-docs-writer** with:
    - **Mode:** `update` (per `do-docs`)
    - **Diff:** `/tmp/diff.patch`
@@ -263,7 +277,7 @@ PR body as a follow-up note rather than being silently rewritten.
        human reviewer.
      - Returning "no doc changes required" is a valid outcome and must
        be reported explicitly (not silently inferred).
-5. Log subagent end: `uv run maverick report log subagent-end --issue  --name agent-tech-docs-writer`.
+5. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase docs --agent agent-tech-docs-writer --outcome success`.
 6. **Record the outcome** in the PR body or as a one-line PR comment so
    the gate is auditable:
    - If docs were updated or created: list the files changed.
@@ -272,7 +286,14 @@ PR body as a follow-up note rather than being silently rewritten.
      sees them.
    - If no changes were required: post `Docs review: no changes required.`
 7. Commit any doc changes with a `docs:` conventional commit and push
-   per the push-per-task rule.
+   per the push-per-task rule. If a commit was made, log it so the
+   docs phase row gets its own sub-row in the report:
+   ```bash
+   SHA=$(git rev-parse HEAD)
+   SUBJECT=$(git log -1 --pretty=%s)
+   uv run maverick report commit --issue  \
+       --phase docs --sha "$SHA" --subject "$SUBJECT"
+   ```
 8. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
 9. **Checkpoint**: `uv run maverick task-progress set <repo>  docs`.
@@ -285,7 +306,7 @@ changes (callers, importers, dependents) must be reviewed by
 `do-cybersecurity-review` before the PR can be opened.
 
 1. Compute the full diff: `git diff origin/<base>...HEAD`.
-2. Log skill start: `uv run maverick report log skill-start --issue  --name do-cybersecurity-review`.
+2. Open the skill-dispatch interval: `uv run maverick report begin skill-dispatch --issue  --phase security --skill-name do-cybersecurity-review`.
 3. Dispatch the **do-cybersecurity-review** skill with:
    - **Mode:** `update`
    - **Diff:** the output of step 1, passed via stdin or as a file path
@@ -293,7 +314,7 @@ changes (callers, importers, dependents) must be reviewed by
      (callers, importers, dependents — bounded to one or two hops).
      Return the structured outcome (verdict + findings) defined in the
      skill's Update Mode contract.
-4. Log skill end: `uv run maverick report log skill-end --issue  --name do-cybersecurity-review`.
+4. Close the skill-dispatch interval: `uv run maverick report end skill-dispatch --issue  --phase security --skill-name do-cybersecurity-review --outcome <success|failure|blocked>` (use `blocked` if the verdict was BLOCKING).
 5. **Act on the verdict:**
    - **BLOCKING** — halt. Surface the findings to the user verbatim.
      Do not open the PR. The user resolves the BLOCKING items by
@@ -359,11 +380,11 @@ The local **agent-code-reviewer** subagent's verdict is the
 review gate the auto-merge path trusts. This is a binary verdict against
 the open PR, not a local-diff advisory loop.
 
-1. Log subagent start: `uv run maverick report log subagent-start --issue  --name agent-code-reviewer`.
+1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase review --agent agent-code-reviewer`.
 2. Dispatch **agent-code-reviewer** with:
    - The PR URL
    - The issue body, design comment, and tasks list (so it has the spec)
-3. Log subagent end: `uv run maverick report log subagent-end --issue  --name agent-code-reviewer`.
+3. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase review --agent agent-code-reviewer --outcome <success|failure>` (use `failure` on FAIL verdict).
 4. The agent returns exactly one of two verdicts:
    - **PASS** — proceed to Phase 10 (merge).
    - **FAIL** — proceed to Phase 11 (eject). Do not attempt to auto-fix.
@@ -428,21 +449,23 @@ next step is eject-to-human, not iterate.
     - Local state file
     - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
 11. **Checkpoint**: `uv run maverick task-progress set <repo>  complete`.
-12. **Generate the timing report** (#83). The report is written to the
-    **main repo's** `.maverick/reports/` (resolved via `git rev-parse
-    --git-common-dir`), not the destroyed worktree's:
+12. **Emit per-phase narrative notes** so the report's Analysis section
+    has context for what happened. The JSONL is the authoritative
+    record; the report is a pure render of it, so notes must land in
+    the JSONL — do not edit the rendered Markdown by hand:
     ```bash
-    uv run maverick report generate <repo>  --branch <branch>
+    uv run maverick report note --issue  --phase design \
+        --text "<one-sentence summary of what the analyst returned>"
+    uv run maverick report note --issue  --phase implement \
+        --text "<one-sentence summary of what landed in Phase 5>"
+    # ... one `report note` per phase that produced work worth narrating
     ```
-13. **Fill in the per-phase narratives.** Read
-    `.maverick/reports/do-issue-solo-.md`. For each phase
-    row whose Activity cell starts with `PLACEHOLDER`, replace the
-    `PLACEHOLDER` prefix with a single sentence summarising what
-    actually happened in that phase (from your session memory — e.g.
-    "Issue analyst summarised the bug and proposed three rollout
-    options."). Keep the structured facts that follow the `—` and
-    leave timestamps, durations, sub-task rows, and the summary table
-    untouched. Write the file back.
+13. **Generate the workflow report**. Written to the **main repo's**
+    `.maverick/reports/` (resolved via `git rev-parse --git-common-dir`),
+    not the destroyed worktree's. Re-runs are deterministic:
+    ```bash
+    uv run maverick report generate <repo> 
+    ```
 
 ## Phase 11: Eject (on FAIL)
 
@@ -467,16 +490,18 @@ next step is eject-to-human, not iterate.
      apply `blocked-by:#` to every transitive descendant.
    - Cancel any in-flight subagent work for stories now in the blocked set.
 5. **Checkpoint the eject** (#83): `uv run maverick task-progress set <repo>  ejected`.
-6. **Generate the timing report** for the run so the human reviewer
-   can see how time was spent leading up to the eject:
+6. **Emit per-phase narrative notes** so the eject report has context
+   for the human reviewer:
    ```bash
-   uv run maverick report generate <repo>  --branch <branch>
+   uv run maverick report note --issue  --phase review \
+       --text "<one-sentence summary of what the reviewer flagged>"
+   # ... one `report note` per phase that produced work worth narrating
    ```
-7. **Fill in the per-phase narratives.** Same as the PASS path: read
-   `.maverick/reports/do-issue-solo-.md` and replace each
-   `PLACEHOLDER` prefix with a one-sentence narrative from session
-   memory. Write the file back. Generate the report **before**
-   releasing the claim so it lands even if release errors.
+7. **Generate the workflow report**. Do this **before** releasing the
+   claim so the report lands even if release errors:
+   ```bash
+   uv run maverick report generate <repo> 
+   ```
 8. Release the claim: `uv run maverick coord release <repo>  --reason ejected`.
 9. Do **not** destroy the worktree — the human may want to inspect it.
    Log the worktree path so the user can find it.

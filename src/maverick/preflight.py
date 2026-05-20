@@ -101,6 +101,16 @@ PREREQS: dict[str, Prereqs] = {
         tools=("uv",),
         runtime=("cli_version_compatible",),
     ),
+    "do-code": Prereqs(
+        flags=("init",),
+        tools=("uv",),
+        runtime=("cli_version_compatible",),
+    ),
+    "do-test": Prereqs(
+        flags=("init",),
+        tools=("uv",),
+        runtime=("cli_version_compatible",),
+    ),
 }
 
 

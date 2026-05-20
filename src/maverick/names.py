@@ -5,6 +5,7 @@
 # ---------------------------------------------------------------------------
 
 DO_ADOPT = "do-adopt"
+DO_CODE = "do-code"
 DO_CYBERSECURITY_REVIEW = "do-cybersecurity-review"
 DO_DOCS = "do-docs"
 DO_EPIC = "do-epic"
@@ -16,6 +17,7 @@ DO_MAVERICK_ALIGNMENT = "do-maverick-alignment"
 DO_PULLREQUEST_REVIEW = "do-pullrequest-review"
 DO_RECOMMEND = "do-recommend"
 DO_TECH_DOCS = "do-tech-docs"
+DO_TEST = "do-test"
 DO_UPSKILL = "do-upskill"
 MAV_BP_ACCESSIBILITY = "mav-bp-accessibility"
 MAV_BP_ALERTING = "mav-bp-alerting"
@@ -59,6 +61,7 @@ MAV_SYSTEMATIC_DEBUGGING = "mav-systematic-debugging"
 
 ALL_SKILL_NAMES = {
     DO_ADOPT,
+    DO_CODE,
     DO_CYBERSECURITY_REVIEW,
     DO_DOCS,
     DO_EPIC,
@@ -70,6 +73,7 @@ ALL_SKILL_NAMES = {
     DO_PULLREQUEST_REVIEW,
     DO_RECOMMEND,
     DO_TECH_DOCS,
+    DO_TEST,
     DO_UPSKILL,
     MAV_BP_ACCESSIBILITY,
     MAV_BP_ALERTING,
