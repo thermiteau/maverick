@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Workflow report schema (BREAKING).** The do-issue-solo timing report has been refactored to a concrete v1 JSON schema. The JSONL timeline is now the authoritative record; the rendered Markdown is a pure function of it. Each row carries `schema_version`, `action`, `start_ts`, `end_ts`, `instance_id`, `issue`, `maverick_version`, `maverick_skill`, `maverick_agent`, `phase`, and `outcome`. Phase and outcome are closed enums; unknown values are rejected at write time. Intervals (`agent-dispatch`, `skill-dispatch`, `question`) are opened with `maverick report begin` and closed with `maverick report end`; the CLI assigns all wall-clock timestamps via the begin/end pair, persisted via a transient sidecar.
+
+- **Workflow report Markdown format.** The rendered report is now titled `# Maverick workflow report`, opens with an Issue/PR/Skill/Outcome/Maverick metadata block, has a `## Total Time` section in raw seconds, a `## Phases` table with one row per `(phase, action)` (commit sub-rows still nested), and an `## Analysis` section combining the time-allocation slice table and a list of `note` rows emitted during the run. The preamble paragraph, trailing PR note, and `PLACEHOLDER` re-render instructions have been removed.
+
+- **No backwards compatibility.** Pre-schema JSONL files (from before this change) will not render with the new code — `maverick report verify` flags them as schema violations. There is no migrator; older runs are audit-only.
+
+### Added
+
+- **`maverick report run-start <skill>`** — emit a `run-start` row at workflow entry so subsequent rows inherit `maverick_skill`.
+- **`maverick report begin / end`** — open / close interval rows (agent-dispatch, skill-dispatch, question), pairing via a transient sidecar in `.maverick/reports/`.
+- **`maverick report note --text`** — write narrative directly to the JSONL during the run; the renderer surfaces these in the Analysis section.
+- **`maverick report verify <issue>`** — lint a timeline JSONL against the v1 schema and surface dangling open intervals.
+
 ## [3.3.2] - 2026-05-19
 
 ## [3.3.1] - 2026-05-18

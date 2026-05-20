@@ -10,3 +10,4 @@ maverick.egg-info/
 prototyping/
 node_modules/
 .ruff_cache/
+temp/

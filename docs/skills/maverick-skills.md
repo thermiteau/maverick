@@ -8,6 +8,11 @@ This page lists every skill shipped with the Maverick plugin, generated from the
 Scan a project for missing best-practice areas and implement the top recommendation for each gap. Currently covers linting and unit testing. Installs tools, writes configs, and adds CI steps.
 
 
+## do-code
+
+Implement a focused code change. Use this skill as the wrapper for any implementation work so the Maverick workflow report captures what was done and so the agent applies the project's coding standards before editing. Intended to be invoked once per task from inside a do-issue-* or do-epic phase, not standalone.
+
+
 ## do-cybersecurity-review
 
 Run a security audit of the project's existing codebase and write a findings report to docs/security-audit.md. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks. Run as part of do-init or on demand.
@@ -61,6 +66,11 @@ Scan a project for missing best-practice areas and recommend 1-3 technology opti
 ## do-tech-docs
 
 Technical documentation standards — document structure, writing style, file organisation, mermaid diagrams, and validation. Referenced by do-docs and tech-docs-writer.
+
+
+## do-test
+
+Write or update tests for a code change. Operates in two modes: `unit` (module-scoped, fast, deterministic) and `integration` (crosses module / service / database boundaries). Intended to be invoked once per testable change from inside a do-issue-* or do-epic phase. Mode is required.
 
 
 ## do-upskill
