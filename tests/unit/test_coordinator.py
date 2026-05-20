@@ -466,6 +466,39 @@ class TestTaskProgressCli:
         assert timeline_events[0]["issue"] == 42
         assert timeline_events[0]["issue"] == 42
 
+    def test_set_stamps_llm_on_phase_boundary_event(self, monkeypatch, tmp_path):
+        """The phase-boundary event must carry an `llm` field resolved via
+        `_current_llm` (#98). Without it, the renderer falls back to the
+        literal FALLBACK_LLM ("claude-code") whenever a phase contains no
+        agent-dispatch sibling to inherit from — surfaced as misleading
+        `claude-code` cells on the LLM column for phases like Phase 8
+        ("open PR" / "CI green") and the final Phase 10 ("complete")."""
+        import argparse
+
+        from maverick import coord_cli, gh_state, report_cli
+
+        monkeypatch.setattr(
+            coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
+        )
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "i-llm")
+        # Distinctive sentinel so the assertion proves the resolver ran,
+        # rather than coincidentally matching the baked-in default.
+        monkeypatch.setenv("MAVERICK_LLM", "test-sentinel-llm")
+        monkeypatch.setattr(gh_state, "upsert_marker", lambda *a, **k: 1)
+
+        timeline_events: list[dict] = []
+        monkeypatch.setattr(
+            report_cli, "append_event", lambda e, repo_root=None: timeline_events.append(e) or True
+        )
+
+        rc = coord_cli._task_progress_set(
+            argparse.Namespace(repo="me/r", issue=42, phase="pr_open")
+        )
+
+        assert rc == 0
+        assert len(timeline_events) == 1
+        assert timeline_events[0]["llm"] == "test-sentinel-llm"
+
     def test_read_returns_latest_marker_payload(self, monkeypatch):
         import argparse
 
