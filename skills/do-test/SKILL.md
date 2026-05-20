@@ -114,4 +114,4 @@ fixture lifecycle, isolation strategy, slowness budget).
   seeds, network availability outside the boundary under test, or
   ordering between independent tests.
 
-<!-- maverick-plugin-version: 3.3.2-dev -->
+<!-- maverick-plugin-version: 3.3.3 -->
