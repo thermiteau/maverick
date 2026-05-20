@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.3] - 2026-05-20
+
 ### Changed
 
 - **Workflow report schema (BREAKING).** The do-issue-solo timing report has been refactored to a concrete v1 JSON schema. The JSONL timeline is now the authoritative record; the rendered Markdown is a pure function of it. Each row carries `schema_version`, `action`, `start_ts`, `end_ts`, `instance_id`, `issue`, `maverick_version`, `maverick_skill`, `maverick_agent`, `phase`, and `outcome`. Phase and outcome are closed enums; unknown values are rejected at write time. Intervals (`agent-dispatch`, `skill-dispatch`, `question`) are opened with `maverick report begin` and closed with `maverick report end`; the CLI assigns all wall-clock timestamps via the begin/end pair, persisted via a transient sidecar.
@@ -190,7 +192,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v3.3.2...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v3.3.3...HEAD
+[3.3.3]: https://github.com/thermiteau/maverick/compare/v3.3.2...v3.3.3
 [3.3.2]: https://github.com/thermiteau/maverick/compare/v3.3.1...v3.3.2
 [3.3.1]: https://github.com/thermiteau/maverick/compare/v3.3.0...v3.3.1
 [3.3.0]: https://github.com/thermiteau/maverick/compare/v3.2.1...v3.3.0
