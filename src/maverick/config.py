@@ -172,6 +172,37 @@ _DEFAULT_BRANCH_PREFIXES: dict[str, str] = {
 }
 
 
+class LlmConfig(TypedDict):
+    """Per-project LLM model selection for Maverick workflows.
+
+    Three layers compose at resolution time (see
+    ``report_cli._current_llm``):
+
+    - ``default``: the model used when nothing more specific applies.
+    - ``agents``: per-agent overrides, keyed by agent name (e.g.
+      ``"agent-tech-docs-writer": "claude-sonnet-4-6"``). Applies to
+      rows whose ``maverick_agent`` matches the key.
+    - ``skills``: per-skill overrides, keyed by inner-skill name (e.g.
+      ``"do-test": "claude-sonnet-4-6"``). Applies to ``skill-dispatch``
+      rows whose ``dispatched_skill`` matches, AND to ``agent-dispatch``
+      rows where the agent was invoked under that skill.
+
+    The agent override takes priority over the skill override on
+    ``agent-dispatch`` rows that carry both. Anything not matched falls
+    through to ``default``.
+
+    Maverick ships baseline defaults (see ``CONFIG_DEFAULTS["llm"]``).
+    Repos override by writing an ``llm`` block in
+    ``.maverick/config.json``; the loader deep-merges ``agents`` and
+    ``skills`` so a repo can add or change a single entry without
+    re-stating the whole table.
+    """
+
+    default: str
+    agents: dict[str, str]
+    skills: dict[str, str]
+
+
 class HooksConfig(TypedDict):
     """Repo-specific scripts to run at maverick CLI lifecycle points.
 
@@ -229,6 +260,7 @@ class MaverickConfig(TypedDict):
     issue_lifecycle: IssueLifecycleConfig
     git_workflow: GitWorkflowConfig
     hooks: HooksConfig
+    llm: LlmConfig
 
 
 # Defaults applied when sections or keys are missing.
@@ -279,6 +311,31 @@ CONFIG_DEFAULTS: MaverickConfig = {
     },
     "hooks": {
         "worktree_post_create": "",
+    },
+    "llm": {
+        # Default model for any row not matched by a more specific
+        # rule. Opus is the safe default — reasoning-heavy work expects
+        # it. Repos that want to economise can drop this to Sonnet.
+        "default": "claude-opus-4-7",
+        # Per-agent overrides. Reasoning-heavy agents (issue-analyst,
+        # code-reviewer) fall through to `default` (Opus). Agents that
+        # mostly follow patterns are pinned to Sonnet so they're cheap
+        # by default; override per-repo in .maverick/config.json's
+        # `llm.agents` block.
+        "agents": {
+            "agent-github-issue-planner": "claude-sonnet-4-6",
+            "agent-tech-docs-writer": "claude-sonnet-4-6",
+            "agent-maverick": "claude-sonnet-4-6",
+            "agent-session-reviewer": "claude-sonnet-4-6",
+        },
+        # Per-skill overrides. Reasoning-heavy skills (do-code,
+        # do-cybersecurity-review) fall through to `default` (Opus).
+        # Pattern-following skills are pinned to Sonnet.
+        "skills": {
+            "do-test": "claude-sonnet-4-6",
+            "do-docs": "claude-sonnet-4-6",
+            "do-tech-docs": "claude-sonnet-4-6",
+        },
     },
 }
 
@@ -593,6 +650,50 @@ def read_hooks_config(path: Path | None = None) -> HooksConfig:
             if key in block and isinstance(block[key], str):
                 hooks[key] = block[key]  # type: ignore[literal-required]
     return hooks
+
+
+def _default_llm() -> LlmConfig:
+    """Return a fresh LlmConfig with Maverick's baked-in defaults."""
+    defaults = CONFIG_DEFAULTS["llm"]
+    return {
+        "default": defaults["default"],
+        "agents": dict(defaults["agents"]),
+        "skills": dict(defaults["skills"]),
+    }
+
+
+def read_llm_config(path: Path | None = None) -> LlmConfig:
+    """Read the llm block from the project config, deep-merged over defaults.
+
+    Returns Maverick's baked-in defaults if the file does not exist or has
+    no ``llm`` block. Per-repo overrides:
+
+    - ``default``: if set, replaces the Maverick default.
+    - ``agents``: deep-merged — repo entries override Maverick entries by
+      key, but Maverick entries the repo doesn't mention stay in effect.
+    - ``skills``: same deep-merge semantics.
+
+    To **fully replace** the agents or skills map (e.g. "this repo uses
+    only Opus, no per-agent overrides"), the repo writes an empty dict:
+    ``"agents": {}`` ― deep-merge over an empty user dict still applies
+    Maverick defaults, so use ``{"agent-foo": ""}`` to suppress a single
+    Maverick default, or write ``llm.default`` only and accept that the
+    Maverick per-agent map continues to apply.
+    """
+    target = path or project_config_path()
+    raw = _load_json(target)
+    block = raw.get("llm") if isinstance(raw, dict) else None
+    result = _default_llm()
+    if isinstance(block, dict):
+        if isinstance(block.get("default"), str) and block["default"]:
+            result["default"] = block["default"]
+        for sub in ("agents", "skills"):
+            user_map = block.get(sub)
+            if isinstance(user_map, dict):
+                for k, v in user_map.items():
+                    if isinstance(k, str) and isinstance(v, str):
+                        result[sub][k] = v  # type: ignore[literal-required]
+    return result
 
 
 def set_integration_flag(key: str, value: bool, path: Path | None = None) -> None:

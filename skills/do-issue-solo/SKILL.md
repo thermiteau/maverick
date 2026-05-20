@@ -112,11 +112,11 @@ implementation.
 
 1. Initialise the issue state file per the
    mav-github-issue-workflow skill.
-2. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase design --agent agent-issue-analyst`.
+2. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase design --agent agent-issue-analyst --skill-name mav-create-solution-design`.
 3. Dispatch the **agent-issue-analyst** agent with:
    - Issue number: ``
    - Mode: `solo`
-4. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase design --agent agent-issue-analyst --outcome success`.
+4. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase design --agent agent-issue-analyst --skill-name mav-create-solution-design --outcome success`.
    (Use `--outcome failure` if the agent returned an error rather than a design.)
 5. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `design`
@@ -133,11 +133,11 @@ implementation.
 
 Run Phase 3 as a subagent.
 
-1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase tasks --agent agent-github-issue-planner`.
+1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase tasks --agent agent-github-issue-planner --skill-name mav-create-tasks`.
 2. Dispatch the **agent-github-issue-planner** agent with:
    - Issue number: ``
    - Design comment ID from `.claude/issue-state.json`
-3. Close it: `uv run maverick report end agent-dispatch --issue  --phase tasks --agent agent-github-issue-planner --outcome success`.
+3. Close it: `uv run maverick report end agent-dispatch --issue  --phase tasks --agent agent-github-issue-planner --skill-name mav-create-tasks --outcome success`.
 4. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `tasks`
    - If < 5 tasks: `.claude/issue-state.json` has `comments.tasks` set to a comment ID
@@ -257,7 +257,7 @@ PR body as a follow-up note rather than being silently rewritten.
    fi
    ```
 
-3. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase docs --agent agent-tech-docs-writer`.
+3. Open the agent-dispatch interval. The agent operates under `do-docs` — pass it as `--skill-name` so the Maverick Skill column in the report names the inner skill: `uv run maverick report begin agent-dispatch --issue  --phase docs --agent agent-tech-docs-writer --skill-name do-docs`.
 4. Dispatch **agent-tech-docs-writer** with:
    - **Mode:** `update` (per `do-docs`)
    - **Diff:** `/tmp/diff.patch`
@@ -277,7 +277,7 @@ PR body as a follow-up note rather than being silently rewritten.
        human reviewer.
      - Returning "no doc changes required" is a valid outcome and must
        be reported explicitly (not silently inferred).
-5. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase docs --agent agent-tech-docs-writer --outcome success`.
+5. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase docs --agent agent-tech-docs-writer --skill-name do-docs --outcome success`.
 6. **Record the outcome** in the PR body or as a one-line PR comment so
    the gate is auditable:
    - If docs were updated or created: list the files changed.
@@ -380,11 +380,11 @@ The local **agent-code-reviewer** subagent's verdict is the
 review gate the auto-merge path trusts. This is a binary verdict against
 the open PR, not a local-diff advisory loop.
 
-1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase review --agent agent-code-reviewer`.
+1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue  --phase review --agent agent-code-reviewer --skill-name mav-bp-code-review`.
 2. Dispatch **agent-code-reviewer** with:
    - The PR URL
    - The issue body, design comment, and tasks list (so it has the spec)
-3. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase review --agent agent-code-reviewer --outcome <success|failure>` (use `failure` on FAIL verdict).
+3. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue  --phase review --agent agent-code-reviewer --skill-name mav-bp-code-review --outcome <success|failure>` (use `failure` on FAIL verdict).
 4. The agent returns exactly one of two verdicts:
    - **PASS** — proceed to Phase 10 (merge).
    - **FAIL** — proceed to Phase 11 (eject). Do not attempt to auto-fix.

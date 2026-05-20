@@ -159,6 +159,28 @@ class TestValidation:
         with pytest.raises(report_cli.SchemaError, match="instance_id"):
             report_cli._validate(e)
 
+    def test_skill_dispatch_requires_dispatched_skill(self):
+        with pytest.raises(report_cli.SchemaError, match="skill-dispatch.*dispatched_skill"):
+            report_cli._validate(_full_event(
+                action="skill-dispatch", phase="security",
+                end_ts="2026-05-19T10:01:00Z", outcome="success",
+            ))
+
+    def test_agent_dispatch_dispatched_skill_optional(self):
+        # An agent that operates under a skill: valid
+        report_cli._validate(_full_event(
+            action="agent-dispatch", phase="docs",
+            end_ts="2026-05-19T10:01:00Z", outcome="success",
+            maverick_agent="agent-tech-docs-writer",
+            dispatched_skill="do-docs",
+        ))
+        # An agent dispatched without an associated skill: also valid
+        report_cli._validate(_full_event(
+            action="agent-dispatch", phase="design",
+            end_ts="2026-05-19T10:01:00Z", outcome="success",
+            maverick_agent="agent-issue-analyst",
+        ))
+
 
 # ---------------------------------------------------------------------------
 # append_event + load_timeline
@@ -256,6 +278,224 @@ class TestBeginEnd:
         # pending file should be empty (or absent of this key)
         pending = report_cli._read_pending(report_cli.pending_path(321, repo_root=tmp_path))
         assert "agent-dispatch:agent-x" not in pending
+
+    def test_agent_dispatch_skill_name_persists_as_dispatched_skill(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """`--skill-name` on agent-dispatch lands on the row as `dispatched_skill`."""
+        self._setup(tmp_path, monkeypatch)
+        report_cli._report_begin(_parse(
+            "report", "begin", "agent-dispatch", "--issue", "321",
+            "--phase", "docs", "--agent", "agent-tech-docs-writer",
+            "--skill-name", "do-docs",
+        ))
+        report_cli._report_end(_parse(
+            "report", "end", "agent-dispatch", "--issue", "321",
+            "--agent", "agent-tech-docs-writer", "--outcome", "success",
+        ))
+        events = report_cli.load_timeline(report_cli.timeline_path(321, repo_root=tmp_path))
+        assert events[0]["dispatched_skill"] == "do-docs"
+        assert events[0]["maverick_agent"] == "agent-tech-docs-writer"
+
+    def test_skill_dispatch_skill_name_persists(self, tmp_path: Path, monkeypatch):
+        self._setup(tmp_path, monkeypatch)
+        report_cli._report_begin(_parse(
+            "report", "begin", "skill-dispatch", "--issue", "321",
+            "--phase", "security", "--skill-name", "do-cybersecurity-review",
+        ))
+        report_cli._report_end(_parse(
+            "report", "end", "skill-dispatch", "--issue", "321",
+            "--skill-name", "do-cybersecurity-review", "--outcome", "success",
+        ))
+        events = report_cli.load_timeline(report_cli.timeline_path(321, repo_root=tmp_path))
+        assert events[0]["dispatched_skill"] == "do-cybersecurity-review"
+        assert events[0].get("maverick_agent") is None
+
+
+class TestLLMResolution:
+    """The fallback chain in `_current_llm`:
+    explicit → env → config.agents → config.skills → config.default →
+    run-start lookup → FALLBACK_LLM.
+    """
+
+    def _setup(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "test1234ab")
+        monkeypatch.delenv("MAVERICK_LLM", raising=False)
+
+    def _patch_config(self, monkeypatch, **overrides):
+        """Replace `read_llm_config` with a fixture that returns the given values."""
+        from maverick import config
+
+        defaults = {
+            "default": overrides.get("default", "claude-opus-4-7"),
+            "agents": overrides.get("agents", {}),
+            "skills": overrides.get("skills", {}),
+        }
+        monkeypatch.setattr(config, "read_llm_config", lambda path=None: defaults)
+
+    def test_falls_back_to_literal_when_config_read_fails(
+        self, tmp_path: Path, monkeypatch
+    ):
+        self._setup(tmp_path, monkeypatch)
+        # Force the config loader to raise so the resolution falls through.
+        from maverick import config
+
+        def boom(path=None):
+            raise RuntimeError("config unreadable")
+
+        monkeypatch.setattr(config, "read_llm_config", boom)
+        assert report_cli._current_llm() == report_cli.FALLBACK_LLM
+        assert report_cli.FALLBACK_LLM == "claude-code"
+
+    def test_config_default_used_when_no_explicit_or_env(
+        self, tmp_path: Path, monkeypatch
+    ):
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(monkeypatch, default="claude-opus-4-7")
+        assert report_cli._current_llm() == "claude-opus-4-7"
+
+    def test_explicit_wins_over_env_and_config(
+        self, tmp_path: Path, monkeypatch
+    ):
+        self._setup(tmp_path, monkeypatch)
+        monkeypatch.setenv("MAVERICK_LLM", "claude-sonnet-4-6")
+        self._patch_config(monkeypatch, default="claude-opus-4-7")
+        assert report_cli._current_llm(explicit="claude-haiku-4-5") == "claude-haiku-4-5"
+
+    def test_env_wins_over_config(self, tmp_path: Path, monkeypatch):
+        self._setup(tmp_path, monkeypatch)
+        monkeypatch.setenv("MAVERICK_LLM", "claude-sonnet-4-6")
+        self._patch_config(monkeypatch, default="claude-opus-4-7")
+        assert report_cli._current_llm() == "claude-sonnet-4-6"
+
+    def test_config_per_agent_override(self, tmp_path: Path, monkeypatch):
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(
+            monkeypatch,
+            default="claude-opus-4-7",
+            agents={"agent-tech-docs-writer": "claude-sonnet-4-6"},
+        )
+        # Same agent as the per-agent rule → Sonnet
+        assert (
+            report_cli._current_llm(agent="agent-tech-docs-writer")
+            == "claude-sonnet-4-6"
+        )
+        # Different agent → falls through to default (Opus)
+        assert (
+            report_cli._current_llm(agent="agent-issue-analyst") == "claude-opus-4-7"
+        )
+
+    def test_config_per_skill_override(self, tmp_path: Path, monkeypatch):
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(
+            monkeypatch,
+            default="claude-opus-4-7",
+            skills={"do-test": "claude-sonnet-4-6"},
+        )
+        assert report_cli._current_llm(skill_name="do-test") == "claude-sonnet-4-6"
+        assert report_cli._current_llm(skill_name="do-code") == "claude-opus-4-7"
+
+    def test_per_agent_beats_per_skill_when_both_apply(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """agent-tech-docs-writer dispatched under do-docs: agent rule wins."""
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(
+            monkeypatch,
+            default="claude-opus-4-7",
+            agents={"agent-tech-docs-writer": "claude-haiku-4-5"},
+            skills={"do-docs": "claude-sonnet-4-6"},
+        )
+        assert (
+            report_cli._current_llm(
+                agent="agent-tech-docs-writer", skill_name="do-docs"
+            )
+            == "claude-haiku-4-5"
+        )
+
+    def test_run_start_inherited_when_no_other_source(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """If config raises and nothing else applies, fall back to the latest
+        run-start's llm before the literal."""
+        self._setup(tmp_path, monkeypatch)
+        from maverick import config
+
+        monkeypatch.setattr(
+            config, "read_llm_config", lambda path=None: (_ for _ in ()).throw(RuntimeError())
+        )
+        report_cli.append_event(
+            _full_event(action="run-start", phase="claimed",
+                        maverick_skill="do-issue-solo", llm="claude-opus-4-7"),
+            repo_root=tmp_path,
+        )
+        assert report_cli._current_llm(issue=321, repo_root=tmp_path) == "claude-opus-4-7"
+
+    def test_writer_auto_populates_llm_on_every_row(
+        self, tmp_path: Path, monkeypatch
+    ):
+        self._setup(tmp_path, monkeypatch)
+        monkeypatch.setenv("MAVERICK_LLM", "claude-opus-4-7")
+        report_cli._report_run_start(_parse(
+            "report", "run-start", "do-issue-solo", "--issue", "321"
+        ))
+        report_cli._report_commit(_parse(
+            "report", "commit", "--issue", "321", "--phase", "implement",
+            "--sha", "abc1234", "--subject", "feat: x"
+        ))
+        events = report_cli.load_timeline(report_cli.timeline_path(321, repo_root=tmp_path))
+        assert all(e.get("llm") == "claude-opus-4-7" for e in events)
+
+    def test_per_row_llm_override_for_subagent(self, tmp_path: Path, monkeypatch):
+        """Multi-model: orchestrator runs Opus, one subagent runs Sonnet."""
+        self._setup(tmp_path, monkeypatch)
+        monkeypatch.setenv("MAVERICK_LLM", "claude-opus-4-7")
+        report_cli._report_run_start(_parse(
+            "report", "run-start", "do-issue-solo", "--issue", "321"
+        ))
+        # Subagent dispatch with explicit override
+        report_cli._report_begin(_parse(
+            "report", "begin", "agent-dispatch", "--issue", "321",
+            "--phase", "design", "--agent", "agent-issue-analyst",
+            "--llm", "claude-sonnet-4-6",
+        ))
+        report_cli._report_end(_parse(
+            "report", "end", "agent-dispatch", "--issue", "321",
+            "--agent", "agent-issue-analyst", "--outcome", "success",
+            "--llm", "claude-sonnet-4-6",
+        ))
+        events = report_cli.load_timeline(report_cli.timeline_path(321, repo_root=tmp_path))
+        by_action = {e["action"]: e for e in events}
+        assert by_action["run-start"]["llm"] == "claude-opus-4-7"
+        assert by_action["agent-dispatch"]["llm"] == "claude-sonnet-4-6"
+
+    def test_render_surfaces_per_row_llm(self):
+        """Rendered table's LLM column reflects the row's llm, not a default."""
+        events = [
+            _full_event(action="run-start", phase="claimed",
+                        maverick_skill="do-issue-solo", llm="claude-opus-4-7",
+                        start_ts="2026-05-20T10:00:00Z"),
+            _full_event(action="agent-dispatch", phase="design",
+                        start_ts="2026-05-20T10:01:00Z",
+                        end_ts="2026-05-20T10:02:00Z",
+                        maverick_agent="agent-issue-analyst",
+                        outcome="success", llm="claude-sonnet-4-6"),
+            _full_event(action="phase-boundary", phase="design",
+                        start_ts="2026-05-20T10:02:00Z",
+                        llm="claude-opus-4-7"),
+            _full_event(action="phase-boundary", phase="complete",
+                        start_ts="2026-05-20T10:03:00Z",
+                        llm="claude-opus-4-7"),
+        ]
+        md = report_cli.render(issue=321, events=events)
+        # Metadata block lists both distinct LLMs
+        assert "- LLMs: claude-opus-4-7, claude-sonnet-4-6" in md
+        # The agent-dispatch row in the table shows Sonnet
+        design_row = next(ln for ln in md.splitlines()
+                          if "| Phase 1-2 |" in ln and "agent-dispatch" in ln)
+        assert "claude-sonnet-4-6" in design_row
+        assert "claude-opus-4-7" not in design_row
 
     def test_end_without_begin_writes_warning_no_row(self, tmp_path: Path, monkeypatch, capsys):
         self._setup(tmp_path, monkeypatch)
@@ -379,6 +619,7 @@ def _pass_path_events() -> list[dict[str, Any]]:
         start_ts="2026-05-19T10:13:00Z",
         end_ts="2026-05-19T10:14:30Z",
         maverick_agent="agent-tech-docs-writer",
+        dispatched_skill="do-docs",
         outcome="success",
     ))
     e.append(_full_event(
@@ -394,6 +635,7 @@ def _pass_path_events() -> list[dict[str, Any]]:
         action="skill-dispatch", phase="security",
         start_ts="2026-05-19T10:15:30Z",
         end_ts="2026-05-19T10:16:00Z",
+        dispatched_skill="do-cybersecurity-review",
         outcome="success",
     ))
     e.append(_full_event(
@@ -432,62 +674,71 @@ class TestRender:
         assert "## Total Time" in md
         assert "seconds: 1200" in md
 
-    def test_phase_rows_carry_action_and_agent_columns(self):
+    def test_phase_rows_carry_all_columns(self):
         md = report_cli.render(issue=321, events=_pass_path_events())
-        assert "| Maverick Action | Maverick Agent |" in md
-        # The docs phase has an agent-dispatch row carrying the agent name
-        docs_rows = [ln for ln in md.splitlines() if "Phase 6 — documentation review" in ln]
-        assert any("agent-dispatch" in r and "agent-tech-docs-writer" in r for r in docs_rows)
+        # Header includes the four-way identity split + timing
+        assert (
+            "| Phase | LLM | Maverick Root Skill | Maverick Sub Agent | "
+            "Maverick Skill | Start | End | Duration | Maverick Action |"
+        ) in md
+        # Phase 6 row carries the docs agent in Sub Agent, the inner
+        # skill in Maverick Skill, claude-code as LLM, do-issue-solo as
+        # the Root Skill.
+        docs_rows = [ln for ln in md.splitlines() if "| Phase 6 |" in ln]
+        agent_row = next(r for r in docs_rows if "agent-dispatch" in r)
+        assert "agent-tech-docs-writer" in agent_row
+        assert "do-docs" in agent_row
+        assert "claude-code" in agent_row
+        assert "do-issue-solo" in agent_row
 
-    def test_one_row_per_action_within_a_phase(self):
-        """Phase 6 has BOTH a docs agent-dispatch and (in this fixture) no skill-dispatch.
-        The implement phase has commit sub-rows but no action row of its own
-        (no agent or skill ran inside it).
-        """
+    def test_phase_boundary_row_only_when_no_dispatch(self):
         md = report_cli.render(issue=321, events=_pass_path_events())
         lines = md.splitlines()
-        impl_rows = [ln for ln in lines if "Phase 5 — execute tasks" in ln]
-        # No agent ran in implement, so the phase row is a phase-boundary
-        assert any("phase-boundary" in r for r in impl_rows)
+        # Phase 5 in this fixture has no dispatches (only commits) — it
+        # gets a phase-boundary row plus commit rows.
+        impl_rows = [ln for ln in lines if "| Phase 5 |" in ln]
+        assert any("phase-boundary — execute tasks" in r for r in impl_rows)
+        # Phase 6 has an agent-dispatch — no separate phase-boundary row.
+        docs_rows = [ln for ln in lines if "| Phase 6 |" in ln]
+        assert not any("phase-boundary" in r for r in docs_rows)
 
-    def test_commit_subrows_render_under_their_phase(self):
+    def test_commit_rows_render_under_their_phase(self):
         md = report_cli.render(issue=321, events=_pass_path_events())
         lines = md.splitlines()
-        impl_idx = next(i for i, ln in enumerate(lines) if "Phase 5 — execute tasks" in ln)
-        # The implement commit sub-row appears soon after the phase row
-        window = "\n".join(lines[impl_idx:impl_idx + 4])
-        assert "↳ commit" in window
-        assert "abc1234" in window
-        assert "feat: a thing" in window
+        # Phase 5's commit shows the sha + subject in the Action column,
+        # with `—` placeholders in Start/Duration (commit is atomic).
+        impl_rows = [ln for ln in lines if "| Phase 5 |" in ln]
+        commit_rows = [r for r in impl_rows if "commit abc1234" in r]
+        assert commit_rows, f"no commit row found in: {impl_rows}"
+        assert "feat: a thing" in commit_rows[0]
 
     def test_docs_commit_lands_under_docs_phase(self):
         md = report_cli.render(issue=321, events=_pass_path_events())
         lines = md.splitlines()
-        docs_idx = next(i for i, ln in enumerate(lines) if "Phase 6 — documentation review" in ln)
-        next_phase_idx = next(
-            i for i, ln in enumerate(lines[docs_idx + 1:], start=docs_idx + 1)
-            if "Phase 7" in ln
-        )
-        window = "\n".join(lines[docs_idx:next_phase_idx])
-        assert "def4567" in window
-        assert "docs: that thing" in window
+        docs_rows = [ln for ln in lines if "| Phase 6 |" in ln]
+        assert any("commit def4567" in r and "docs: that thing" in r for r in docs_rows)
 
-    def test_notes_render_in_analysis_section(self):
+    def test_notes_render_in_analysis_section_with_split_phase_label(self):
         md = report_cli.render(issue=321, events=_pass_path_events())
         assert "## Analysis" in md
-        assert "pushed in one shot" in md
+        # Notes section labels each note with `Phase N — <descriptor>`
+        # (the combined label), reconstructed from the split dicts.
+        assert "- Phase 5 — execute tasks: pushed in one shot after vitest green" in md
 
     def test_durations_in_seconds(self):
         """Phase rows show whole-second durations, no `1m 30s` form."""
         md = report_cli.render(issue=321, events=_pass_path_events())
-        # The design row's agent-dispatch was 3 minutes = 180 seconds
+        # The design row's agent-dispatch was 3 minutes = 180 seconds.
+        # Phase column is just "Phase 1-2" (descriptor moved to Action).
         design_lines = [
             ln for ln in md.splitlines()
-            if "Phase 1-2 — understand + design" in ln and "agent-dispatch" in ln
+            if "| Phase 1-2 |" in ln and "agent-dispatch" in ln
         ]
         assert design_lines
-        # Last column is duration in seconds — should be the number 180
+        # Duration column carries the integer 180
         assert " 180 |" in design_lines[0]
+        # Descriptor sits in the Action column
+        assert "agent-dispatch — understand + design" in design_lines[0]
 
     def test_eject_path_renders_fail(self):
         events = _pass_path_events()

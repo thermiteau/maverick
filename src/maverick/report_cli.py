@@ -68,6 +68,7 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypedDict
@@ -110,22 +111,54 @@ OUTCOMES: frozenset[str] = frozenset({"success", "failure", "blocked", "skipped"
 
 PHASES: frozenset[str] = frozenset(TASK_PROGRESS_PHASES)
 
-# Display labels for the rendered Phases table.
-PHASE_LABELS: dict[str, str] = {
-    "claimed": "Phase 0 — coordination",
-    "design": "Phase 1-2 — understand + design",
-    "tasks": "Phase 3 — create tasks",
-    "branch": "Phase 4 — worktree + branch",
-    "implement": "Phase 5 — execute tasks",
-    "docs": "Phase 6 — documentation review",
-    "security": "Phase 7 — cybersecurity review",
-    "pr_open": "Phase 8 — open PR",
-    "ci_green": "Phase 8 — CI green",
-    "review": "Phase 9 — code review",
-    "merged": "Phase 10 — merged",
-    "complete": "Phase 10 — complete",
-    "ejected": "Phase 11 — ejected",
+# Display split for the rendered Phases table.
+# `PHASE_NUMBER` is the value of the table's `Phase` column.
+# `PHASE_DESCRIPTOR` becomes the `<action> — <descriptor>` suffix in the
+# Maverick Action column. Splitting the two lets us repeat the phase
+# number across multiple rows for the same phase (one per action) without
+# duplicating the descriptor on every row.
+PHASE_NUMBER: dict[str, str] = {
+    "claimed": "Phase 0",
+    "design": "Phase 1-2",
+    "tasks": "Phase 3",
+    "branch": "Phase 4",
+    "implement": "Phase 5",
+    "docs": "Phase 6",
+    "security": "Phase 7",
+    "pr_open": "Phase 8",
+    "ci_green": "Phase 8",
+    "review": "Phase 9",
+    "merged": "Phase 10",
+    "complete": "Phase 10",
+    "ejected": "Phase 11",
 }
+
+PHASE_DESCRIPTOR: dict[str, str] = {
+    "claimed": "coordination",
+    "design": "understand + design",
+    "tasks": "create tasks",
+    "branch": "worktree + branch",
+    "implement": "execute tasks",
+    "docs": "documentation review",
+    "security": "cybersecurity review",
+    "pr_open": "open PR",
+    "ci_green": "CI green",
+    "review": "code review",
+    "merged": "merged",
+    "complete": "complete",
+    "ejected": "ejected",
+}
+
+# Kept for backwards compatibility with external callers that imported the
+# combined labels. Internal render code uses the split dicts above.
+PHASE_LABELS: dict[str, str] = {
+    p: f"{PHASE_NUMBER[p]} — {PHASE_DESCRIPTOR[p]}" for p in PHASE_NUMBER
+}
+
+# Last-resort label used when no explicit `--llm`, no `MAVERICK_LLM` env
+# var, and no prior run-start row carries a value. Generic on purpose:
+# we know it's some Claude Code session but not which model.
+FALLBACK_LLM: str = "claude-code"
 
 
 class _RequiredEvent(TypedDict):
@@ -145,11 +178,26 @@ class Event(_RequiredEvent, total=False):
 
     Inherits the required fields from `_RequiredEvent` and adds optional
     payload that is meaningful only for some actions.
+
+    `maverick_skill` is the **outer** /do-* skill driving the whole run
+    (inherited from the `run-start` row on every event).
+    `dispatched_skill` is the **inner** skill this row dispatches —
+    required on `skill-dispatch` rows, optional on `agent-dispatch` rows
+    when the agent is invoked under a named skill (e.g. agent-tech-docs-writer
+    operating under do-docs).
+    `llm` is the model identifier running this row's work. It is
+    populated on every row at write time via the fallback chain in
+    `_current_llm()` and can be overridden per-row with `--llm` so
+    multi-model runs (e.g. Opus orchestrator + Sonnet subagents) render
+    correctly. Optional in the schema so older v1 rows that lack it
+    still load.
     """
 
     end_ts: str | None
     maverick_skill: str | None
     maverick_agent: str | None
+    dispatched_skill: str | None
+    llm: str | None
     outcome: str | None
     notes: str | None
     sha: str | None
@@ -300,6 +348,9 @@ def _validate(event: dict[str, Any]) -> None:
         if not event.get("maverick_skill"):
             raise SchemaError("run-start action requires maverick_skill")
 
+    if action == "skill-dispatch" and not event.get("dispatched_skill"):
+        raise SchemaError("skill-dispatch action requires dispatched_skill")
+
 
 # ---------------------------------------------------------------------------
 # Write path
@@ -412,6 +463,64 @@ def _current_skill(issue: int, repo_root: Path | None = None) -> str | None:
     return None
 
 
+def _current_llm(
+    explicit: str | None = None,
+    issue: int | None = None,
+    repo_root: Path | None = None,
+    agent: str | None = None,
+    skill_name: str | None = None,
+) -> str:
+    """Resolve the LLM identifier for a row being written.
+
+    Resolution chain, in priority order:
+    1. Explicit ``--llm`` on the CLI call.
+    2. ``MAVERICK_LLM`` env var (workflow-wide override).
+    3. Per-agent entry in the project ``llm.agents`` config block.
+    4. Per-skill entry in the project ``llm.skills`` config block.
+    5. Project ``llm.default``.
+    6. Latest ``run-start`` row's ``llm`` for this issue (inherits across
+       CLI invocations even if the orchestrator never opened the project
+       config — useful for one-off runs).
+    7. The ``FALLBACK_LLM`` literal.
+
+    The project config (3-5) is deep-merged over Maverick's built-in
+    defaults at load time, so reasonable values are always present even
+    without an ``llm`` block in ``.maverick/config.json``.
+    """
+    import os as _os
+
+    if explicit:
+        return explicit
+    env_val = _os.environ.get("MAVERICK_LLM")
+    if env_val:
+        return env_val
+
+    try:
+        from maverick.config import read_llm_config
+        llm_cfg = read_llm_config()
+    except Exception:  # noqa: BLE001 — best-effort; fall through on any error
+        llm_cfg = None
+
+    if llm_cfg is not None:
+        if agent and agent in llm_cfg["agents"]:
+            return llm_cfg["agents"][agent]
+        if skill_name and skill_name in llm_cfg["skills"]:
+            return llm_cfg["skills"][skill_name]
+        if llm_cfg["default"]:
+            return llm_cfg["default"]
+
+    if issue is not None:
+        try:
+            events = load_timeline(timeline_path(issue, repo_root=repo_root))
+        except Exception:  # noqa: BLE001 — best-effort fallback lookup
+            events = []
+        for e in reversed(events):
+            run_llm = e.get("llm")
+            if e.get("action") == "run-start" and run_llm:
+                return str(run_llm)
+    return FALLBACK_LLM
+
+
 # ---------------------------------------------------------------------------
 # Renderer
 # ---------------------------------------------------------------------------
@@ -470,11 +579,16 @@ def render(issue: int, events: Sequence[Event], pr: dict[str, Any] | None = None
 
     Pure function. The CLI handler loads `events` and optionally fetches
     `pr` metadata; this function is fully deterministic given its inputs.
+
+    The Phases table emits one row per (phase, action) tuple in wall-clock
+    order within each phase. A `phase-boundary` row appears only when no
+    agent/skill dispatch fired in that phase. Commit rows show only the
+    end timestamp (commits are atomic events).
     """
     if not events:
         return f"# Maverick workflow report\n\nNo timeline events recorded for issue #{issue}.\n"
 
-    skill = _current_skill_from_events(events) or "(unknown)"
+    root_skill = _current_skill_from_events(events) or "(unknown)"
     version = events[-1].get("maverick_version", "?")
     instances: list[str] = []
     seen: set[str] = set()
@@ -501,9 +615,15 @@ def render(issue: int, events: Sequence[Event], pr: dict[str, Any] | None = None
             if merged_at:
                 line += f" (merged {merged_at})"
             out.append(line)
-    out.append(f"- Skill: {skill}")
+    out.append(f"- Skill: {root_skill}")
     out.append(f"- Outcome: {_outcome_label(events)}")
     out.append(f"- Maverick: {version}")
+    llms = _distinct_llms(events)
+    if llms:
+        if len(llms) == 1:
+            out.append(f"- LLM: {llms[0]}")
+        else:
+            out.append(f"- LLMs: {', '.join(llms)}")
     if instances:
         if len(instances) == 1:
             out.append(f"- Instance: {instances[0]}")
@@ -521,32 +641,21 @@ def render(issue: int, events: Sequence[Event], pr: dict[str, Any] | None = None
 
     out.append("## Phases")
     out.append("")
-    out.append("| Phase | Maverick Action | Maverick Agent | Start | End | Duration |")
-    out.append("|---|---|---|---|---|---|")
+    out.append(
+        "| Phase | LLM | Maverick Root Skill | Maverick Sub Agent | "
+        "Maverick Skill | Start | End | Duration | Maverick Action |"
+    )
+    out.append("|---|---|---|---|---|---|---|---|---|")
 
-    intervals_by_phase = _intervals_by_phase(events, phases)
-    commits_by_phase = _commits_by_phase(events, phases)
-
-    for phase, s, e in phases:
-        label = PHASE_LABELS.get(phase, phase)
-        rows_for_phase = intervals_by_phase.get(phase, [])
-        if rows_for_phase:
-            for action, agent, start_ts, end_ts in rows_for_phase:
-                out.append(
-                    f"| {label} | {action} | {agent or '—'} | "
-                    f"{_fmt_ts(start_ts)} | {_fmt_ts(end_ts)} | "
-                    f"{_seconds_between(start_ts, end_ts)} |"
-                )
-        else:
+    for phase, p_start, p_end in phases:
+        rows = _rows_for_phase(events, phase, p_start, p_end)
+        for row in rows:
+            phase_number = PHASE_NUMBER.get(phase, phase)
             out.append(
-                f"| {label} | phase-boundary | — | "
-                f"{_fmt_ts(s)} | {_fmt_ts(e)} | {_seconds_between(s, e)} |"
-            )
-        for sha, ts, subject in commits_by_phase.get(phase, []):
-            short_sha = sha[:7]
-            sub = subject.replace("|", "\\|")
-            out.append(
-                f"| ↳ commit | `{short_sha}` — {sub} | — | — | {_fmt_ts(ts)} | — |"
+                f"| {phase_number} | {row.llm} | {root_skill} | "
+                f"{row.sub_agent} | {row.skill} | "
+                f"{row.start} | {row.end} | {row.duration} | "
+                f"{row.action} |"
             )
 
     out.append("")
@@ -562,9 +671,112 @@ def render(issue: int, events: Sequence[Event], pr: dict[str, Any] | None = None
         for n in notes:
             phase = n.get("phase", "")
             text = n.get("notes", "") or ""
-            out.append(f"- {PHASE_LABELS.get(phase, phase)}: {text}")
+            label = (
+                f"{PHASE_NUMBER[phase]} — {PHASE_DESCRIPTOR[phase]}"
+                if phase in PHASE_NUMBER
+                else phase
+            )
+            out.append(f"- {label}: {text}")
     out.append("")
     return "\n".join(out)
+
+
+@dataclass(frozen=True)
+class _PhaseRow:
+    """One rendered row of the Phases table."""
+
+    llm: str
+    sub_agent: str
+    skill: str
+    start: str
+    end: str
+    duration: str
+    action: str
+    sort_key: str  # the ts to order this row by within the phase
+
+
+def _rows_for_phase(
+    events: Sequence[Event],
+    phase: str,
+    phase_start: str,
+    phase_end: str,
+) -> list[_PhaseRow]:
+    """Build the in-order list of rendered rows for a single phase.
+
+    Rules:
+    - For each interval event with `phase == this phase`, emit a row
+      with both timestamps + duration.
+    - For each commit event with `phase == this phase`, emit a row with
+      only `end_ts` (commits are atomic).
+    - If no **interval dispatch** fired in this phase, also emit a
+      `phase-boundary` row spanning the whole phase. Commits alone
+      don't suppress the boundary row — they describe what landed, not
+      what was being done.
+    - Sort by wall-clock so dispatches, commits, and boundary appear in
+      the order they actually happened.
+    """
+    descriptor = PHASE_DESCRIPTOR.get(phase, phase)
+    rows: list[_PhaseRow] = []
+    has_dispatch = False
+    for e in events:
+        if e.get("phase") != phase:
+            continue
+        action = e.get("action")
+        if action in INTERVAL_ACTIONS:
+            has_dispatch = True
+            start_ts = e["start_ts"]
+            end_ts = e.get("end_ts") or start_ts
+            rows.append(
+                _PhaseRow(
+                    llm=e.get("llm") or FALLBACK_LLM,
+                    sub_agent=e.get("maverick_agent") or "—",
+                    skill=e.get("dispatched_skill") or "—",
+                    start=_fmt_ts(start_ts),
+                    end=_fmt_ts(end_ts),
+                    duration=str(_seconds_between(start_ts, end_ts)),
+                    action=f"{action} — {descriptor}",
+                    sort_key=start_ts,
+                )
+            )
+        elif action == "commit":
+            ts = e["start_ts"]
+            sha = (e.get("sha") or "")[:7]
+            subject = (e.get("subject") or "").replace("|", "\\|")
+            rows.append(
+                _PhaseRow(
+                    llm=e.get("llm") or FALLBACK_LLM,
+                    sub_agent="—",
+                    skill="—",
+                    start="—",
+                    end=_fmt_ts(ts),
+                    duration="—",
+                    action=f"commit {sha} — {subject}",
+                    sort_key=ts,
+                )
+            )
+    if not has_dispatch:
+        # Choose the llm for the synthesized phase-boundary row: prefer
+        # the latest event in this phase that carries an llm; fall back
+        # to FALLBACK_LLM.
+        boundary_llm = FALLBACK_LLM
+        for e in events:
+            row_llm = e.get("llm")
+            if e.get("phase") == phase and row_llm:
+                boundary_llm = str(row_llm)
+        rows.append(
+            _PhaseRow(
+                llm=boundary_llm,
+                sub_agent="—",
+                skill="—",
+                start=_fmt_ts(phase_start),
+                end=_fmt_ts(phase_end),
+                duration=str(_seconds_between(phase_start, phase_end)),
+                action=f"phase-boundary — {descriptor}",
+                sort_key=phase_start,
+            )
+        )
+    rows.sort(key=lambda r: r.sort_key)
+    return rows
 
 
 def _current_skill_from_events(events: Sequence[Event]) -> str | None:
@@ -574,46 +786,29 @@ def _current_skill_from_events(events: Sequence[Event]) -> str | None:
     return None
 
 
-def _intervals_by_phase(
-    events: Sequence[Event],
-    phases: Sequence[tuple[str, str, str]],
-) -> dict[str, list[tuple[str, str | None, str, str]]]:
-    """Bucket interval events by their owning phase (matched on start_ts).
-
-    Returns {phase: [(action, agent, start_ts, end_ts), ...]}.
-    """
-    buckets: dict[str, list[tuple[str, str | None, str, str]]] = {}
+def _distinct_llms(events: Sequence[Event]) -> list[str]:
+    """Distinct llm values in first-seen order. Empty list if none recorded."""
+    seen: set[str] = set()
+    out: list[str] = []
     for e in events:
-        action = e.get("action")
-        if action not in INTERVAL_ACTIONS:
-            continue
-        start_ts = e["start_ts"]
-        end_ts = e.get("end_ts") or start_ts
-        phase = _phase_for_ts(start_ts, phases) or e.get("phase", "")
-        agent = e.get("maverick_agent")
-        buckets.setdefault(phase, []).append((str(action), agent, start_ts, end_ts))
-    return buckets
-
-
-def _commits_by_phase(
-    events: Sequence[Event],
-    phases: Sequence[tuple[str, str, str]],
-) -> dict[str, list[tuple[str, str, str]]]:
-    """Bucket commit events by their owning phase. Returns {phase: [(sha, ts, subject), ...]}."""
-    buckets: dict[str, list[tuple[str, str, str]]] = {}
-    for e in events:
-        if e.get("action") != "commit":
-            continue
-        ts = e["start_ts"]
-        phase = _phase_for_ts(ts, phases) or e.get("phase", "")
-        buckets.setdefault(phase, []).append(
-            (str(e.get("sha", "")), ts, str(e.get("subject", "")))
-        )
-    return buckets
+        llm = e.get("llm")
+        if llm and llm not in seen:
+            seen.add(llm)
+            out.append(llm)
+    return out
 
 
 def _append_analysis_table(out: list[str], events: Sequence[Event], total: int) -> None:
-    """The 'where the time went' summary table, in seconds."""
+    """The 'where the time went' summary table, in seconds.
+
+    The slices are mutually exclusive by construction:
+    - Agent dispatches / Skill dispatches / User decision points are the
+      summed durations of those interval rows.
+    - Implementation = wall-clock inside the implement phase that is NOT
+      covered by any dispatch (so do-code / do-test wrapping moves time
+      from this slice into Skill dispatches rather than double-counting).
+    - Coordination = total minus everything above.
+    """
     agent_total = sum(
         _seconds_between(e["start_ts"], e.get("end_ts") or e["start_ts"])
         for e in events
@@ -629,38 +824,46 @@ def _append_analysis_table(out: list[str], events: Sequence[Event], total: int) 
         for e in events
         if e.get("action") == "question"
     )
-    commit_total = _implementation_seconds(events)
-    coord_total = max(0, total - agent_total - skill_total - question_total - commit_total)
+    impl_total = _unwrapped_implementation_seconds(events)
+    coord_total = max(0, total - agent_total - skill_total - question_total - impl_total)
 
     out.append("| Slice | Seconds |")
     out.append("|---|---|")
     out.append(f"| Agent dispatches | {agent_total} |")
     out.append(f"| Skill dispatches | {skill_total} |")
-    out.append(f"| Implementation (commit-to-commit inside Phase 5) | {commit_total} |")
+    out.append(f"| Implementation (unwrapped, inside Phase 5) | {impl_total} |")
     out.append(f"| User decision points | {question_total} |")
     out.append(f"| Coordination / CLI / checkpoint overhead | {coord_total} |")
 
 
-def _implementation_seconds(events: Sequence[Event]) -> int:
-    """Sum of commit-to-commit deltas inside the implement phase."""
+def _unwrapped_implementation_seconds(events: Sequence[Event]) -> int:
+    """Wall-clock inside the implement phase not covered by a dispatch.
+
+    With do-code / do-test wrapping in Phase 5, most implementation time
+    sits inside skill-dispatch intervals — that work is already counted
+    in `Skill dispatches`. This slice surfaces the *uninstrumented* time
+    inside Phase 5 (e.g. the gap between a `do-code` close and the next
+    `do-code` open, or between the last `do-code` close and the phase's
+    end). Computed as the implement phase's wall-clock minus the sum of
+    dispatch durations that fall inside it.
+    """
     phases = _phase_intervals(events)
     implement = next((p for p in phases if p[0] == "implement"), None)
     if not implement:
         return 0
     _, impl_start, impl_end = implement
-    commits = sorted(
-        (e["start_ts"] for e in events if e.get("action") == "commit"),
-        key=lambda ts: ts,
-    )
-    impl_commits = [ts for ts in commits if impl_start <= ts <= impl_end]
-    if not impl_commits:
-        return 0
-    total = 0
-    prev = impl_start
-    for ts in impl_commits:
-        total += _seconds_between(prev, ts)
-        prev = ts
-    return total
+    impl_total = _seconds_between(impl_start, impl_end)
+    dispatched = 0
+    for e in events:
+        if e.get("action") not in INTERVAL_ACTIONS:
+            continue
+        if e.get("phase") != "implement":
+            continue
+        end_ts = e.get("end_ts")
+        if not end_ts:
+            continue
+        dispatched += _seconds_between(e["start_ts"], end_ts)
+    return max(0, impl_total - dispatched)
 
 
 # ---------------------------------------------------------------------------
@@ -702,8 +905,20 @@ def _fetch_pr(repo: str, issue: int) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-def _build_base(args: argparse.Namespace, action: str) -> dict[str, Any]:
-    """Shared scaffold for every write — system fields, schema, action."""
+def _build_base(
+    args: argparse.Namespace,
+    action: str,
+    *,
+    agent: str | None = None,
+    skill_name: str | None = None,
+) -> dict[str, Any]:
+    """Shared scaffold for every write — system fields, schema, action.
+
+    ``agent`` and ``skill_name`` give context to the LLM resolver so that
+    per-agent / per-skill config overrides apply. They default to None
+    for atomic events that don't have an agent/skill identity (run-start,
+    phase-boundary, commit, note, resume).
+    """
     base = _system_fields(args.issue)
     base["action"] = action
     base["start_ts"] = _now_iso()
@@ -712,6 +927,12 @@ def _build_base(args: argparse.Namespace, action: str) -> dict[str, Any]:
         skill = _current_skill(args.issue)
     if skill:
         base["maverick_skill"] = skill
+    base["llm"] = _current_llm(
+        explicit=getattr(args, "llm", None),
+        issue=args.issue,
+        agent=agent,
+        skill_name=skill_name,
+    )
     return base
 
 
@@ -765,13 +986,17 @@ def _report_end(args: argparse.Namespace) -> int:
         return 1
     _write_pending(pending_path(args.issue), pending)
 
-    event = _build_base(args, args.action)
+    agent_ctx = args.agent or open_iv.get("agent")
+    inner_skill = args.skill_name or open_iv.get("skill_name")
+    event = _build_base(args, args.action, agent=agent_ctx, skill_name=inner_skill)
     event["start_ts"] = open_iv["start_ts"]
     event["end_ts"] = _now_iso()
     event["phase"] = args.phase or open_iv.get("phase") or ""
     event["outcome"] = args.outcome
-    if args.agent or open_iv.get("agent"):
-        event["maverick_agent"] = args.agent or open_iv.get("agent")
+    if agent_ctx:
+        event["maverick_agent"] = agent_ctx
+    if inner_skill:
+        event["dispatched_skill"] = inner_skill
     if args.notes:
         event["notes"] = args.notes
     append_event(event)
@@ -878,6 +1103,17 @@ def _add_phase(p: argparse.ArgumentParser, required: bool = True) -> None:
     )
 
 
+def _add_llm(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--llm",
+        help=(
+            "LLM identifier for this row (e.g. claude-opus-4-7). Optional; "
+            "falls back to MAVERICK_LLM env var, then to the latest run-start's "
+            "llm, then to the literal 'claude-code'."
+        ),
+    )
+
+
 def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     r = subparsers.add_parser(
         "report",
@@ -890,12 +1126,14 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("skill", help="The /do-* skill driving this run (e.g. do-issue-solo)")
     _add_issue(p)
     _add_phase(p, required=False)
+    _add_llm(p)
     p.set_defaults(_handler=_report_run_start)
 
     # phase
     p = r_sub.add_parser("phase", help="Mark the end of a phase (phase-boundary event)")
     _add_phase(p)
     _add_issue(p)
+    _add_llm(p)
     p.set_defaults(_handler=_report_phase)
 
     # begin
@@ -906,6 +1144,7 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--agent", help="Agent name (for agent-dispatch)")
     p.add_argument("--skill-name", dest="skill_name", help="Skill name (for skill-dispatch)")
     p.add_argument("--topic", help="Question topic (for question)")
+    _add_llm(p)
     p.set_defaults(_handler=_report_begin)
 
     # end
@@ -918,6 +1157,7 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--skill-name", dest="skill_name")
     p.add_argument("--topic")
     p.add_argument("--notes")
+    _add_llm(p)
     p.set_defaults(_handler=_report_end)
 
     # commit
@@ -926,12 +1166,14 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     _add_phase(p)
     p.add_argument("--sha", required=True)
     p.add_argument("--subject", required=True)
+    _add_llm(p)
     p.set_defaults(_handler=_report_commit)
 
     # note
     p = r_sub.add_parser("note", help="Record narrative for the report's Analysis section")
     _add_issue(p)
     _add_phase(p)
+    _add_llm(p)
     p.add_argument("--text", required=True)
     p.set_defaults(_handler=_report_note)
 
@@ -939,6 +1181,7 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p = r_sub.add_parser("resume", help="Mark a workflow resume after a crash")
     _add_issue(p)
     _add_phase(p)
+    _add_llm(p)
     p.set_defaults(_handler=_report_resume)
 
     # generate
