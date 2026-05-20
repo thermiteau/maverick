@@ -544,6 +544,11 @@ class TestAtomicCommands:
         assert events[0]["maverick_skill"] == "do-issue-solo"
         assert events[0]["action"] == "run-start"
 
+    def test_fmt_ts_includes_date(self):
+        # _fmt_ts renders the date so cross-day rows are obvious instead of
+        # looking like time running backwards.
+        assert report_cli._fmt_ts("2026-01-01T08:17:35Z") == "2026-01-01 08:17:35"
+
     def test_commit_writes_sha_and_subject(self, tmp_path: Path, monkeypatch):
         self._setup(tmp_path, monkeypatch)
         report_cli._report_commit(_parse(

@@ -109,4 +109,4 @@ Follow the mav-git-workflow skill for commit conventions. Do not push — the us
 - **No branch creation** — commit directly to the current branch. The user is expected to be on an appropriate branch.
 - **One commit per topic** — separate commits make it easy to review or revert individual adoptions
 
-<!-- maverick-plugin-version: 3.3.2-dev -->
+<!-- maverick-plugin-version: 3.3.3-dev -->

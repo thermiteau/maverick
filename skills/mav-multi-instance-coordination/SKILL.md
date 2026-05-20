@@ -167,4 +167,4 @@ instance still holds.
   entire epic when you only intend to work on one wave blocks other
   instances unnecessarily.
 
-<!-- maverick-plugin-version: 3.3.2-dev -->
+<!-- maverick-plugin-version: 3.3.3-dev -->
