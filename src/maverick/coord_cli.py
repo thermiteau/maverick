@@ -38,6 +38,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from maverick import (
     coordinator,
@@ -265,17 +266,20 @@ def _task_progress_set(args: argparse.Namespace) -> int:
     try:
         from maverick import report_cli
 
-        report_cli.append_event(
-            {
-                "schema_version": report_cli.SCHEMA_VERSION,
-                "action": "phase-boundary",
-                "start_ts": payload["updated_at"],
-                "instance_id": payload["instance_id"],
-                "issue": args.issue,
-                "maverick_version": report_cli._get_version(),
-                "phase": args.phase,
-            }
-        )
+        event: dict[str, Any] = {
+            "schema_version": report_cli.SCHEMA_VERSION,
+            "action": "phase-boundary",
+            "start_ts": payload["updated_at"],
+            "instance_id": payload["instance_id"],
+            "issue": args.issue,
+            "maverick_version": report_cli._get_version(),
+            "phase": args.phase,
+            "llm": report_cli._current_llm(issue=args.issue),
+        }
+        skill = report_cli._current_skill(args.issue)
+        if skill:
+            event["maverick_skill"] = skill
+        report_cli.append_event(event)
     except Exception as e:  # noqa: BLE001 — best-effort
         print(f"warning: timeline append failed: {e}", file=sys.stderr)
     _json_print(payload)
