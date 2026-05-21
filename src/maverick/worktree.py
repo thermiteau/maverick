@@ -12,7 +12,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import config
+from . import config, git_workflow
 
 WORKTREE_ROOT = Path(".maverick/worktrees")
 
@@ -56,10 +56,13 @@ def default_branch() -> str:
 
 def create(branch: str, base: str | None = None) -> Worktree:
     """Create a worktree at `.maverick/worktrees/<branch>` on a new branch
-    off `base` (default: the repo's default branch).
+    off `base`. When `base` is omitted, the project's configured
+    ``git_workflow.story_base`` wins (so Gitflow repos branch from
+    ``develop`` rather than ``origin/HEAD``); falls back to the repo's
+    default branch only if no story_base resolves.
     """
     if base is None:
-        base = default_branch()
+        base = git_workflow.get_story_base() or default_branch()
     # Refresh base so we branch off the tip of origin/<base>
     _git("fetch", "origin", base)
     root = repo_root()
