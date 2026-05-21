@@ -173,4 +173,4 @@ Print a final summary to the user:
 
 The integration checklist gives the user (and any future Maverick session) a clear view of what's been completed and what's still pending.
 
-<!-- maverick-plugin-version: 3.3.5 -->
+<!-- maverick-plugin-version: 3.3.6-dev -->
