@@ -374,6 +374,81 @@ class TestGitWorkflowConfig:
         assert all("git_workflow" not in e for e in errors)
 
 
+class TestReadLlmConfig:
+    """#108: llm config merges defaults → user → repo (later wins).
+
+    User-level config (`~/.maverick/config.json` `llm`) was previously
+    ignored; repo could override defaults but the user-level layer
+    didn't exist. The merge also drops the hardcoded per-agent /
+    per-skill presumption tables — those defaults are now empty dicts.
+    """
+
+    def _stage(self, tmp_path: Path, monkeypatch, user: dict | None, repo: dict | None):
+        project_dir = tmp_path / ".maverick"
+        if repo is not None:
+            project_dir.mkdir(parents=True, exist_ok=True)
+            (project_dir / "config.json").write_text(json.dumps({"llm": repo}))
+        monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", project_dir)
+        system_cfg = tmp_path / "system_config.json"
+        if user is not None:
+            system_cfg.write_text(json.dumps({"llm": user}))
+        monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", system_cfg)
+
+    def test_defaults_when_neither_user_nor_repo_present(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._stage(tmp_path, monkeypatch, user=None, repo=None)
+        cfg = config.read_llm_config()
+        assert cfg["default"] == "claude-opus-4-7"
+        # Per-agent / per-skill presumption tables are intentionally empty.
+        assert cfg["agents"] == {}
+        assert cfg["skills"] == {}
+
+    def test_user_overrides_default_when_no_repo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._stage(
+            tmp_path, monkeypatch,
+            user={"default": "claude-sonnet-4-7"},
+            repo=None,
+        )
+        assert config.read_llm_config()["default"] == "claude-sonnet-4-7"
+
+    def test_repo_overrides_user(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._stage(
+            tmp_path, monkeypatch,
+            user={"default": "claude-sonnet-4-7"},
+            repo={"default": "claude-haiku-4-5"},
+        )
+        assert config.read_llm_config()["default"] == "claude-haiku-4-5"
+
+    def test_user_agents_kept_when_repo_overrides_default_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """User sets an agent override; repo only touches `default`.
+        The user's agent entry survives the merge."""
+        self._stage(
+            tmp_path, monkeypatch,
+            user={"agents": {"agent-foo": "claude-sonnet-4-6"}},
+            repo={"default": "claude-haiku-4-5"},
+        )
+        cfg = config.read_llm_config()
+        assert cfg["default"] == "claude-haiku-4-5"
+        assert cfg["agents"] == {"agent-foo": "claude-sonnet-4-6"}
+
+    def test_repo_agent_overrides_user_agent_by_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._stage(
+            tmp_path, monkeypatch,
+            user={"agents": {"agent-foo": "claude-sonnet-4-6"}},
+            repo={"agents": {"agent-foo": "claude-opus-4-7"}},
+        )
+        assert config.read_llm_config()["agents"]["agent-foo"] == "claude-opus-4-7"
+
+
 class TestSaveConfig:
     def test_creates_dir_and_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         cfg_dir = tmp_path / "new_dir"

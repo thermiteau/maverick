@@ -9,6 +9,7 @@ CONFIG = AgentConfig(
         " consume the caller's context."
     ),
     color="magenta",
+    model="sonnet",
     skills=[
         DO_INIT,
         DO_INSTALL,

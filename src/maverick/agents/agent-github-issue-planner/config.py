@@ -12,6 +12,7 @@ CONFIG = AgentConfig(
         """Takes a solution design and produces an ordered task list. Dispatched by do-issue-solo and do-issue-guided as a subagent so that planning does not consume the caller's context window."""
     ),
     color="green",
+    model="sonnet",
     skills=[
         MAV_GITHUB_ISSUE_WORKFLOW,
         MAV_CREATE_TASKS,

@@ -322,6 +322,10 @@ class TestLLMResolution:
         monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
         monkeypatch.setenv("MAVERICK_INSTANCE_ID", "test1234ab")
         monkeypatch.delenv("MAVERICK_LLM", raising=False)
+        # Isolate the agent-model cache so registry discovery never leaks
+        # between tests. Tests that need a populated cache monkeypatch
+        # this themselves.
+        monkeypatch.setattr(report_cli, "_AGENT_MODEL_CACHE", {})
 
     def _patch_config(self, monkeypatch, **overrides):
         """Replace `read_llm_config` with a fixture that returns the given values."""
@@ -431,6 +435,61 @@ class TestLLMResolution:
             repo_root=tmp_path,
         )
         assert report_cli._current_llm(issue=321, repo_root=tmp_path) == "claude-opus-4-7"
+
+    def test_agent_frontmatter_pin_is_used_when_no_config_override(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """#108: source of truth for an agent's model is its AgentConfig.model
+        pin (rendered into frontmatter), not a presumption table. When config
+        has no explicit override for this agent, the registry's pin wins over
+        the orchestrator default."""
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(monkeypatch, default="claude-opus-4-7", agents={})
+        # Force the cache so the test doesn't depend on real discovery.
+        monkeypatch.setattr(
+            report_cli, "_AGENT_MODEL_CACHE",
+            {"agent-tech-docs-writer": "claude-sonnet", "agent-issue-analyst": None},
+        )
+        # Agent with a pin in its frontmatter → its generation label.
+        assert (
+            report_cli._current_llm(agent="agent-tech-docs-writer")
+            == "claude-sonnet"
+        )
+        # Agent without a pin → falls through to orchestrator's default.
+        assert (
+            report_cli._current_llm(agent="agent-issue-analyst") == "claude-opus-4-7"
+        )
+
+    def test_config_per_agent_override_beats_frontmatter_pin(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """User/repo can still force a specific model for an agent — that
+        beats the frontmatter pin (which is only the generation label)."""
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(
+            monkeypatch,
+            default="claude-opus-4-7",
+            agents={"agent-tech-docs-writer": "claude-sonnet-4-7"},
+        )
+        monkeypatch.setattr(
+            report_cli, "_AGENT_MODEL_CACHE",
+            {"agent-tech-docs-writer": "claude-sonnet"},
+        )
+        assert (
+            report_cli._current_llm(agent="agent-tech-docs-writer")
+            == "claude-sonnet-4-7"
+        )
+
+    def test_skill_name_alone_does_not_drive_resolution(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """#108: skills are instruction blocks in the orchestrator's session.
+        Without an explicit `llm.skills` override, a skill_name argument has
+        no effect — the row records the orchestrator's default."""
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(monkeypatch, default="claude-opus-4-7", skills={})
+        assert report_cli._current_llm(skill_name="do-code") == "claude-opus-4-7"
+        assert report_cli._current_llm(skill_name="do-test") == "claude-opus-4-7"
 
     def test_writer_auto_populates_llm_on_every_row(
         self, tmp_path: Path, monkeypatch
