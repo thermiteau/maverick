@@ -6,7 +6,7 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-cybersecurity-review, do-pullrequest-review
+**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-code, do-test, do-docs, do-cybersecurity-review, do-pullrequest-review
 
 # Work on GitHub Issue (Autonomous)
 
@@ -177,18 +177,46 @@ This phase has changed. **Push after every task, not at the end.** See
 
 **For each task (sub-issue or checklist item), in order:**
 
-1. Implement the change.
-2. Run local verification per `mav-local-verification` (lint,
-   typecheck, tests).
-3. If verification fails, diagnose per `mav-systematic-debugging`
-   and fix. Do not commit red.
-4. Create a conventional commit referencing the issue number.
-5. **Push immediately**:
+1. **Wrap the implementation in `do-code`** so the workflow
+   report logs a `skill-dispatch` row for the task, and so the project's
+   coding standards (scope, error handling, logging, application
+   security) are pinned before any edit. Open the interval, run the
+   skill, close the interval:
+   ```bash
+   uv run maverick report begin skill-dispatch --issue  \
+       --phase implement --skill-name do-code
+   ```
+   Invoke `/do-code <one-line task description>`. The skill
+   reads before writing, makes the smallest diff that satisfies the
+   task, verifies per `mav-local-verification`, and refuses
+   to return on red. Then:
+   ```bash
+   uv run maverick report end skill-dispatch --issue  \
+       --phase implement --skill-name do-code \
+       --outcome <success|failure>
+   ```
+   On `failure`, halt the per-task loop and diagnose per
+   `mav-systematic-debugging` — do not proceed to the
+   commit step with a failing build or red tests.
+2. **If the change needs new or updated tests and `do-code`
+   did not already cover them**, wrap that work in `do-test`
+   as a sibling dispatch (pick `unit` or `integration` per the change's
+   boundary):
+   ```bash
+   uv run maverick report begin skill-dispatch --issue  \
+       --phase implement --skill-name do-test
+   # Invoke /do-test <unit|integration>
+   uv run maverick report end skill-dispatch --issue  \
+       --phase implement --skill-name do-test \
+       --outcome <success|failure>
+   ```
+3. Create a conventional commit referencing the issue number.
+4. **Push immediately**:
    - If this is the first push on the branch, set upstream:
      `git push -u origin <branch>`.
    - If on a stacked branch, run the retarget check per
      `mav-stacked-prs` **before every push**.
-6. **Log the commit** to the workflow report. SHA and subject come from
+5. **Log the commit** to the workflow report. SHA and subject come from
    git; the timestamp is wall-clock at the moment of this CLI call:
    ```bash
    SHA=$(git rev-parse HEAD)
@@ -196,8 +224,8 @@ This phase has changed. **Push after every task, not at the end.** See
    uv run maverick report commit --issue  \
        --phase implement --sha "$SHA" --subject "$SUBJECT"
    ```
-7. Update the tasks comment (or close the sub-issue).
-8. Heartbeat: `uv run maverick coord heartbeat <repo> ` if it
+6. Update the tasks comment (or close the sub-issue).
+7. Heartbeat: `uv run maverick coord heartbeat <repo> ` if it
    is time for a refresh.
 
 After the last task, run the full verification suite once more.
