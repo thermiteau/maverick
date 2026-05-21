@@ -156,4 +156,4 @@ When auditing a project or starting work, flag these patterns:
 | Sensitive file patterns missing from `.gitignore` | Future risk of secret commits | Add missing patterns to `.gitignore`                  |
 | Remote URL points to deleted/moved repo    | Effectively no remote           | Update remote URL to valid repository                     |
 
-<!-- maverick-plugin-version: 3.3.4-dev -->
+<!-- maverick-plugin-version: 3.3.4 -->

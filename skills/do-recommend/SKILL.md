@@ -127,4 +127,4 @@ To adopt the recommended option, run `/maverick:do-adopt <topic>`.
 - **Frontmatter required** — name, title, generated, status fields mandatory
 - **Write directly** — no user approval needed, file is version-controlled
 
-<!-- maverick-plugin-version: 3.3.4-dev -->
+<!-- maverick-plugin-version: 3.3.4 -->
