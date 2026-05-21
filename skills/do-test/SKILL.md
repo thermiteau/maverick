@@ -114,4 +114,29 @@ fixture lifecycle, isolation strategy, slowness budget).
   seeds, network availability outside the boundary under test, or
   ordering between independent tests.
 
+## Return Protocol
+
+`do-test` is a **subroutine of the calling workflow's
+per-task loop** — not a terminal action. Returning from this skill is a
+hand-back to the caller's next numbered step, not a completion event
+(#106).
+
+When you return from this skill, **do not** post a closing summary, do
+not stop, do not treat green-tests as "task done." The calling
+workflow's loop still owns, in order:
+
+1. Closing the `skill-dispatch` interval that wrapped this invocation
+   (`uv run maverick report end skill-dispatch … --outcome success`).
+2. Conventional commit referencing the issue number, then push (with
+   stacked-PR retarget if applicable).
+3. Logging the commit row to the workflow report
+   (`uv run maverick report commit …`).
+4. Updating the tasks comment / closing the sub-issue.
+5. Heartbeat refresh.
+
+If you find yourself drafting a final summary after returning here,
+that is the signal: scroll back to the calling workflow's per-task
+loop and resume from the step immediately after the
+`/do-test` invocation.
+
 <!-- maverick-plugin-version: 3.3.5-dev -->

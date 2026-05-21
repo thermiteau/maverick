@@ -245,4 +245,31 @@ Update mode produces transient findings, not a snapshot of the whole codebase. W
 - **Defer to mav-bp-application-security** for what "good" looks like in each category. This skill is the audit; that one is the standard.
 - **Follow mav-scope-boundaries** — do not run anything that would modify production systems, change auth/permissions, or take destructive action.
 
+## Return Protocol (update mode)
+
+When invoked from `do-issue-solo` Phase 7 (or any other
+caller) in `update` mode, `do-cybersecurity-review` is a
+**subroutine of the calling workflow** — not a terminal action.
+Returning the structured verdict is a hand-back to the caller's next
+numbered step, not a phase-complete signal (#106).
+
+When you return from this skill, **do not** post a closing summary, do
+not stop. The calling workflow still owns, in order:
+
+1. Closing the `skill-dispatch` interval that wrapped this invocation
+   (`uv run maverick report end skill-dispatch … --outcome <success|failure|blocked>`).
+   The outcome maps from the verdict: `PASS` → `success`,
+   `FINDINGS` → `success` (with the findings folded into the PR body
+   draft), `BLOCKING` → `blocked`.
+2. Acting on the verdict — halting on `BLOCKING`, folding findings
+   into the PR body draft on `FINDINGS`, or recording
+   `Security review: no concerns.` on `PASS`.
+3. Advancing to the next phase (open the PR) once the verdict has
+   been folded in.
+
+If you find yourself drafting a final summary after returning here,
+that is the signal: scroll back to the calling workflow and resume
+from the step immediately after the
+`/do-cybersecurity-review` dispatch.
+
 <!-- maverick-plugin-version: 3.3.5-dev -->

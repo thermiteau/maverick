@@ -238,3 +238,30 @@ Update mode produces transient findings, not a snapshot of the whole codebase. W
 - **Be honest about coverage.** If a category requires runtime testing or production data the audit cannot reach, mark it N/A and note what would be needed for a thorough review.
 - **Defer to {{ SKILLS.MAV_BP_APPLICATION_SECURITY }}** for what "good" looks like in each category. This skill is the audit; that one is the standard.
 - **Follow {{ SKILLS.MAV_SCOPE_BOUNDARIES }}** — do not run anything that would modify production systems, change auth/permissions, or take destructive action.
+
+## Return Protocol (update mode)
+
+When invoked from `{{ SKILLS.DO_ISSUE_SOLO }}` Phase 7 (or any other
+caller) in `update` mode, `{{ SKILLS.DO_CYBERSECURITY_REVIEW }}` is a
+**subroutine of the calling workflow** — not a terminal action.
+Returning the structured verdict is a hand-back to the caller's next
+numbered step, not a phase-complete signal (#106).
+
+When you return from this skill, **do not** post a closing summary, do
+not stop. The calling workflow still owns, in order:
+
+1. Closing the `skill-dispatch` interval that wrapped this invocation
+   (`uv run maverick report end skill-dispatch … --outcome <success|failure|blocked>`).
+   The outcome maps from the verdict: `PASS` → `success`,
+   `FINDINGS` → `success` (with the findings folded into the PR body
+   draft), `BLOCKING` → `blocked`.
+2. Acting on the verdict — halting on `BLOCKING`, folding findings
+   into the PR body draft on `FINDINGS`, or recording
+   `Security review: no concerns.` on `PASS`.
+3. Advancing to the next phase (open the PR) once the verdict has
+   been folded in.
+
+If you find yourself drafting a final summary after returning here,
+that is the signal: scroll back to the calling workflow and resume
+from the step immediately after the
+`/{{ SKILLS.DO_CYBERSECURITY_REVIEW }}` dispatch.
