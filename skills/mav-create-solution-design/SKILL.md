@@ -117,4 +117,4 @@ Before the design is considered complete:
 - [ ] Risks are honest — if there are none, you haven't looked hard enough
 - [ ] The approach is achievable in a single session (if not, flag for further decomposition)
 
-<!-- maverick-plugin-version: 3.3.5-dev -->
+<!-- maverick-plugin-version: 3.3.5 -->
