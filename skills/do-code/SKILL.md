@@ -88,4 +88,4 @@ maverick-wide best practices.
 - **Stay inside the task envelope.** When `` is
   ambiguous, ask for clarification rather than guess.
 
-<!-- maverick-plugin-version: 3.3.4 -->
+<!-- maverick-plugin-version: 3.3.5-dev -->

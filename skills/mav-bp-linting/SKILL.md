@@ -170,4 +170,4 @@ digraph lookup {
 | No pre-commit formatting | Style inconsistency across commits | Add lint-staged or equivalent |
 | Linter running on generated/vendor code | False positives, slow runs | Update ignore patterns |
 
-<!-- maverick-plugin-version: 3.3.4 -->
+<!-- maverick-plugin-version: 3.3.5-dev -->

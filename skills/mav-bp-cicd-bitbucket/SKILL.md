@@ -97,4 +97,4 @@ digraph ci {
 - Fix CI failures before declaring work complete
 - Report CI failures clearly if you cannot fix them
 
-<!-- maverick-plugin-version: 3.3.4 -->
+<!-- maverick-plugin-version: 3.3.5-dev -->
