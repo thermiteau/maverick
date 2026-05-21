@@ -88,4 +88,31 @@ maverick-wide best practices.
 - **Stay inside the task envelope.** When `` is
   ambiguous, ask for clarification rather than guess.
 
+## Return Protocol
+
+`do-code` is a **subroutine of the calling workflow's
+per-task loop** — not a terminal action. Returning from this skill is a
+hand-back to the caller's next numbered step, not a completion event
+(#106).
+
+When you return from this skill, **do not** post a closing summary, do
+not stop, do not treat verification-green as "task done." The calling
+workflow's loop still owns, in order:
+
+1. Closing the `skill-dispatch` interval that wrapped this invocation
+   (`uv run maverick report end skill-dispatch … --outcome success`).
+2. Optionally sibling-calling `do-test` for tests that
+   weren't folded into this skill.
+3. Conventional commit referencing the issue number, then push (with
+   stacked-PR retarget if applicable).
+4. Logging the commit row to the workflow report
+   (`uv run maverick report commit …`).
+5. Updating the tasks comment / closing the sub-issue.
+6. Heartbeat refresh.
+
+If you find yourself drafting a final summary after returning here,
+that is the signal: scroll back to the calling workflow's per-task
+loop and resume from the step immediately after the
+`/do-code` invocation.
+
 <!-- maverick-plugin-version: 3.3.5-dev -->

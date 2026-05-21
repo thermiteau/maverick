@@ -196,19 +196,23 @@ This phase has changed. **Push after every task, not at the end.** See
 
 **For each task (sub-issue or checklist item), in order:**
 
-1. **Wrap the implementation in `do-code`** so the workflow
-   report logs a `skill-dispatch` row for the task, and so the project's
-   coding standards (scope, error handling, logging, application
-   security) are pinned before any edit. Open the interval, run the
-   skill, close the interval:
+Each step below is its own obligation. After `/do-code` returns
+in step 2, **do not stop** — continue with step 3. The inner skill's
+return is a hand-back, not a task-complete signal (#106).
+
+1. **Open the `skill-dispatch` interval for `do-code`.** This
+   pins the project's coding standards before any edit and gives the
+   workflow report a `skill-dispatch` row for the task:
    ```bash
    uv run maverick report begin skill-dispatch --issue  \
        --phase implement --skill-name do-code
    ```
-   Invoke `/do-code <one-line task description>`. The skill
-   reads before writing, makes the smallest diff that satisfies the
-   task, verifies per `mav-local-verification`, and refuses
-   to return on red. Then:
+2. **Invoke `/do-code <one-line task description>`.** The
+   skill reads before writing, makes the smallest diff that satisfies
+   the task, verifies per `mav-local-verification`, and
+   refuses to return on red. When it returns, proceed to step 3 — do
+   not summarise and stop.
+3. **Close the `skill-dispatch` interval** with the outcome:
    ```bash
    uv run maverick report end skill-dispatch --issue  \
        --phase implement --skill-name do-code \
@@ -217,10 +221,9 @@ This phase has changed. **Push after every task, not at the end.** See
    On `failure`, halt the per-task loop and diagnose per
    `mav-systematic-debugging` — do not proceed to the
    commit step with a failing build or red tests.
-2. **If the change needs new or updated tests and `do-code`
-   did not already cover them**, wrap that work in `do-test`
-   as a sibling dispatch (pick `unit` or `integration` per the change's
-   boundary):
+4. **(Optional) Sibling-dispatch `/do-test`** if the change
+   needs new or updated tests that `do-code` did not
+   already cover. Same three-step shape as above:
    ```bash
    uv run maverick report begin skill-dispatch --issue  \
        --phase implement --skill-name do-test
@@ -229,13 +232,14 @@ This phase has changed. **Push after every task, not at the end.** See
        --phase implement --skill-name do-test \
        --outcome <success|failure>
    ```
-3. Create a conventional commit referencing the issue number.
-4. **Push immediately**:
+   When `/do-test` returns, proceed to step 5.
+5. **Create a conventional commit** referencing the issue number.
+6. **Push immediately.**
    - If this is the first push on the branch, set upstream:
      `git push -u origin <branch>`.
    - If on a stacked branch, run the retarget check per
      `mav-stacked-prs` **before every push**.
-5. **Log the commit** to the workflow report. SHA and subject come from
+7. **Log the commit** to the workflow report. SHA and subject come from
    git; the timestamp is wall-clock at the moment of this CLI call:
    ```bash
    SHA=$(git rev-parse HEAD)
@@ -243,9 +247,9 @@ This phase has changed. **Push after every task, not at the end.** See
    uv run maverick report commit --issue  \
        --phase implement --sha "$SHA" --subject "$SUBJECT"
    ```
-6. Update the tasks comment (or close the sub-issue).
-7. Heartbeat: `uv run maverick coord heartbeat <repo> ` if it
-   is time for a refresh.
+8. **Update the tasks comment** (or close the sub-issue).
+9. **Heartbeat:** `uv run maverick coord heartbeat <repo> ` if
+   it is time for a refresh.
 
 After the last task, run the full verification suite once more.
 
@@ -352,16 +356,25 @@ path. Any changed code AND any code that could be impacted by the
 changes (callers, importers, dependents) must be reviewed by
 `do-cybersecurity-review` before the PR can be opened.
 
-1. Compute the full diff: `git diff origin/<base>...HEAD`.
-2. Open the skill-dispatch interval: `uv run maverick report begin skill-dispatch --issue  --phase security --skill-name do-cybersecurity-review`.
-3. Dispatch the **do-cybersecurity-review** skill with:
+Each step below is its own obligation. After `/do-cybersecurity-review`
+returns in step 3, **do not stop** — continue with step 4. The inner
+skill's return is a hand-back, not a phase-complete signal (#106).
+
+1. **Compute the full diff:** `git diff origin/<base>...HEAD`.
+2. **Open the `skill-dispatch` interval** for the review:
+   `uv run maverick report begin skill-dispatch --issue  --phase security --skill-name do-cybersecurity-review`.
+3. **Dispatch `/do-cybersecurity-review`** with:
    - **Mode:** `update`
    - **Diff:** the output of step 1, passed via stdin or as a file path
    - **Instructions:** review the changed code AND the impact set
      (callers, importers, dependents — bounded to one or two hops).
      Return the structured outcome (verdict + findings) defined in the
      skill's Update Mode contract.
-4. Close the skill-dispatch interval: `uv run maverick report end skill-dispatch --issue  --phase security --skill-name do-cybersecurity-review --outcome <success|failure|blocked>` (use `blocked` if the verdict was BLOCKING).
+
+   When the skill returns, proceed to step 4 — do not summarise and
+   stop.
+4. **Close the `skill-dispatch` interval** with the outcome:
+   `uv run maverick report end skill-dispatch --issue  --phase security --skill-name do-cybersecurity-review --outcome <success|failure|blocked>` (use `blocked` if the verdict was BLOCKING).
 5. **Act on the verdict:**
    - **BLOCKING** — halt. Surface the findings to the user verbatim.
      Do not open the PR. The user resolves the BLOCKING items by
