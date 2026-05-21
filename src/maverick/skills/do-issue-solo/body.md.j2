@@ -103,24 +103,43 @@ This phase is new in the workflow overhaul. Before any other phase.
 Run Phases 1 and 2 as a subagent to keep the main context window clean for
 implementation.
 
-1. Initialise the issue state file per the
+1. **Refresh the local base branch** before the analyst reads anything.
+   The analyst runs against the main checkout — Phase 4 hasn't created
+   the worktree yet — so a stale local base lets pre-resolved
+   ambiguities slip into the design pass and surface as phantom
+   blockers (#102). Follow the "Base Branch Freshness" rule in
+   `{{ SKILLS.MAV_GIT_WORKFLOW }}`:
+   ```bash
+   STORY_BASE=$(uv run maverick git-workflow story-base)
+   git fetch origin "$STORY_BASE"
+   CURRENT=$(git rev-parse --abbrev-ref HEAD)
+   if [ "$CURRENT" = "$STORY_BASE" ]; then
+       git pull --ff-only origin "$STORY_BASE"
+   else
+       git fetch origin "$STORY_BASE:$STORY_BASE"
+   fi
+   ```
+   If either form refuses a non-fast-forward, halt and report to the
+   user — there are local commits on `$STORY_BASE` that have not been
+   pushed, which violates trunk-based discipline.
+2. Initialise the issue state file per the
    {{ SKILLS.MAV_GITHUB_ISSUE_WORKFLOW }} skill.
-2. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue {{ ARGUMENTS }} --phase design --agent {{ AGENTS.AGENT_ISSUE_ANALYST }} --skill-name {{ SKILLS.MAV_CREATE_SOLUTION_DESIGN }}`.
-3. Dispatch the **{{ AGENTS.AGENT_ISSUE_ANALYST }}** agent with:
+3. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue {{ ARGUMENTS }} --phase design --agent {{ AGENTS.AGENT_ISSUE_ANALYST }} --skill-name {{ SKILLS.MAV_CREATE_SOLUTION_DESIGN }}`.
+4. Dispatch the **{{ AGENTS.AGENT_ISSUE_ANALYST }}** agent with:
    - Issue number: `{{ ARGUMENTS }}`
    - Mode: `solo`
-4. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue {{ ARGUMENTS }} --phase design --agent {{ AGENTS.AGENT_ISSUE_ANALYST }} --skill-name {{ SKILLS.MAV_CREATE_SOLUTION_DESIGN }} --outcome success`.
+5. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue {{ ARGUMENTS }} --phase design --agent {{ AGENTS.AGENT_ISSUE_ANALYST }} --skill-name {{ SKILLS.MAV_CREATE_SOLUTION_DESIGN }} --outcome success`.
    (Use `--outcome failure` if the agent returned an error rather than a design.)
-5. When the agent returns, verify:
+6. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `design`
    - `.claude/issue-state.json` has `comments.design` set to a comment ID
-6. If the agent flagged ambiguities it could not resolve:
+7. If the agent flagged ambiguities it could not resolve:
    - Open the question interval: `uv run maverick report begin question --issue {{ ARGUMENTS }} --phase design --topic ambiguity-resolution`.
    - Ask the user.
    - Close it: `uv run maverick report end question --issue {{ ARGUMENTS }} --phase design --topic ambiguity-resolution --outcome success`.
 
    Otherwise continue.
-7. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} design`.
+8. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} design`.
 
 ## Phase 3: Create Tasks (subagent)
 

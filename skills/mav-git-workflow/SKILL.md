@@ -226,6 +226,35 @@ This reads `git_workflow.story_base` from `.maverick/config.json`
 (default: `main`). Do not auto-detect or hard-code the branch — the
 config is the single source of truth, written once by `maverick init`.
 
+### Base Branch Freshness (rule)
+
+Any workflow that reads from the main checkout before opening a
+worktree — typically the design / planning subagents in
+`do-issue-solo` / `do-issue-guided` / `do-epic` Phase 1 — must
+refresh the local base branch against origin first. A stale local
+base lets pre-resolved ambiguities slip into the analyst's design
+pass and surfaces as phantom blockers (#102).
+
+The pattern advances the local ref without forcing the user out of
+whatever branch they happen to be on:
+
+```bash
+STORY_BASE=$(uv run maverick git-workflow story-base)
+git fetch origin "$STORY_BASE"
+CURRENT=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT" = "$STORY_BASE" ]; then
+    git pull --ff-only origin "$STORY_BASE"
+else
+    # Update the local ref directly; safe because $STORY_BASE is not the
+    # checked-out branch (git refuses to fetch onto the current branch).
+    git fetch origin "$STORY_BASE:$STORY_BASE"
+fi
+```
+
+Both forms refuse a non-fast-forward — that means the local base has
+commits that are not on origin, which violates trunk-based discipline.
+Halt and report to the user; do not auto-rebase or force-update.
+
 ### Create the Branch
 
 ```bash
