@@ -463,6 +463,39 @@ def _current_skill(issue: int, repo_root: Path | None = None) -> str | None:
     return None
 
 
+_AGENT_MODEL_CACHE: dict[str, str | None] | None = None
+
+
+def _agent_pinned_model(agent: str) -> str | None:
+    """Look up an agent's pinned ``model`` from its AgentConfig.
+
+    Returns the generation label (``"claude-sonnet"``/``"claude-opus"``/
+    ``"claude-haiku"``) for agents whose config.py sets a ``model`` pin,
+    or ``None`` if the agent inherits its model from the orchestrator.
+
+    The registry's discovery scan is cached on first call; subsequent
+    lookups are dict reads. Plugin agents are static at runtime, so a
+    cache miss only happens on the very first event written per process.
+
+    A best-effort fallback: any exception during discovery (missing
+    template dir on an unusual install, broken config.py during a
+    bisect, etc.) returns ``None`` so the caller falls through to the
+    orchestrator's model rather than crashing the write.
+    """
+    global _AGENT_MODEL_CACHE
+    if _AGENT_MODEL_CACHE is None:
+        try:
+            from maverick.registry import discover_agents
+
+            _AGENT_MODEL_CACHE = {
+                cfg.name: (f"claude-{cfg.model}" if cfg.model else None)
+                for cfg in discover_agents()
+            }
+        except Exception:  # noqa: BLE001 — best-effort
+            _AGENT_MODEL_CACHE = {}
+    return _AGENT_MODEL_CACHE.get(agent)
+
+
 def _current_llm(
     explicit: str | None = None,
     issue: int | None = None,
@@ -473,19 +506,27 @@ def _current_llm(
     """Resolve the LLM identifier for a row being written.
 
     Resolution chain, in priority order:
+
     1. Explicit ``--llm`` on the CLI call.
     2. ``MAVERICK_LLM`` env var (workflow-wide override).
-    3. Per-agent entry in the project ``llm.agents`` config block.
-    4. Per-skill entry in the project ``llm.skills`` config block.
-    5. Project ``llm.default``.
-    6. Latest ``run-start`` row's ``llm`` for this issue (inherits across
-       CLI invocations even if the orchestrator never opened the project
-       config — useful for one-off runs).
+    3. **Agent rows only:** explicit per-agent override in the merged
+       ``llm.agents`` config block (user or repo), if present.
+    4. **Agent rows only:** the agent's own pinned model from its
+       ``AgentConfig.model`` field. This is the source of truth — the
+       same value that gets rendered into the agent's frontmatter and
+       therefore the same generation Claude Code actually dispatches.
+    5. ``llm.default`` from the merged config (defaults → user → repo).
+    6. Latest ``run-start`` row's ``llm`` for this issue (inherits
+       across CLI invocations even if the orchestrator never opened
+       the project config — useful for one-off runs).
     7. The ``FALLBACK_LLM`` literal.
 
-    The project config (3-5) is deep-merged over Maverick's built-in
-    defaults at load time, so reasonable values are always present even
-    without an ``llm`` block in ``.maverick/config.json``.
+    ``skill_name`` is accepted for API compatibility but no longer
+    drives resolution: skills are instruction blocks loaded into the
+    orchestrator's session and cannot run on a different model from it
+    (#108). Skill-dispatch rows therefore land in step 5 (orchestrator
+    default) unless an explicit per-skill override is set in the
+    config's ``llm.skills`` block.
     """
     import os as _os
 
@@ -501,13 +542,18 @@ def _current_llm(
     except Exception:  # noqa: BLE001 — best-effort; fall through on any error
         llm_cfg = None
 
-    if llm_cfg is not None:
-        if agent and agent in llm_cfg["agents"]:
+    if agent:
+        if llm_cfg is not None and agent in llm_cfg["agents"]:
             return llm_cfg["agents"][agent]
-        if skill_name and skill_name in llm_cfg["skills"]:
-            return llm_cfg["skills"][skill_name]
-        if llm_cfg["default"]:
-            return llm_cfg["default"]
+        pinned = _agent_pinned_model(agent)
+        if pinned:
+            return pinned
+
+    if skill_name and llm_cfg is not None and skill_name in llm_cfg["skills"]:
+        return llm_cfg["skills"][skill_name]
+
+    if llm_cfg is not None and llm_cfg["default"]:
+        return llm_cfg["default"]
 
     if issue is not None:
         try:

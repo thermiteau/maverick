@@ -315,27 +315,23 @@ CONFIG_DEFAULTS: MaverickConfig = {
     "llm": {
         # Default model for any row not matched by a more specific
         # rule. Opus is the safe default — reasoning-heavy work expects
-        # it. Repos that want to economise can drop this to Sonnet.
+        # it. Set per-user in ~/.maverick/config.json's `llm.default`,
+        # or per-repo in .maverick/config.json (repo overrides user).
         "default": "claude-opus-4-7",
-        # Per-agent overrides. Reasoning-heavy agents (issue-analyst,
-        # code-reviewer) fall through to `default` (Opus). Agents that
-        # mostly follow patterns are pinned to Sonnet so they're cheap
-        # by default; override per-repo in .maverick/config.json's
-        # `llm.agents` block.
-        "agents": {
-            "agent-github-issue-planner": "claude-sonnet-4-6",
-            "agent-tech-docs-writer": "claude-sonnet-4-6",
-            "agent-maverick": "claude-sonnet-4-6",
-            "agent-session-reviewer": "claude-sonnet-4-6",
-        },
-        # Per-skill overrides. Reasoning-heavy skills (do-code,
-        # do-cybersecurity-review) fall through to `default` (Opus).
-        # Pattern-following skills are pinned to Sonnet.
-        "skills": {
-            "do-test": "claude-sonnet-4-6",
-            "do-docs": "claude-sonnet-4-6",
-            "do-tech-docs": "claude-sonnet-4-6",
-        },
+        # Per-agent overrides are intentionally empty: the source of
+        # truth for an agent's model is its AgentConfig.model field
+        # (rendered into the agent's frontmatter), NOT a presumption
+        # table on the consumer side (#108). The CLI reads each agent's
+        # pinned model from the registry; this map only matters when a
+        # user/repo explicitly forces an override.
+        "agents": {},
+        # Per-skill overrides are intentionally empty: skills are
+        # instruction blocks loaded into the orchestrator's session,
+        # not separate dispatch units. They cannot run on a different
+        # model from the orchestrator (#108). The CLI ignores this map
+        # at resolution time; it remains here for backward compatibility
+        # with existing config files that wrote into it.
+        "skills": {},
     },
 }
 
@@ -662,37 +658,47 @@ def _default_llm() -> LlmConfig:
     }
 
 
+def _merge_llm_block(result: LlmConfig, block: dict[str, Any]) -> None:
+    """Deep-merge a single ``llm`` block over ``result`` in place."""
+    if isinstance(block.get("default"), str) and block["default"]:
+        result["default"] = block["default"]
+    for sub in ("agents", "skills"):
+        user_map = block.get(sub)
+        if isinstance(user_map, dict):
+            for k, v in user_map.items():
+                if isinstance(k, str) and isinstance(v, str):
+                    result[sub][k] = v  # type: ignore[literal-required]
+
+
 def read_llm_config(path: Path | None = None) -> LlmConfig:
-    """Read the llm block from the project config, deep-merged over defaults.
+    """Read the llm block, deep-merged in order: defaults → user → repo.
 
-    Returns Maverick's baked-in defaults if the file does not exist or has
-    no ``llm`` block. Per-repo overrides:
+    Merge order (later wins):
 
-    - ``default``: if set, replaces the Maverick default.
-    - ``agents``: deep-merged — repo entries override Maverick entries by
-      key, but Maverick entries the repo doesn't mention stay in effect.
-    - ``skills``: same deep-merge semantics.
+    1. Maverick's baked-in defaults (``CONFIG_DEFAULTS["llm"]``).
+    2. User-level config at ``~/.maverick/config.json`` (``llm`` block).
+    3. Repo-level config at ``.maverick/config.json`` (``llm`` block).
 
-    To **fully replace** the agents or skills map (e.g. "this repo uses
-    only Opus, no per-agent overrides"), the repo writes an empty dict:
-    ``"agents": {}`` ― deep-merge over an empty user dict still applies
-    Maverick defaults, so use ``{"agent-foo": ""}`` to suppress a single
-    Maverick default, or write ``llm.default`` only and accept that the
-    Maverick per-agent map continues to apply.
+    Each layer is deep-merged: ``default`` is replaced if present;
+    ``agents`` / ``skills`` entries override by key, leaving keys not
+    mentioned at the earlier layer intact.
+
+    For agents, the **source of truth** for which model an agent runs on
+    is the agent's own ``AgentConfig.model`` field (rendered into its
+    frontmatter), not this map. The map exists only so that a
+    user/repo can force a different model identifier for the report
+    (#108).
     """
     target = path or project_config_path()
-    raw = _load_json(target)
-    block = raw.get("llm") if isinstance(raw, dict) else None
+    repo_raw = _load_json(target)
+    user_raw = _load_json(SYSTEM_CONFIG_FILE) if SYSTEM_CONFIG_FILE.exists() else {}
     result = _default_llm()
-    if isinstance(block, dict):
-        if isinstance(block.get("default"), str) and block["default"]:
-            result["default"] = block["default"]
-        for sub in ("agents", "skills"):
-            user_map = block.get(sub)
-            if isinstance(user_map, dict):
-                for k, v in user_map.items():
-                    if isinstance(k, str) and isinstance(v, str):
-                        result[sub][k] = v  # type: ignore[literal-required]
+    user_block = user_raw.get("llm") if isinstance(user_raw, dict) else None
+    if isinstance(user_block, dict):
+        _merge_llm_block(result, user_block)
+    repo_block = repo_raw.get("llm") if isinstance(repo_raw, dict) else None
+    if isinstance(repo_block, dict):
+        _merge_llm_block(result, repo_block)
     return result
 
 
