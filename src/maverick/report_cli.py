@@ -66,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -76,6 +77,11 @@ from typing import Any, TypedDict
 from maverick.cli import _get_version
 from maverick.coordinator import instance_id
 from maverick.gh_state import TASK_PROGRESS_PHASES
+from maverick.session_review.parser import (
+    UsageRecord,
+    iter_session_usage,
+    sessions_for_run,
+)
 
 # ---------------------------------------------------------------------------
 # Schema constants
@@ -202,6 +208,7 @@ class Event(_RequiredEvent, total=False):
     notes: str | None
     sha: str | None
     subject: str | None
+    claude_session_id: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +617,68 @@ def _phase_for_ts(ts: str, phases: Sequence[tuple[str, str, str]]) -> str | None
     return None
 
 
+def _append_token_section(
+    out: list[str],
+    phases: Sequence[tuple[str, str, str]],
+    usage: Sequence[UsageRecord],
+) -> None:
+    """Append the `## Token usage` section to `out`.
+
+    Bins `usage` records into the supplied phase intervals via
+    `_phase_for_ts` and emits a per-phase table plus a grand-total
+    footer row. No-ops if `usage` is empty, if there are no phases, or
+    if no record falls inside any phase interval — keeping the rendered
+    Markdown unchanged for runs without session data.
+    """
+    if not usage or not phases:
+        return
+
+    sums: dict[str, list[int]] = {p: [0, 0, 0, 0] for p, _, _ in phases}
+    matched = False
+    for rec in usage:
+        phase = _phase_for_ts(rec.timestamp, phases)
+        if phase is None:
+            continue
+        matched = True
+        bucket = sums[phase]
+        bucket[0] += rec.input_tokens
+        bucket[1] += rec.output_tokens
+        bucket[2] += rec.cache_read_input_tokens
+        bucket[3] += rec.cache_creation_input_tokens
+
+    if not matched:
+        return
+
+    out.append("## Token usage")
+    out.append("")
+    out.append(
+        "| Phase | Input | Output | Cache read | Cache create | Total |"
+    )
+    out.append("|---|---:|---:|---:|---:|---:|")
+
+    grand = [0, 0, 0, 0]
+    for phase, _, _ in phases:
+        inp, outp, cr, cc = sums[phase]
+        if inp == outp == cr == cc == 0:
+            continue
+        total = inp + outp + cr + cc
+        label = PHASE_NUMBER.get(phase, phase)
+        out.append(
+            f"| {label} | {inp:,} | {outp:,} | {cr:,} | {cc:,} | {total:,} |"
+        )
+        grand[0] += inp
+        grand[1] += outp
+        grand[2] += cr
+        grand[3] += cc
+
+    g_total = sum(grand)
+    out.append(
+        f"| **Total** | **{grand[0]:,}** | **{grand[1]:,}** | "
+        f"**{grand[2]:,}** | **{grand[3]:,}** | **{g_total:,}** |"
+    )
+    out.append("")
+
+
 def _outcome_label(events: Sequence[Event]) -> str:
     """The run's overall outcome: PASS | FAIL-eject | BLOCKED | IN-PROGRESS."""
     phases_seen = {e.get("phase") for e in events if e.get("action") == "phase-boundary"}
@@ -620,16 +689,28 @@ def _outcome_label(events: Sequence[Event]) -> str:
     return "IN-PROGRESS"
 
 
-def render(issue: int, events: Sequence[Event], pr: dict[str, Any] | None = None) -> str:
+def render(
+    issue: int,
+    events: Sequence[Event],
+    pr: dict[str, Any] | None = None,
+    usage: Sequence[UsageRecord] = (),
+) -> str:
     """Render the timeline as a Markdown workflow report.
 
     Pure function. The CLI handler loads `events` and optionally fetches
-    `pr` metadata; this function is fully deterministic given its inputs.
+    `pr` metadata plus Claude Code `usage` records; this function is
+    fully deterministic given its inputs.
 
     The Phases table emits one row per (phase, action) tuple in wall-clock
     order within each phase. A `phase-boundary` row appears only when no
     agent/skill dispatch fired in that phase. Commit rows show only the
     end timestamp (commits are atomic events).
+
+    When `usage` is non-empty, a `## Token usage` section is inserted
+    between `## Total Time` and `## Phases` with per-phase + grand-total
+    rows. Records outside every phase interval are silently dropped (they
+    represent pre-`run-start` noise or pause-window activity on resumed
+    runs).
     """
     if not events:
         return f"# Maverick workflow report\n\nNo timeline events recorded for issue #{issue}.\n"
@@ -684,6 +765,8 @@ def render(issue: int, events: Sequence[Event], pr: dict[str, Any] | None = None
     out.append("")
     out.append(f"seconds: {total_seconds}")
     out.append("")
+
+    _append_token_section(out, phases, usage)
 
     out.append("## Phases")
     out.append("")
@@ -987,6 +1070,9 @@ def _report_run_start(args: argparse.Namespace) -> int:
     event = _build_base(args, "run-start")
     event["maverick_skill"] = args.skill  # explicit even though base set it
     event["phase"] = args.phase or "claimed"
+    sid = os.environ.get("CLAUDE_SESSION_ID")
+    if sid:
+        event["claude_session_id"] = sid
     append_event(event)
     return 0
 
@@ -1069,6 +1155,9 @@ def _report_note(args: argparse.Namespace) -> int:
 def _report_resume(args: argparse.Namespace) -> int:
     event = _build_base(args, "resume")
     event["phase"] = args.phase
+    sid = os.environ.get("CLAUDE_SESSION_ID")
+    if sid:
+        event["claude_session_id"] = sid
     append_event(event)
     return 0
 
@@ -1083,13 +1172,42 @@ def _report_generate(args: argparse.Namespace) -> int:
         return 2
 
     pr = _fetch_pr(args.repo, issue) if args.repo else None
-    md = render(issue=issue, events=events, pr=pr)
+    usage = _gather_usage(events, repo_root, no_tokens=args.no_tokens)
+    md = render(issue=issue, events=events, pr=pr, usage=usage)
 
     out_path = Path(args.out) if args.out else report_path(issue, repo_root=repo_root)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md, encoding="utf-8")
     print(str(out_path))
     return 0
+
+
+def _gather_usage(
+    events: Sequence[Event], repo_root: Path, no_tokens: bool = False
+) -> list[UsageRecord]:
+    """Collect Claude Code token-usage records for a run.
+
+    Returns an empty list when `no_tokens` is set, when no event carries
+    a `claude_session_id`, or when the discovery / read path fails for
+    any reason — token rendering is best-effort, matching the
+    write-path's "logging failure never breaks a run" stance.
+    """
+    if no_tokens:
+        return []
+    sids = sorted({
+        sid for e in events
+        if (sid := e.get("claude_session_id"))
+    })
+    if not sids:
+        return []
+    try:
+        records: list[UsageRecord] = []
+        for path in sessions_for_run(str(repo_root), sids):
+            records.extend(iter_session_usage(path))
+        return records
+    except OSError as e:
+        print(f"warning: token-usage discovery failed: {e}", file=sys.stderr)
+        return []
 
 
 def _report_verify(args: argparse.Namespace) -> int:
@@ -1235,6 +1353,15 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("repo", help="owner/repo (used to look up PR metadata)")
     p.add_argument("issue", type=int)
     p.add_argument("--out", help="Override output path")
+    p.add_argument(
+        "--no-tokens",
+        action="store_true",
+        help=(
+            "Skip the Token usage section even when CLAUDE_SESSION_ID was "
+            "captured. Useful for offline rendering or when ~/.claude/projects "
+            "is not available."
+        ),
+    )
     p.set_defaults(_handler=_report_generate)
 
     # verify

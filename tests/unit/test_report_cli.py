@@ -871,3 +871,324 @@ class TestVerify:
         out = capsys.readouterr().out
         assert "dangling" in out
         assert "agent-dispatch:agent-x" in out
+
+
+# ---------------------------------------------------------------------------
+# Token usage extraction and rendering
+# ---------------------------------------------------------------------------
+
+
+from maverick.session_review import parser as session_parser  # noqa: E402
+
+
+def _assistant_row(
+    ts: str,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read: int = 0,
+    cache_create: int = 0,
+    sidechain: bool = False,
+    session_id: str = "sess-1",
+    model: str = "claude-opus-4-7",
+) -> str:
+    """JSONL row mimicking a Claude Code assistant event with usage."""
+    return json.dumps({
+        "type": "assistant",
+        "timestamp": ts,
+        "isSidechain": sidechain,
+        "sessionId": session_id,
+        "message": {
+            "model": model,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": cache_create,
+            },
+        },
+    })
+
+
+class TestUsageExtraction:
+    def test_iter_session_usage_skips_malformed_and_missing_usage(
+        self, tmp_path: Path
+    ):
+        path = tmp_path / "sess-1.jsonl"
+        path.write_text("\n".join([
+            _assistant_row(
+                "2026-05-19T10:01:00Z",
+                input_tokens=10, output_tokens=20,
+                cache_read=300, cache_create=400,
+            ),
+            json.dumps({"type": "assistant", "timestamp": "x", "message": {}}),
+            "{not json",
+            json.dumps({"type": "user", "timestamp": "y", "message": {}}),
+        ]))
+
+        records = list(session_parser.iter_session_usage(path))
+        assert len(records) == 1
+        r = records[0]
+        assert r.timestamp == "2026-05-19T10:01:00Z"
+        assert r.input_tokens == 10
+        assert r.output_tokens == 20
+        assert r.cache_read_input_tokens == 300
+        assert r.cache_creation_input_tokens == 400
+        assert r.model == "claude-opus-4-7"
+        assert r.is_sidechain is False
+        assert r.session_id == "sess-1"
+
+    def test_iter_session_usage_missing_file_yields_nothing(self, tmp_path: Path):
+        records = list(session_parser.iter_session_usage(tmp_path / "missing.jsonl"))
+        assert records == []
+
+    def test_sessions_for_run_includes_orchestrator_and_subagents(
+        self, tmp_path: Path, monkeypatch
+    ):
+        # Stand up a fake ~/.claude/projects/<encoded>/ layout
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        encoded = session_parser.encode_project_path("/some/project")
+        project_dir = tmp_path / ".claude" / "projects" / encoded
+        sid = "abc123"
+        (project_dir / sid / "subagents").mkdir(parents=True)
+        (project_dir / f"{sid}.jsonl").write_text("")
+        (project_dir / sid / "subagents" / "agent-a1.jsonl").write_text("")
+        (project_dir / sid / "subagents" / "agent-a2.jsonl").write_text("")
+        # An unrelated file that must NOT be picked up.
+        (project_dir / sid / "subagents" / "notes.txt").write_text("")
+
+        paths = session_parser.sessions_for_run("/some/project", [sid])
+        names = sorted(p.name for p in paths)
+        assert names == ["abc123.jsonl", "agent-a1.jsonl", "agent-a2.jsonl"]
+
+    def test_sessions_for_run_skips_missing_orchestrator(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        encoded = session_parser.encode_project_path("/some/project")
+        project_dir = tmp_path / ".claude" / "projects" / encoded
+        sid = "abc123"
+        (project_dir / sid / "subagents").mkdir(parents=True)
+        # No orchestrator file. Subagent transcripts still discovered.
+        (project_dir / sid / "subagents" / "agent-a1.jsonl").write_text("")
+
+        paths = session_parser.sessions_for_run("/some/project", [sid])
+        assert [p.name for p in paths] == ["agent-a1.jsonl"]
+
+
+def _two_phase_events() -> list[dict[str, Any]]:
+    """Two phase intervals: design (10:00–10:05) and implement (10:05–10:10)."""
+    return [
+        _full_event(
+            action="run-start", start_ts="2026-05-19T10:00:00Z",
+            phase="claimed", maverick_skill="do-issue-solo",
+            claude_session_id="sess-1",
+        ),
+        _full_event(
+            action="phase-boundary", phase="design",
+            start_ts="2026-05-19T10:05:00Z",
+        ),
+        _full_event(
+            action="phase-boundary", phase="implement",
+            start_ts="2026-05-19T10:10:00Z",
+        ),
+    ]
+
+
+def _usage(
+    ts: str,
+    *,
+    inp: int = 0, outp: int = 0, cr: int = 0, cc: int = 0,
+) -> session_parser.UsageRecord:
+    return session_parser.UsageRecord(
+        timestamp=ts,
+        input_tokens=inp,
+        output_tokens=outp,
+        cache_read_input_tokens=cr,
+        cache_creation_input_tokens=cc,
+        model="claude-opus-4-7",
+        is_sidechain=False,
+        session_id="sess-1",
+    )
+
+
+class TestRenderTokenSection:
+    def test_section_bins_records_by_phase_with_total(self):
+        usage = [
+            _usage("2026-05-19T10:02:00Z", inp=10, outp=100, cr=1000, cc=500),
+            _usage("2026-05-19T10:03:00Z", inp=5,  outp=50,  cr=500,  cc=250),
+            _usage("2026-05-19T10:07:00Z", inp=20, outp=200, cr=2000, cc=1000),
+        ]
+        md = report_cli.render(
+            issue=321, events=_two_phase_events(), usage=usage
+        )
+        assert "## Token usage" in md
+        # design phase row: input 15, output 150, cache read 1,500, cache create 750, total 2,415
+        assert "| Phase 1-2 | 15 | 150 | 1,500 | 750 | 2,415 |" in md
+        # implement phase row (Phase 5): input 20, output 200, cache read 2,000, cache create 1,000, total 3,220
+        assert "| Phase 5 | 20 | 200 | 2,000 | 1,000 | 3,220 |" in md
+        # grand total: input 35, output 350, cache read 3,500, cache create 1,750, total 5,635
+        assert (
+            "| **Total** | **35** | **350** | **3,500** | **1,750** | **5,635** |"
+            in md
+        )
+
+    def test_section_drops_records_outside_phase_intervals(self):
+        usage = [
+            _usage("2026-05-19T09:00:00Z", inp=999),  # before run-start
+            _usage("2026-05-19T11:00:00Z", inp=999),  # after last phase-boundary
+            _usage("2026-05-19T10:02:00Z", inp=10, outp=20),  # inside design
+        ]
+        md = report_cli.render(
+            issue=321, events=_two_phase_events(), usage=usage
+        )
+        assert "## Token usage" in md
+        assert "999" not in md
+        assert "| **Total** | **10** | **20** | **0** | **0** | **30** |" in md
+
+    def test_section_omitted_when_usage_empty(self):
+        md = report_cli.render(issue=321, events=_two_phase_events(), usage=[])
+        assert "## Token usage" not in md
+
+    def test_section_omitted_when_no_records_match_any_phase(self):
+        usage = [_usage("2026-05-19T09:00:00Z", inp=10)]
+        md = report_cli.render(
+            issue=321, events=_two_phase_events(), usage=usage
+        )
+        assert "## Token usage" not in md
+
+    def test_phase_with_no_tokens_is_skipped_in_table(self):
+        # Two phases, but only design has any usage.
+        usage = [_usage("2026-05-19T10:02:00Z", inp=10, outp=20)]
+        md = report_cli.render(
+            issue=321, events=_two_phase_events(), usage=usage
+        )
+        assert "## Token usage" in md
+        assert "| Phase 1-2 | 10 | 20 | 0 | 0 | 30 |" in md
+        # implement phase has no records — must not appear as a row
+        assert "Phase 5 |" not in md.split("## Phases")[0]
+
+
+class TestReportGenerateTokenIntegration:
+    def test_generate_passes_usage_to_render(
+        self, tmp_path: Path, monkeypatch
+    ):
+        # Write a synthetic timeline with one claude_session_id.
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        events = _two_phase_events()
+        tpath = report_cli.timeline_path(321, repo_root=tmp_path)
+        tpath.parent.mkdir(parents=True, exist_ok=True)
+        tpath.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+        # Stub session discovery + extraction.
+        fake_path = tmp_path / "fake.jsonl"
+        monkeypatch.setattr(
+            report_cli, "sessions_for_run",
+            lambda project, sids: [fake_path] if sids == ["sess-1"] else [],
+        )
+        monkeypatch.setattr(
+            report_cli, "iter_session_usage",
+            lambda p: iter([_usage("2026-05-19T10:02:00Z", inp=42, outp=8)]),
+        )
+
+        args = argparse.Namespace(
+            repo=None, issue=321, out=None, no_tokens=False,
+        )
+        rc = report_cli._report_generate(args)
+        assert rc == 0
+        rendered = report_cli.report_path(321, repo_root=tmp_path).read_text()
+        assert "## Token usage" in rendered
+        assert "| **Total** | **42** | **8** | **0** | **0** | **50** |" in rendered
+
+    def test_generate_no_tokens_flag_skips_section(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        events = _two_phase_events()
+        tpath = report_cli.timeline_path(321, repo_root=tmp_path)
+        tpath.parent.mkdir(parents=True, exist_ok=True)
+        tpath.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+        called = []
+
+        def _explode(*_a, **_kw):
+            called.append("sessions_for_run")
+            raise AssertionError("must not be called when --no-tokens is set")
+
+        monkeypatch.setattr(report_cli, "sessions_for_run", _explode)
+        args = argparse.Namespace(
+            repo=None, issue=321, out=None, no_tokens=True,
+        )
+        rc = report_cli._report_generate(args)
+        assert rc == 0
+        assert called == []
+        rendered = report_cli.report_path(321, repo_root=tmp_path).read_text()
+        assert "## Token usage" not in rendered
+
+    def test_generate_without_claude_session_id_renders_no_section(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        # Timeline with NO claude_session_id anywhere.
+        events = [
+            _full_event(
+                action="run-start", start_ts="2026-05-19T10:00:00Z",
+                phase="claimed", maverick_skill="do-issue-solo",
+            ),
+            _full_event(
+                action="phase-boundary", phase="complete",
+                start_ts="2026-05-19T10:01:00Z",
+            ),
+        ]
+        tpath = report_cli.timeline_path(321, repo_root=tmp_path)
+        tpath.parent.mkdir(parents=True, exist_ok=True)
+        tpath.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+        # Discovery must not be called when no session id is captured.
+        monkeypatch.setattr(
+            report_cli, "sessions_for_run",
+            lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not run")),
+        )
+        args = argparse.Namespace(
+            repo=None, issue=321, out=None, no_tokens=False,
+        )
+        rc = report_cli._report_generate(args)
+        assert rc == 0
+        rendered = report_cli.report_path(321, repo_root=tmp_path).read_text()
+        assert "## Token usage" not in rendered
+
+
+class TestRunStartCapturesSessionId:
+    def test_run_start_captures_claude_session_id_from_env(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-from-env")
+        monkeypatch.setattr(report_cli, "instance_id", lambda: "inst000000")
+        args = argparse.Namespace(
+            issue=321, phase=None, skill="do-issue-solo",
+            agent=None, llm=None, skill_name=None,
+        )
+        rc = report_cli._report_run_start(args)
+        assert rc == 0
+        events = report_cli.load_timeline(
+            report_cli.timeline_path(321, repo_root=tmp_path)
+        )
+        assert events[-1]["claude_session_id"] == "sess-from-env"
+
+    def test_run_start_omits_session_id_when_env_unset(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+        monkeypatch.setattr(report_cli, "instance_id", lambda: "inst000000")
+        args = argparse.Namespace(
+            issue=321, phase=None, skill="do-issue-solo",
+            agent=None, llm=None, skill_name=None,
+        )
+        rc = report_cli._report_run_start(args)
+        assert rc == 0
+        events = report_cli.load_timeline(
+            report_cli.timeline_path(321, repo_root=tmp_path)
+        )
+        assert "claude_session_id" not in events[-1]

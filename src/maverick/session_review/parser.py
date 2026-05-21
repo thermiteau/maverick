@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -284,3 +285,93 @@ def parse_session(path: Path) -> SessionData:
         errors=errors,
         maverick_version=maverick_version,
     )
+
+
+@dataclass(frozen=True)
+class UsageRecord:
+    """One assistant turn's token usage from a Claude Code session JSONL.
+
+    Mirrors the ``message.usage`` block plus the carrier row's timestamp
+    and sidechain marker so the report renderer can bin per-phase and
+    distinguish orchestrator vs. subagent cost.
+    """
+
+    timestamp: str
+    input_tokens: int
+    output_tokens: int
+    cache_read_input_tokens: int
+    cache_creation_input_tokens: int
+    model: str
+    is_sidechain: bool
+    session_id: str
+
+
+def iter_session_usage(path: Path) -> Iterator[UsageRecord]:
+    """Yield one ``UsageRecord`` per assistant row whose ``message.usage``
+    is present. Malformed JSON lines and rows without usage are skipped
+    silently, matching ``parse_session``'s tolerant stance.
+    """
+    try:
+        f = open(path)
+    except OSError:
+        return
+    with f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict) or obj.get("type") != "assistant":
+                continue
+            msg = obj.get("message")
+            if not isinstance(msg, dict):
+                continue
+            usage = msg.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            ts = obj.get("timestamp", "")
+            if not ts:
+                continue
+            yield UsageRecord(
+                timestamp=ts,
+                input_tokens=int(usage.get("input_tokens", 0) or 0),
+                output_tokens=int(usage.get("output_tokens", 0) or 0),
+                cache_read_input_tokens=int(
+                    usage.get("cache_read_input_tokens", 0) or 0
+                ),
+                cache_creation_input_tokens=int(
+                    usage.get("cache_creation_input_tokens", 0) or 0
+                ),
+                model=str(msg.get("model", "") or ""),
+                is_sidechain=bool(obj.get("isSidechain", False)),
+                session_id=str(obj.get("sessionId", "") or ""),
+            )
+
+
+def sessions_for_run(
+    project_path: str, session_ids: Sequence[str]
+) -> list[Path]:
+    """Return the JSONL paths that cover a workflow run.
+
+    For each session id we include:
+      - the orchestrator transcript ``<project>/<sid>.jsonl``
+      - any subagent transcripts ``<project>/<sid>/subagents/agent-*.jsonl``
+
+    Missing files are skipped silently — best-effort discovery.
+    """
+    encoded = encode_project_path(project_path)
+    project_dir = Path.home() / ".claude" / "projects" / encoded
+    if not project_dir.is_dir():
+        return []
+    paths: list[Path] = []
+    for sid in session_ids:
+        orchestrator = project_dir / f"{sid}.jsonl"
+        if orchestrator.is_file():
+            paths.append(orchestrator)
+        subagent_dir = project_dir / sid / "subagents"
+        if subagent_dir.is_dir():
+            paths.extend(sorted(subagent_dir.glob("agent-*.jsonl")))
+    return paths
