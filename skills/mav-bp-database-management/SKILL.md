@@ -201,4 +201,4 @@ When reviewing code, flag these patterns:
 | `DROP TABLE` or `DROP COLUMN` without staged rollout| Breaks running application        | Stage the change: remove code references first         |
 | No transaction wrapping for multi-step migration   | Partial application on failure     | Wrap in transaction where the database supports it     |
 
-<!-- maverick-plugin-version: 3.3.3 -->
+<!-- maverick-plugin-version: 3.3.4-dev -->
