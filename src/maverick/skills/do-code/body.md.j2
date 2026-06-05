@@ -15,6 +15,18 @@ orchestrating Claude Code session using its built-in tools (Read, Edit,
 Write, Bash, Grep). The skill's job is to pin standards and scope, not
 to perform the edits in a subagent.
 
+## Project rules (mandatory)
+
+Before doing anything else, check for repo-specific coding guidance at
+`docs/maverick/skills/do-code.md` (path relative to the repo root).
+
+- **If the file exists**, read it fully and treat its contents as
+  binding for this task. It holds project-specific rules that all
+  Maverick coding in this repo must follow. Where it conflicts with
+  generic guidance below, the project file wins.
+- **If the file is absent**, continue without it. Do not create or
+  scaffold the file as part of this task.
+
 ## Preflight (mandatory)
 
 Run this **first**. If it exits non-zero, halt and report the stderr
