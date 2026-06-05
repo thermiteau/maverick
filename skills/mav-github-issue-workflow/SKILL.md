@@ -314,4 +314,4 @@ rm .claude/issue-state.json
 
 Do not delete the state file until the PR is successfully created, as it is needed for crash recovery.
 
-<!-- maverick-plugin-version: 3.3.6 -->
+<!-- maverick-plugin-version: 3.3.7-dev -->

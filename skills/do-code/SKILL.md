@@ -127,4 +127,4 @@ that is the signal: scroll back to the calling workflow's per-task
 loop and resume from the step immediately after the
 `/do-code` invocation.
 
-<!-- maverick-plugin-version: 3.3.6 -->
+<!-- maverick-plugin-version: 3.3.7-dev -->

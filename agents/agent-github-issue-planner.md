@@ -83,4 +83,4 @@ checklist | sub-issues
 - **Scope boundaries** — follow the mav-scope-boundaries skill. Flag any tasks that touch infrastructure, auth, or destructive operations.
 - **Durable output** — always post the tasks comment and update the state file before returning, so work is not lost if the caller's session crashes.
 
-<!-- maverick-plugin-version: 3.3.6 -->
+<!-- maverick-plugin-version: 3.3.7-dev -->
