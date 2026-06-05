@@ -304,4 +304,4 @@ digraph subagent_failure {
 - **Reduce scope on repeated failure** — if a subagent fails twice on the same task, split the task into smaller pieces and dispatch subagents for each piece.
 - **Never silently swallow failures** — if a subagent fails and you cannot recover, report the failure clearly to the user.
 
-<!-- maverick-plugin-version: 3.3.6 -->
+<!-- maverick-plugin-version: 3.3.7-dev -->
