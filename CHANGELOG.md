@@ -7,8 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.3.7] - 2026-06-07
-
 - Fixed the path used by /do-code to find additional coding instructions
 
 ## [3.3.6] - 2026-06-05
