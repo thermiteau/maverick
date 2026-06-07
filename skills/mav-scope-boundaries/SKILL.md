@@ -175,4 +175,4 @@ This task requires interaction with a production system that Claude Code cannot 
 *Posted by Claude Code*
 ```
 
-<!-- maverick-plugin-version: 3.3.7 -->
+<!-- maverick-plugin-version: 3.3.8-dev -->

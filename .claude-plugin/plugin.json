@@ -1,7 +1,7 @@
 {
   "name": "maverick",
   "description": "Autonomous AI development skills, agents, and hooks for Claude Code",
-  "version": "3.3.7",
+  "version": "3.3.8-dev",
   "author": {
     "name": "David Cheal",
     "email": "david.cheal@thermite.au"
