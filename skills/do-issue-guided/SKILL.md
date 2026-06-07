@@ -225,4 +225,4 @@ This phase **always runs** before push. Any changed code AND any code that could
 - **Use conventional commits** that reference the issue number (e.g., `feat: add rubric export (#42)`).
 - **Always create a PR** at the end — deliver a complete result.
 
-<!-- maverick-plugin-version: 3.3.7-dev -->
+<!-- maverick-plugin-version: 3.3.7 -->
