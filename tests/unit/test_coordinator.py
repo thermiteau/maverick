@@ -17,6 +17,7 @@ from maverick import coordinator, gh_state
 class TestInstanceId:
     def test_stable_within_session(self, monkeypatch, tmp_path):
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
         monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         monkeypatch.setattr(
             coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
@@ -43,12 +44,14 @@ class TestInstanceId:
 
         # First "process": no env var, no file — generate and persist.
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
         monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         first = coordinator.instance_id()
         assert path.read_text() == first
 
         # Second "process": env var cleared, file present — read from file.
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
         monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         second = coordinator.instance_id()
         assert second == first
@@ -76,6 +79,7 @@ class TestInstanceId:
         (tmp_path / "no-such-dir").write_text("blocking file")
         monkeypatch.setattr(coordinator, "_instance_id_path", lambda: unwritable)
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
         monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         a = coordinator.instance_id()
         b = coordinator.instance_id()
@@ -84,15 +88,16 @@ class TestInstanceId:
         assert not unwritable.exists()
 
     def test_derives_from_claude_session_id(self, monkeypatch, tmp_path):
-        """#40: when CLAUDE_SESSION_ID is set, every subagent and subprocess
-        within that session derives the same instance id deterministically,
-        with no file write required — sidesteps the first-call file-cache
-        race that produced multiple ids per session.
+        """#40: when CLAUDE_CODE_SESSION_ID is set, every subagent and
+        subprocess within that session derives the same instance id
+        deterministically, with no file write required — sidesteps the
+        first-call file-cache race that produced multiple ids per session.
         """
         path = tmp_path / "instance_id"
         monkeypatch.setattr(coordinator, "_instance_id_path", lambda: path)
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
-        monkeypatch.setenv("CLAUDE_SESSION_ID", "session-abc-123")
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-abc-123")
 
         first = coordinator.instance_id()
 
@@ -105,6 +110,40 @@ class TestInstanceId:
         assert len(first) == 10
         assert not path.exists()
 
+    def test_derives_from_legacy_session_id(self, monkeypatch, tmp_path):
+        """Falls back to the legacy CLAUDE_SESSION_ID name when the current
+        CLAUDE_CODE_SESSION_ID is absent (older Claude Code versions)."""
+        path = tmp_path / "instance_id"
+        monkeypatch.setattr(coordinator, "_instance_id_path", lambda: path)
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "legacy-session")
+
+        first = coordinator.instance_id()
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        second = coordinator.instance_id()
+
+        assert first == second
+        assert len(first) == 10
+        assert not path.exists()
+
+    def test_current_session_id_wins_over_legacy(self, monkeypatch, tmp_path):
+        """When both names are present the current CLAUDE_CODE_SESSION_ID is
+        preferred, so behaviour is stable across the rename."""
+        monkeypatch.setattr(
+            coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
+        )
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "current")
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "legacy")
+        both = coordinator.instance_id()
+
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+        current_only = coordinator.instance_id()
+
+        assert both == current_only
+
     def test_distinct_sessions_derive_distinct_ids(self, monkeypatch, tmp_path):
         """Two concurrent Claude Code sessions on the same machine must
         present as distinct instances to the coordinator."""
@@ -112,24 +151,25 @@ class TestInstanceId:
             coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
         )
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
 
-        monkeypatch.setenv("CLAUDE_SESSION_ID", "session-A")
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-A")
         a = coordinator.instance_id()
 
         monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
-        monkeypatch.setenv("CLAUDE_SESSION_ID", "session-B")
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-B")
         b = coordinator.instance_id()
 
         assert a != b
 
     def test_explicit_env_overrides_session_id(self, monkeypatch, tmp_path):
-        """MAVERICK_INSTANCE_ID still wins over CLAUDE_SESSION_ID, so users
-        can pin a specific id for recovery scenarios."""
+        """MAVERICK_INSTANCE_ID still wins over CLAUDE_CODE_SESSION_ID, so
+        users can pin a specific id for recovery scenarios."""
         monkeypatch.setattr(
             coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
         )
         monkeypatch.setenv("MAVERICK_INSTANCE_ID", "explicit")
-        monkeypatch.setenv("CLAUDE_SESSION_ID", "ignored")
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "ignored")
         assert coordinator.instance_id() == "explicit"
 
 
