@@ -66,7 +66,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -75,7 +74,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from maverick.cli import _get_version
-from maverick.coordinator import instance_id
+from maverick.coordinator import claude_session_id, instance_id
 from maverick.gh_state import TASK_PROGRESS_PHASES
 from maverick.session_review.parser import (
     UsageRecord,
@@ -1070,7 +1069,7 @@ def _report_run_start(args: argparse.Namespace) -> int:
     event = _build_base(args, "run-start")
     event["maverick_skill"] = args.skill  # explicit even though base set it
     event["phase"] = args.phase or "claimed"
-    sid = os.environ.get("CLAUDE_SESSION_ID")
+    sid = claude_session_id()
     if sid:
         event["claude_session_id"] = sid
     append_event(event)
@@ -1155,7 +1154,7 @@ def _report_note(args: argparse.Namespace) -> int:
 def _report_resume(args: argparse.Namespace) -> int:
     event = _build_base(args, "resume")
     event["phase"] = args.phase
-    sid = os.environ.get("CLAUDE_SESSION_ID")
+    sid = claude_session_id()
     if sid:
         event["claude_session_id"] = sid
     append_event(event)
@@ -1357,7 +1356,7 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         "--no-tokens",
         action="store_true",
         help=(
-            "Skip the Token usage section even when CLAUDE_SESSION_ID was "
+            "Skip the Token usage section even when CLAUDE_CODE_SESSION_ID was "
             "captured. Useful for offline rendering or when ~/.claude/projects "
             "is not available."
         ),

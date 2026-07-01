@@ -43,6 +43,24 @@ CLAIM_LABEL = "claude-in-progress"
 LEASE_TTL_MINUTES = 10
 HEARTBEAT_INTERVAL_MINUTES = 2
 
+#: Env vars carrying the current Claude Code session id, most-preferred first.
+#: Claude Code exports ``CLAUDE_CODE_SESSION_ID``; ``CLAUDE_SESSION_ID`` was an
+#: earlier name kept as a fallback for older Claude Code versions.
+_SESSION_ID_ENV_VARS = ("CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID")
+
+
+def claude_session_id() -> str | None:
+    """Return the current Claude Code session id, or ``None`` outside a session.
+
+    Reads ``CLAUDE_CODE_SESSION_ID`` (the current name) and falls back to the
+    legacy ``CLAUDE_SESSION_ID`` for older Claude Code versions.
+    """
+    for name in _SESSION_ID_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
 
 class ClaimLost(RuntimeError):
     """Raised when a claim is detected as lost to another instance mid-run."""
@@ -106,8 +124,9 @@ def instance_id() -> str:
 
     Resolution order:
     1. ``MAVERICK_INSTANCE_ID`` env var — explicit override, wins.
-    2. ``CLAUDE_SESSION_ID`` env var — derive a deterministic 10-char id
-       from a hash of the session id. Two different CC sessions get
+    2. ``CLAUDE_CODE_SESSION_ID`` env var (legacy ``CLAUDE_SESSION_ID``) —
+       derive a deterministic 10-char id from a hash of the session id.
+       Two different CC sessions get
        distinct ids; every subagent and subprocess inside one CC session
        converges on the same id without needing a file write, which
        sidesteps the first-call race in the file-cache path (#40).
@@ -117,7 +136,7 @@ def instance_id() -> str:
     cached = os.environ.get("MAVERICK_INSTANCE_ID")
     if cached:
         return cached
-    session = os.environ.get("CLAUDE_SESSION_ID")
+    session = claude_session_id()
     if session:
         value = hashlib.sha256(session.encode("utf-8")).hexdigest()[:10]
         os.environ["MAVERICK_INSTANCE_ID"] = value

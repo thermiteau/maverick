@@ -1163,7 +1163,7 @@ class TestRunStartCapturesSessionId:
         self, tmp_path: Path, monkeypatch
     ):
         monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
-        monkeypatch.setenv("CLAUDE_SESSION_ID", "sess-from-env")
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "sess-from-env")
         monkeypatch.setattr(report_cli, "instance_id", lambda: "inst000000")
         args = argparse.Namespace(
             issue=321, phase=None, skill="do-issue-solo",
@@ -1176,10 +1176,29 @@ class TestRunStartCapturesSessionId:
         )
         assert events[-1]["claude_session_id"] == "sess-from-env"
 
+    def test_run_start_captures_legacy_session_id_from_env(
+        self, tmp_path: Path, monkeypatch
+    ):
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_SESSION_ID", "legacy-sess")
+        monkeypatch.setattr(report_cli, "instance_id", lambda: "inst000000")
+        args = argparse.Namespace(
+            issue=321, phase=None, skill="do-issue-solo",
+            agent=None, llm=None, skill_name=None,
+        )
+        rc = report_cli._report_run_start(args)
+        assert rc == 0
+        events = report_cli.load_timeline(
+            report_cli.timeline_path(321, repo_root=tmp_path)
+        )
+        assert events[-1]["claude_session_id"] == "legacy-sess"
+
     def test_run_start_omits_session_id_when_env_unset(
         self, tmp_path: Path, monkeypatch
     ):
         monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
         monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
         monkeypatch.setattr(report_cli, "instance_id", lambda: "inst000000")
         args = argparse.Namespace(
