@@ -139,4 +139,4 @@ that is the signal: scroll back to the calling workflow's per-task
 loop and resume from the step immediately after the
 `/do-test` invocation.
 
-<!-- maverick-plugin-version: 3.3.8 -->
+<!-- maverick-plugin-version: 3.3.9-dev -->

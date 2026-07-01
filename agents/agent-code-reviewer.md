@@ -177,4 +177,4 @@ comment so the human knows what to look at first]
 - **If in doubt, FAIL.** A conservative eject is recoverable via human
   review; a lenient PASS merges broken code.
 
-<!-- maverick-plugin-version: 3.3.8 -->
+<!-- maverick-plugin-version: 3.3.9-dev -->
