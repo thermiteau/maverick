@@ -268,4 +268,4 @@ Always prefer the secure option unless there is a documented, reviewed reason to
 | Deserialisation of untrusted data                        | Remote code execution        | Avoid deserialising untrusted input; use safe formats (JSON) |
 | Missing `HttpOnly`/`Secure` flags on session cookies     | Session hijacking            | Set `HttpOnly`, `Secure`, and `SameSite` on all auth cookies |
 
-<!-- maverick-plugin-version: 3.3.8-dev -->
+<!-- maverick-plugin-version: 3.3.8 -->

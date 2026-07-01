@@ -298,4 +298,4 @@ Error handling, logging, and alerting are complementary:
 | No error boundary around UI sections                | Single component crashes page  | Wrap sections in error boundaries with fallback UI |
 | Generic error message for all failures              | Poor user experience           | Distinguish client vs server errors                |
 
-<!-- maverick-plugin-version: 3.3.8-dev -->
+<!-- maverick-plugin-version: 3.3.8 -->
