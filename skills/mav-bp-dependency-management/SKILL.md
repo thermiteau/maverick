@@ -40,4 +40,4 @@ Check for `docs/maverick/skills/dependency-management/SKILL.md`. If present, rea
 | Large transitive dependency addition | Unexpected supply chain expansion | Investigate and consider lighter alternatives |
 | `--force` or `--legacy-peer-deps` in install commands | Masking resolution conflicts | Fix the underlying version conflict |
 
-<!-- maverick-plugin-version: 3.3.10-dev -->
+<!-- maverick-plugin-version: 4.0.0 -->
