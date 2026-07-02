@@ -113,4 +113,4 @@ After all steps are complete and the full verification suite passes:
 
 Do not proceed to code review until every acceptance criterion is met and all checks pass.
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->

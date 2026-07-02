@@ -51,4 +51,4 @@ Check for `docs/maverick/skills/application-security/SKILL.md`. If present, read
 | Deserialisation of untrusted data                        | Remote code execution        | Avoid deserialising untrusted input; use safe formats (JSON) |
 | Missing `HttpOnly`/`Secure` flags on session cookies     | Session hijacking            | Set `HttpOnly`, `Secure`, and `SameSite` on all auth cookies |
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->

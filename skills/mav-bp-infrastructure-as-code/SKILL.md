@@ -37,4 +37,4 @@ Check for `docs/maverick/skills/infrastructure-as-code/SKILL.md`. If present, re
 | Destructive changes auto-applied               | Accidental data loss           | Require human approval for destroy/replace actions   |
 | Mixed IaC tools for the same resource layer    | Conflicting state management   | Standardise on one tool per layer                    |
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->

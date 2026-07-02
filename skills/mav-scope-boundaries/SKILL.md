@@ -199,4 +199,4 @@ This task requires interaction with a production system that Claude Code cannot 
 *Posted by Claude Code*
 ```
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->

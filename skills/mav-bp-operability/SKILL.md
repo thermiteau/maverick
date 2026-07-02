@@ -83,4 +83,4 @@ gap in your summary — do not trigger skill generation mid-task.
 | No correlation ID in log entries                   | Cannot link logs to traces    | Include trace ID in structured log context   |
 | SLO defined but not measured                       | False confidence              | Instrument the SLI and track the target      |
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->
