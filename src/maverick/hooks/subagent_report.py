@@ -84,11 +84,18 @@ def active_claim(env: dict[str, str], registry: Path = CLAIMS_REGISTRY) -> tuple
 
 
 def _agent_name(payload: dict) -> str | None:
-    """Extract the subagent name from the hook payload, defensively."""
+    """Extract the subagent name from the hook payload, defensively.
+
+    Plugin agents report namespaced (``maverick:agent-code-reviewer``);
+    strip the namespace so the ``agent-`` guard and the report rows use
+    the bare name. (Found in the first live acceptance run: the four
+    agent dispatches went unrecorded because the namespaced name failed
+    the guard.)
+    """
     for key in ("agent_type", "subagent_type", "agent_name", "agent", "name"):
         value = payload.get(key)
         if isinstance(value, str) and value:
-            return value
+            return value.split(":")[-1]
     return None
 
 

@@ -144,7 +144,11 @@ PR_EOF
 `Closes #N` must appear in the PR body **and survive into the squash
 commit body** — in squash-merge repos GitHub scans the commit that lands
 on the default branch, not the PR description at click-time (#56).
-`do-issue-solo` re-verifies the line immediately before merging.
+Whether the PR body becomes the squash body depends on the repository's
+squash-commit default ("PR title and description" vs "commit details");
+do not rely on it. `do-issue-solo` re-verifies the PR body before
+merging, and `maverick issue close-on-merge` closes the issue explicitly
+either way — GitHub's keyword auto-close is a bonus, not the mechanism.
 
 ## Resuming Work
 

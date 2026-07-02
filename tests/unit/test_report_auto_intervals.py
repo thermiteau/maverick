@@ -187,6 +187,21 @@ class TestHookDecisions:
         assert "--if-agent" in cmd and "agent-issue-analyst" in cmd
         assert "--if-action" in cmd and "agent-dispatch" in cmd
 
+    def test_namespaced_agent_name_stripped(self, hook, one_claim):
+        """Plugin agents report as maverick:agent-x — the namespace must
+        not defeat the agent- guard (live-run regression)."""
+        cmd = hook.handle(
+            {
+                "hook_event_name": "SubagentStart",
+                "agent_type": "maverick:agent-code-reviewer",
+            },
+            ENV,
+            registry=one_claim,
+        )
+        assert cmd is not None
+        assert "agent-code-reviewer" in cmd
+        assert not any("maverick:" in part for part in cmd)
+
     def test_non_maverick_agent_ignored(self, hook, one_claim):
         cmd = hook.handle(
             {"hook_event_name": "SubagentStart", "agent_type": "Explore"},
