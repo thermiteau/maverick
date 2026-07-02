@@ -141,4 +141,4 @@ When reviewing code or auditing a project, flag these patterns:
 | Inline comments restating obvious code           | Noise, not documentation     | Remove; write higher-level docs instead                  |
 | Documentation in external wiki only              | Not versioned with code      | Move to repo `docs/` directory                           |
 
-<!-- maverick-plugin-version: 3.3.9 -->
+<!-- maverick-plugin-version: 3.3.10-dev -->

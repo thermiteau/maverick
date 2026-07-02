@@ -61,4 +61,4 @@ Either condition alone is not enough. The marker without a `pull_request:` trigg
 - **Workflow absent** → INFO, noting that the local agent review is the gate by default and pointing to this skill if the project wants the optional CI gate.
 - **Workflow present but malformed** (marker without `pull_request:` trigger, or vice versa) → WARN, since the team's intent is unclear.
 
-<!-- maverick-plugin-version: 3.3.9 -->
+<!-- maverick-plugin-version: 3.3.10-dev -->
