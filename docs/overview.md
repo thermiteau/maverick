@@ -13,7 +13,7 @@ relates-to:
   - scope-boundaries.md
   - llm-containment.md
   - claude-code-error-handling-and-recovery.md
-last-verified: 2026-04-02
+last-verified: 2026-07-02
 ---
 
 ## Overview
@@ -24,15 +24,15 @@ It provides skills, agents, and hooks that constrain and guide LLM behaviour - m
 
 ## The Problem Maverick Solves
 
-LLMs generate code fast but dont come with any concept of quality, best practice or constraint. Claude Code will happily agree to build the worlds worst idea, with a smile, because without guardrails:
+LLMs generate code fast but don't come with any concept of quality, best practice or constraint. Claude Code will happily agree to build the world's worst idea, with a smile, because without guardrails:
 
 - **No operational awareness** - LLMs don't add structured logging, alerting, or monitoring unless explicitly told to. Production code becomes undiagnosable.
-- **No security reasoning** - LLMs reproduce vulnerable patterns from training data. SQL injection, XSS, and secrets exposure go unnoticed. It wont make any effort to ensure cybersecurity is maintined.
-- **No testing discipline** - LLMs write working code and you can think youve got a product. Until it runs anywhere except on your machine because its filled with bugs you cant see. Without tests, those bugs ship.
-- **No workflow discipline** - LLMs commit to main, skip CI, ignore conventions, and produce untraceable changes. If you ask an LLM to create a large ammount of changes ina single attempt it will try and you'll regret it. Large tasks need structured decomposition into manageable sub-tasks with clear dependency ordering.
+- **No security reasoning** - LLMs reproduce vulnerable patterns from training data. SQL injection, XSS, and secrets exposure go unnoticed. It wont make any effort to ensure cybersecurity is maintained.
+- **No testing discipline** - LLMs write working code and you can think you've got a product. Until it runs anywhere except on your machine because its filled with bugs you cant see. Without tests, those bugs ship.
+- **No workflow discipline** - LLMs commit to main, skip CI, ignore conventions, and produce untraceable changes. If you ask an LLM to create a large amount of changes in a single attempt it will try and you'll regret it. Large tasks need structured decomposition into manageable sub-tasks with clear dependency ordering.
 - **No self-review** - LLMs don't question their own output. Code that looks correct may miss requirements or violate project conventions.
 
-These risks multiply enourmously in unattended development when no human is watching the LLM work. There is no developer catching issues in real-time, no reviewer glancing at the diff, no operator noticing silent failures. Every quality gap becomes a production risk.
+These risks multiply enormously in unattended development when no human is watching the LLM work. There is no developer catching issues in real-time, no reviewer glancing at the diff, no operator noticing silent failures. Every quality gap becomes a production risk.
 
 ## How Maverick Solves It
 
@@ -72,7 +72,7 @@ See [claude-code-workers.md](claude-code-workers.md) for full details.
 
 ## Why Each Practice Area Is Central
 
-Every practice area in maverick exists because it addresses a specific failure mode of LLM-generated code. These failures are things the tech industry has learned through decades of watching humans crate the same mistake, that now get automated by unconstrained LLM's.
+Every practice area in maverick exists because it addresses a specific failure mode of LLM-generated code. These failures are things the tech industry has learned through decades of watching humans create the same mistake, that now get automated by unconstrained LLM's.
 
 None are optional - they form an interlocking system where each practice reinforces the others.
 
@@ -85,7 +85,7 @@ None are optional - they form an interlocking system where each practice reinfor
 | Linting                                                      | Style drift, inconsistency, detectable bugs         | Automated consistency enforcement without human style policing               |
 | Error Handling                                               | Swallowed errors, missing retries, cascade failures | LLMs skip error paths - enforced patterns prevent silent data loss           |
 | [CI/CD](standards-and-practices/cicd.md)                     | Broken builds, untested code reaching main          | Last line of defence - catches what local verification misses                |
-| [Git Workflow](git-workflow.md)                              | Untraceable changes, broken main branch             | Audit trail and reversibility - every change linked to an issue via PR       |
+| [Git Workflow](standards-and-practices/git-workflow.md)      | Untraceable changes, broken main branch             | Audit trail and reversibility - every change linked to an issue via PR       |
 | Source Control                                               | Missing repos, leaked secrets, poor hygiene         | Foundational requirement - no repo means no traceability                     |
 | [Code Review](standards-and-practices/code-review.md)        | Requirement mismatches, convention violations       | Autonomous reviewer catches what the generating LLM missed                   |
 | [Security](standards-and-practices/security-review.md)       | OWASP vulnerabilities, exposed secrets              | LLMs reproduce vulnerable patterns - review catches them before merge        |
@@ -108,7 +108,7 @@ Maverick encodes best practices as machine-readable artefacts that the LLM must 
 | Mechanism  | Role                                                            | Example                                                                                                                            |
 | ---------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | **Skills** | Define what good looks like - standards, conventions, workflows | `mav-bp-logging` defines log levels and structured format                                                                          |
-| **Agents** | Verify compliance autonomously - review, test, document         | `code-reviewer` catches spec gaps, missing tests, and quality issues; `do-cybersecurity-review` catches security issues separately |
+| **Agents** | Verify compliance autonomously - review, test, document         | `agent-code-reviewer` catches spec gaps, missing tests, and quality issues (security is handled separately by the `do-cybersecurity-review` skill) |
 | **Hooks**  | Enforce rules automatically at tool-call boundaries             | Block commits to protected branches, prevent secret exposure                                                                       |
 
 ### The Enforcement Chain
@@ -131,25 +131,24 @@ Each link in this chain catches different classes of issues:
 
 ```
 maverick/
-├── skills/                     # Machine-readable guidance (44 skills)
-│   ├── mav-bp-*/               # Universal best-practice standards (20 skills)
+├── skills/                     # Machine-readable guidance (54 skills, build output)
+│   ├── mav-bp-*/               # Universal best-practice standards (21 skills)
 │   ├── mav-bp-cicd-*/          # Platform-specific CI/CD skills
 │   ├── do-issue-*/             # GitHub issue workflow entry points
-│   ├── do-task-*/              # Local task workflow entry points
+│   ├── do-epic/                # Epic-driven parallel workflow
 │   ├── do-upskill/             # Project skill generation
 │   └── ...                     # Execution, governance, debugging
-├── agents/                     # Autonomous workers (7 agents)
+├── agents/                     # Autonomous workers (6 agents, build output)
 │   ├── agent-code-reviewer.md
 │   ├── agent-issue-analyst.md
 │   ├── agent-github-issue-planner.md
-│   ├── agent-task-planner.md
 │   ├── agent-session-reviewer.md
 │   ├── agent-maverick.md
 │   └── agent-tech-docs-writer.md
-├── hooks/                      # Tool-call enforcement rules
+├── hooks/                      # Tool-call enforcement rules (build output)
 ├── docs/                       # Philosophy and rationale (this directory)
 ├── scripts/                    # Developer tooling (release, validation)
-├── cli/                        # Maverick CLI (init, cloud, worker)
+├── src/maverick/               # Maverick CLI + skill/agent sources (init, cloud, worker)
 └── .claude-plugin/             # Plugin manifest
 ```
 

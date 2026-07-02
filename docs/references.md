@@ -3,7 +3,7 @@ title: References
 scope: External documentation links for platforms, tools, and specifications used by Maverick
 relates-to:
   - overview.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # References

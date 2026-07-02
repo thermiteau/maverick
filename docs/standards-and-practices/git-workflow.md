@@ -5,7 +5,7 @@ relates-to:
   - cicd.md
   - code-review.md
   - scope-boundaries.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # Git Workflow
@@ -37,7 +37,7 @@ These skills work together to constrain the LLM into a disciplined workflow that
 
 ## Branching Strategy
 
-Maverick uses a trunk-based model: `main` is the only long-lived branch. All work happens on short-lived branches that PR back to `main`.
+Maverick uses a trunk-based model: `main` is the trunk where development happens, and `stable` is a CI-managed long-lived branch that end users install from. All work happens on short-lived branches that PR back to `main`.
 
 ```mermaid
 gitGraph

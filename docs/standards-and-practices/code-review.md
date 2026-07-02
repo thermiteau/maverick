@@ -5,12 +5,12 @@ relates-to:
   - comprehensive-testing.md
   - security-review.md
   - cicd.md
-last-verified: 2026-04-02
+last-verified: 2026-07-02
 ---
 
 # Code Review
 
-Code review is the practice of examining source code before it is merged to catch defects, enforce standards, and verify intent. In LLM-driven development, code review takes on a fundamentally different role: the code-reviewer agent provides autonomous review for every change, ensuring that even unattended LLM sessions produce code that meets project standards before it reaches a human reviewer.
+Code review is the practice of examining source code before it is merged to catch defects, enforce standards, and verify intent. In LLM-driven development, code review takes on a fundamentally different role: the `agent-code-reviewer` provides autonomous review for every change, ensuring that even unattended LLM sessions produce code that meets project standards before it reaches a human reviewer.
 
 ## Why Code Review Matters for LLM-Generated Code
 
@@ -34,7 +34,7 @@ In attended development, a human reviews code before creating a PR. In unattende
 - The LLM generates code, tests it, and creates a PR without human involvement
 - If there is no review step between code generation and PR creation, the PR contains unreviewed code
 - Human reviewers then face a large diff of LLM-generated code with no pre-screening
-- The code-reviewer agent fills this gap by reviewing every change before it becomes a PR
+- The `agent-code-reviewer` fills this gap by reviewing every change before it becomes a PR
 
 ## How Maverick Enforces Code Review
 
@@ -43,17 +43,17 @@ Maverick implements a multi-stage review process that combines autonomous agent 
 ```mermaid
 flowchart TD
     A[LLM generates code] --> B[mav-local-verification skill]
-    B -->|tests pass| C[code-reviewer agent: Stage 1]
+    B -->|tests pass| C[agent-code-reviewer: Stage 1]
     C -->|spec compliance check| D{matches requirements?}
     D -->|no| E[reject with specific feedback]
     E -->|LLM revises| A
-    D -->|yes| F[code-reviewer agent: Stage 2]
+    D -->|yes| F[agent-code-reviewer: Stage 2]
     F -->|code quality check| G{meets quality standards?}
     G -->|no| H[reject with specific feedback]
     H -->|LLM revises| A
     G -->|yes| I[PR created]
     I --> J[human review]
-    J -->|feedback via pullrequest-review skill| K{approved?}
+    J -->|feedback via do-pullrequest-review skill| K{approved?}
     K -->|no| L[LLM addresses feedback]
     L --> A
     K -->|yes| M[merged]
@@ -126,7 +126,7 @@ LLMs can misinterpret requirements while producing clean, well-tested code that 
 
 ### Why review happens before the PR
 
-Maverick's code-reviewer agent runs before a PR is created, not after. This ordering is important:
+Maverick's `agent-code-reviewer` runs before a PR is created, not after. This ordering is important:
 
 - If review happens after PR creation, the LLM has already published unreviewed code to the team
 - Issues found post-PR require rework that creates noise in the PR history (force pushes, fixup commits)
@@ -135,7 +135,7 @@ Maverick's code-reviewer agent runs before a PR is created, not after. This orde
 
 ### Human review as the final gate
 
-Autonomous review does not replace human review. It augments it. The code-reviewer agent catches mechanical issues (missing tests, convention violations, error handling gaps) so that human reviewers can focus on higher-order concerns:
+Autonomous review does not replace human review. It augments it. The `agent-code-reviewer` catches mechanical issues (missing tests, convention violations, error handling gaps) so that human reviewers can focus on higher-order concerns:
 
 - Does the design approach make sense for this project?
 - Are there architectural implications the agent could not evaluate?
@@ -144,17 +144,17 @@ Autonomous review does not replace human review. It augments it. The code-review
 
 ## Processing Review Feedback
 
-The pullrequest-review skill handles the feedback loop when human reviewers request changes on a PR.
+The `do-pullrequest-review` skill handles the feedback loop when human reviewers request changes on a PR.
 
 ### Feedback processing workflow
 
 1. Human reviewer leaves comments on the PR with requested changes
-2. The pullrequest-review skill parses the review comments
+2. The `do-pullrequest-review` skill parses the review comments
 3. Each comment is categorised: required change, suggestion, question, or nitpick
 4. Required changes are addressed by the LLM with corresponding code modifications
 5. Suggestions are evaluated and either adopted or responded to with rationale
 6. Questions are answered with references to the relevant code or requirements
-7. Modified code goes through the code-reviewer agent again before pushing
+7. Modified code goes through the `agent-code-reviewer` again before pushing
 
 ### Feedback principles
 
@@ -181,7 +181,7 @@ The pullrequest-review skill handles the feedback loop when human reviewers requ
 
 ### Scope discipline in review
 
-The code-reviewer agent also checks that the LLM's changes are appropriately scoped. LLMs sometimes make drive-by improvements to code near their changes, refactor unrelated functions, or "fix" pre-existing issues outside the task scope. While individually beneficial, these unscoped changes:
+The `agent-code-reviewer` also checks that the LLM's changes are appropriately scoped. LLMs sometimes make drive-by improvements to code near their changes, refactor unrelated functions, or "fix" pre-existing issues outside the task scope. While individually beneficial, these unscoped changes:
 
 - Make PRs harder to review by mixing intentional changes with incidental ones
 - Increase the risk of unintended side effects
@@ -193,15 +193,15 @@ The reviewer flags unscoped changes and asks the LLM to remove them or split the
 
 ### Code review and testing
 
-The code-reviewer agent checks test adequacy as part of Stage 2. It verifies that new code has tests, that tests are meaningful (not superficial), and that coverage targets are met. See comprehensive-testing.md for test quality criteria.
+The `agent-code-reviewer` checks test adequacy as part of Stage 2. It verifies that new code has tests, that tests are meaningful (not superficial), and that coverage targets are met. See comprehensive-testing.md for test quality criteria.
 
 ### Code review and security
 
-Security is **not** part of the code review process. The code-reviewer agent's scope is limited to whether the code is well-written, tested, and meets the GitHub issue requirements. Security findings are surfaced separately by `do-cybersecurity-review` (in update mode) as a mandatory pre-push gate that runs before the PR is opened — by the time a reviewer sees the PR, security findings have already been folded into the PR body. See security-review.md for the broader security pipeline.
+Security is **not** part of the code review process. The `agent-code-reviewer`'s scope is limited to whether the code is well-written, tested, and meets the GitHub issue requirements. Security findings are surfaced separately by `do-cybersecurity-review` (in update mode) as a mandatory pre-push gate that runs before the PR is opened — by the time a reviewer sees the PR, security findings have already been folded into the PR body. See security-review.md for the broader security pipeline.
 
 ### Code review and CI/CD
 
-The code-reviewer agent runs before CI. If code passes review but fails CI, the failure is typically an environment-specific issue rather than a code quality issue. The CI pipeline provides a final verification layer after human review and before merge. See cicd.md for pipeline details.
+The `agent-code-reviewer` runs before CI. If code passes review but fails CI, the failure is typically an environment-specific issue rather than a code quality issue. The CI pipeline provides a final verification layer after human review and before merge. See cicd.md for pipeline details.
 
 ## Further Reading
 

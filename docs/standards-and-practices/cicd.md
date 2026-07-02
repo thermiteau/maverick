@@ -5,7 +5,7 @@ relates-to:
   - comprehensive-testing.md
   - git-workflow.md
   - scope-boundaries.md
-last-verified: 2026-04-02
+last-verified: 2026-07-02
 ---
 
 # CI/CD Integration
@@ -35,13 +35,13 @@ Without CI, step 3 is absent and the only barrier is the LLM's own judgement abo
 | `mav-bp-cicd-azure`      | Azure DevOps-specific pipeline monitoring and build awareness             |
 | `mav-bp-cicd-bitbucket`  | Bitbucket Pipelines-specific monitoring and build awareness               |
 | `mav-local-verification` | Runs lint, typecheck, and tests before push (shift-left verification)     |
-| `upskill`                | Detects the project's CI platform and generates project-specific guidance |
+| `do-upskill`                | Detects the project's CI platform and generates project-specific guidance |
 
-The `upskill` skill is important here: it examines the repository for CI configuration files and generates a project-level skill that tells the LLM how this specific project's pipeline works. This means the LLM knows not just generic CI practices but the actual pipeline stages, required checks, and deployment targets for the project it is working on.
+The `do-upskill` skill is important here: it examines the repository for CI configuration files and generates a project-level skill that tells the LLM how this specific project's pipeline works. This means the LLM knows not just generic CI practices but the actual pipeline stages, required checks, and deployment targets for the project it is working on.
 
 ## Platform Support
 
-Maverick supports three CI platforms with dedicated skills and detects several more for project-level guidance.
+Maverick supports four CI platforms with dedicated skills and detects several more for project-level guidance.
 
 ### Dedicated platform skills
 
@@ -56,17 +56,17 @@ Maverick supports three CI platforms with dedicated skills and detects several m
 
 | Platform  | Config detection          | Guidance                    |
 | --------- | ------------------------- | --------------------------- |
-| Jenkins   | `Jenkinsfile`             | Project skill via `upskill` |
-| CircleCI  | `.circleci/config.yml`    | Project skill via `upskill` |
-| Buildkite | `.buildkite/pipeline.yml` | Project skill via `upskill` |
-| Travis CI | `.travis.yml`             | Project skill via `upskill` |
-| TeamCity  | `.teamcity/`              | Project skill via `upskill` |
+| Jenkins   | `Jenkinsfile`             | Project skill via `do-upskill` |
+| CircleCI  | `.circleci/config.yml`    | Project skill via `do-upskill` |
+| Buildkite | `.buildkite/pipeline.yml` | Project skill via `do-upskill` |
+| Travis CI | `.travis.yml`             | Project skill via `do-upskill` |
+| TeamCity  | `.teamcity/`              | Project skill via `do-upskill` |
 
-When `upskill` detects a CI platform, it generates a project-level skill describing the pipeline configuration, stages, and any platform-specific requirements the LLM must respect.
+When `do-upskill` detects a CI platform, it generates a project-level skill describing the pipeline configuration, stages, and any platform-specific requirements the LLM must respect.
 
 ### Maverick's own CI
 
-Maverick itself uses GitHub Actions for CI (`.github/workflows/unit-tests.yml`), running its unit test suite on pushes and PRs to `main`.
+Maverick itself uses GitHub Actions for CI (`.github/workflows/ci.yml`), running its unit test suite on pushes and PRs to `main`.
 
 ## Pipeline Stages
 
@@ -162,7 +162,7 @@ Code moves through environments in a fixed sequence. The same artefact is promot
 
 | Environment | Deployment trigger                      | Rollback            | Who approves       |
 | ----------- | --------------------------------------- | ------------------- | ------------------ |
-| Development | Automatic on merge to `develop`         | Automatic           | No approval needed |
+| Development | Automatic on merge to the trunk branch  | Automatic           | No approval needed |
 | Staging     | Automatic on release candidate tag      | Automatic           | No approval needed |
 | Production  | Manual trigger after staging validation | Manual or automatic | Human required     |
 
