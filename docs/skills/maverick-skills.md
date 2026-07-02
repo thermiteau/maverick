@@ -15,7 +15,7 @@ Implement a focused code change. Use this skill as the wrapper for any implement
 
 ## do-cybersecurity-review
 
-Run a security audit of the project's existing codebase and write a findings report to docs/security-audit.md. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks. Run as part of do-init or on demand.
+Audit a codebase for security risks in one of two modes. In full-audit mode it scans the entire codebase and writes a findings report to docs/security-audit.md (run as part of do-init or on demand). In update mode it reviews only a diff plus the code it could impact, returning a structured findings list as a pre-push gate for do-issue-solo and do-issue-guided. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks.
 
 
 ## do-docs
@@ -55,7 +55,7 @@ Analyze a project's codebase against Maverick standard practices and write a fin
 
 ## do-pullrequest-review
 
-How to process code review feedback — verify before implementing, push back when wrong, clarify before acting on partial understanding. Applied when receiving review from the code-reviewer agent or human reviewers.
+How to process code review feedback — verify before implementing, push back when wrong, clarify before acting on partial understanding. Applied when receiving review from the agent-code-reviewer or human reviewers.
 
 
 ## do-recommend

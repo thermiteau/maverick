@@ -8,7 +8,7 @@ relates-to:
   - code-review.md
   - cicd.md
   - claude-code-error-handling-and-recovery.md
-last-verified: 2026-04-27
+last-verified: 2026-07-02
 ---
 
 # Issue-driven Autonomous Workflow
@@ -69,7 +69,7 @@ flowchart TD
         ANALYSE --> DECOMPOSE --> SHAPE
     end
 
-    SHAPE -- Single story --> SOLO_WT[Create one worktree off develop]
+    SHAPE -- Single story --> SOLO_WT[Create one worktree off the base branch story_base]
     SHAPE -- Epic --> DAG
 
     %% ─────────────── Epic planning ───────────────
@@ -107,7 +107,7 @@ flowchart TD
         direction TB
         REVERIFY{Claim still held<br/>and not blocked?}
         STACKED{Sibling PR<br/>open and unmerged?}
-        BR_DEV[Branch from develop]
+        BR_DEV[Branch from story_base]
         BR_SIBLING[Branch from sibling PR<br/>stacked PR]
         TASK[Implement next task]
         VERIFY[Local verify<br/>lint, typecheck, tests]
@@ -121,7 +121,7 @@ flowchart TD
         SEC_VERDICT{Security verdict?}
         BLOCKING_HALT[Halt, surface findings, route<br/>back to implementation]
         RETARGET{Stacked branch:<br/>sibling base merged?}
-        RT[Retarget PR base to develop]
+        RT[Retarget PR base to story_base]
         CI_PUSH[Pre-push verification, push final state]
         CI_WAIT[Monitor CI per mav-bp-cicd]
         CI_OK{CI passes?}
@@ -158,7 +158,7 @@ flowchart TD
 
     %% ─── Approve path ───
     VERDICT -- PASS --> APPROVE[Maverick GitHub App posts gh pr review --approve<br/>auditable agent-reviewed trail]
-    APPROVE --> AUTOMERGE[Auto-merge PR<br/>squash to develop]
+    APPROVE --> AUTOMERGE[Auto-merge PR<br/>squash to story_base]
     AUTOMERGE --> RELEASE[Release claim on this story]
     RELEASE --> EPIC_OK{Story belongs<br/>to an epic?}
 
@@ -170,7 +170,7 @@ flowchart TD
     NEXT_WAVE -- No --> END
 
     %% ─── Eject path ───
-    VERDICT -- FAIL --> EJECT[Apply maverick-needs-human label<br/>request human review on PR<br/>release claim]
+    VERDICT -- FAIL --> EJECT[Apply needs-human label<br/>request human review on PR<br/>release claim]
     EJECT --> EPIC_FAIL{Story belongs<br/>to an epic?}
     EPIC_FAIL -- No --> END
     EPIC_FAIL -- Yes --> PROPAGATE[Propagate block to all transitive descendants<br/>walk the DAG, label each blocked-by]
@@ -188,7 +188,7 @@ The very first step of every action skill is `uv run maverick preflight <skill-n
 
 Before any work begins, the workflow hydrates its view of the world from GitHub — the DAG comment on the parent epic (if any), the rolling state snapshot, every claim and lease comment, every `blocked-by` label. Local files are treated as a stale cache.
 
-The issue is then claimed atomically: a `claude-in-progress` label, an assignee, and a lease comment with an instance id and expiry timestamp. The lease is refreshed by a heartbeat at a short interval (1–2 min) with a short TTL (5–10 min) so machine death is detected quickly. If another instance already holds a valid lease, the workflow aborts cleanly without modifying the issue. If the lease is stale, the new instance posts a takeover comment and proceeds.
+The issue is then claimed atomically: a `claude-in-progress` label, a `maverick-claim` marker comment, and a lease comment with an instance id and expiry timestamp. The lease is refreshed by a heartbeat at a short interval (1–2 min) with a short TTL (5–10 min) so machine death is detected quickly. If another instance already holds a valid lease, the workflow aborts cleanly without modifying the issue. If the lease is stale, the new instance posts a takeover comment and proceeds.
 
 ### Pre-development
 
@@ -200,7 +200,7 @@ For epics only: cross-story dependencies and shared-file collisions are analysed
 
 ### Wave dispatch
 
-For each wave: stories carrying `blocked-by` labels are filtered out, a worktree is created per surviving story off `develop`, and execution dispatches either in parallel (one subagent per worktree) or serially. The same per-story flow runs in each worktree.
+For each wave: stories carrying `blocked-by` labels are filtered out, a worktree is created per surviving story off the base branch (`story_base`, defaulting to the repo's default branch), and execution dispatches either in parallel (one subagent per worktree) or serially. The same per-story flow runs in each worktree.
 
 For a standalone story (non-epic) the flow is the same minus the wave layer — a single worktree, a single per-story flow, no wave coordination.
 
@@ -209,7 +209,7 @@ For a standalone story (non-epic) the flow is the same minus the wave layer — 
 This is the core loop and is identical for epic-driven and standalone work:
 
 1. **Re-verify the claim.** A late `blocked-by` propagation from a sibling ejection or an expired lease aborts the story before any push.
-2. **Branch.** From `develop` for an independent story; from a sibling branch when the story depends on a sibling whose PR is open but not yet merged (stacked PR pattern).
+2. **Branch.** From `story_base` (the repo's default branch unless overridden) for an independent story; from a sibling branch when the story depends on a sibling whose PR is open but not yet merged (stacked PR pattern).
 3. **Implement task by task.** Each task: implement → local verification (lint, typecheck, tests) → conventional commit referencing the issue → **push immediately**. Pushing per task is a durability checkpoint — if the machine dies between tasks, the work survives.
 4. **Wrap up.** After the last task: full verification, then two mandatory pre-push reviews (always run, no skip path):
    - **Documentation review** dispatches `agent-tech-docs-writer` in `update` mode against the diff — updates stale docs and creates new ones for new components. "No changes required" is a valid outcome but is recorded explicitly.
@@ -221,11 +221,11 @@ This is the core loop and is identical for epic-driven and standalone work:
 `agent-code-reviewer` runs in two stages against the open PR: **spec compliance** (does this implement what the issue actually asked for?) then **code quality** (correctness, test coverage of changed behaviour, scope discipline, maintainability). Security is explicitly *not* part of this gate — it is handled by the pre-push `do-cybersecurity-review` (Phase 7) and findings are already in the PR body by the time the agent reviews. The verdict is **PASS** or **FAIL** — there is no "approve with suggestions" middle ground.
 
 - **PASS** → the Maverick GitHub App posts `gh pr review --approve` with the verdict (via `maverick gh-app gh -- pr review`), and the PR auto-merges (`gh pr merge --auto --squash`). The claim is released.
-- **FAIL** → the PR is ejected: a `maverick-needs-human` label is applied to the issue and PR, the review is posted as a comment, and the claim is released. The agent does **not** attempt to fix and retry.
+- **FAIL** → the PR is ejected: a `needs-human` label is applied to the issue and PR, the review is posted as a comment, and the claim is released. The agent does **not** attempt to fix and retry.
 
 ### Block propagation (epic path only)
 
-When a story in an epic is ejected, every transitive descendant in the DAG is labelled `blocked-by:#<ejected-story>`. Any in-flight subagent working on a now-blocked story has its claim released and its work discarded — that work would have been built on a foundation that's not landing. A propagation marker (`maverick-bprop:#N`) is written before the walk and cleared after, so a crash mid-walk is resumable without leaving partial blocks.
+When a story in an epic is ejected, every transitive descendant in the DAG is labelled `blocked-by:#<ejected-story>`. Any in-flight subagent working on a now-blocked story has its claim released and its work discarded — that work would have been built on a foundation that's not landing. A propagation marker (`maverick-bprop`) is written before the walk and cleared after, so a crash mid-walk is resumable without leaving partial blocks.
 
 ### Termination
 

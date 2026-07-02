@@ -4,7 +4,7 @@ scope: Remote compute instances running Claude Code
 relates-to:
   - cicd.md
   - maverick-build.md
-last-verified: 2026-03-20
+last-verified: 2026-07-02
 ---
 
 ## Remote Compute
@@ -82,7 +82,7 @@ Bake a Linux AMI pre-configured with Claude Code using cloud-init. This step is 
 maverick build-ami
 ```
 
-The `build-ami` command requires `maverick infra deploy` to have been run first — it reads the security group, IAM profile, subnet, and secret ARN from the VPC stack outputs. The only config value needed is the EC2 key pair name.
+The `build-ami` command requires `maverick infra deploy` to have been run first — it reads the security group, IAM profile, and subnet from the VPC stack outputs. The only config value needed is the EC2 key pair name.
 
 The script will:
 
@@ -124,3 +124,5 @@ In your GitHub repo: Settings → Webhooks → Add webhook:
 - **Content type:** `application/json`
 - **Secret:** The value of `GITHUB_WEBHOOK_SECRET` in your Secrets Manager secret
 - **Events:** Select "Issues"
+
+Only the `labeled` action with the configured trigger label creates a work item — the handler ignores every other issue event. The trigger label defaults to `claude-do` (the `WebhookLabel` CloudFormation parameter / `WEBHOOK_LABEL` env var). So after the webhook is wired up, a worker is dispatched only when an issue is labelled `claude-do`; opening or editing an issue does nothing on its own.

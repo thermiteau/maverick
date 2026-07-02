@@ -4,7 +4,7 @@ scope: Why rigorous testing is the primary quality gate for LLM-generated code a
 relates-to:
   - code-review.md
   - cicd.md
-last-verified: 2026-04-02
+last-verified: 2026-07-02
 ---
 
 # Comprehensive Testing
@@ -54,17 +54,15 @@ Maverick enforces testing through multiple reinforcing mechanisms across the dev
 
 ```mermaid
 flowchart TD
-    A[mav-bp-unit-testing skill] -->|defines standards| B[upskill system]
+    A[mav-bp-unit-testing skill] -->|defines standards| B[do-upskill system]
     B -->|generates project-specific test guidance| C[project test skill]
     C -->|constrains LLM during coding| D[code generation with tests]
-
-    E[TDD skill] -->|test-first workflow| D
 
     D --> F[mav-local-verification skill]
     F -->|runs tests pre-commit| G{tests pass?}
     G -->|no| H[LLM fixes code or tests]
     H --> D
-    G -->|yes| I[code-reviewer agent]
+    G -->|yes| I[agent-code-reviewer]
     I -->|checks test quality| J{adequate coverage?}
     J -->|no| K[reject with feedback]
     K --> D
@@ -82,13 +80,13 @@ flowchart TD
 | mav-bp-unit-testing                       | Defines universal unit test standards: strategy, coverage targets, quality criteria      |
 | mav-bp-integration-testing                | Defines integration test standards: scope, external dependencies, data isolation         |
 | mav-local-verification                    | Requires all tests to pass locally before code is committed                              |
-| Project-specific test skill (via upskill) | Specifies the project's test framework, conventions, and additional requirements         |
+| Project-specific test skill (via do-upskill) | Specifies the project's test framework, conventions, and additional requirements       |
 
 ### Agents that enforce testing
 
-| Agent           | Role                                                                |
-| --------------- | ------------------------------------------------------------------- |
-| code-reviewer   | Checks that tests exist, are meaningful, and cover the changed code |
+| Agent                 | Role                                                                |
+| --------------------- | ------------------------------------------------------------------- |
+| `agent-code-reviewer` | Checks that tests exist, are meaningful, and cover the changed code |
 
 ### The mav-local-verification gate
 
@@ -130,13 +128,13 @@ Maverick defines a three-tier test strategy that balances thoroughness with main
 - **What to test**: The most important user workflows that, if broken, would have immediate business impact
 - **What NOT to test**: Every possible user interaction - E2E tests are expensive to write and maintain
 
-```mermaid
-pyramid
-    title Test Strategy Pyramid
-    "E2E Tests" : 10
-    "Integration Tests" : 30
-    "Unit Tests" : 60
-```
+The test strategy follows the classic pyramid — a broad base of fast unit tests, fewer integration tests, and a small number of E2E tests:
+
+| Layer             | Approximate share | Character                          |
+| ----------------- | ----------------- | ---------------------------------- |
+| Unit tests        | ~60%              | Fast, isolated — the broad base    |
+| Integration tests | ~30%              | Cross-module interaction           |
+| E2E tests         | ~10%              | Slow, full-environment — the apex  |
 
 ## Coverage Targets
 
@@ -151,7 +149,7 @@ pyramid
 
 ### Coverage as a floor, not a ceiling
 
-Coverage targets are minimum thresholds, not goals to optimise for. A codebase with 60% coverage and meaningful tests is better than one with 95% coverage full of tautological assertions. The code-reviewer agent evaluates test quality, not just coverage numbers.
+Coverage targets are minimum thresholds, not goals to optimise for. A codebase with 60% coverage and meaningful tests is better than one with 95% coverage full of tautological assertions. The `agent-code-reviewer` evaluates test quality, not just coverage numbers.
 
 ## Test Quality Criteria
 
@@ -174,7 +172,7 @@ Tests should be named to describe the behaviour being verified, not the method b
 
 ### Testing and code review
 
-The code-reviewer agent checks test adequacy as part of its code quality review. It verifies that:
+The `agent-code-reviewer` checks test adequacy as part of its code quality review. It verifies that:
 
 - New code has corresponding tests
 - Tests cover both success and error paths
@@ -200,7 +198,7 @@ This cycle is how an LLM iterates toward correctness. Without tests, the LLM has
 
 ## Maverick's Own Tests
 
-Maverick follows its own testing standards with a pytest unit test suite covering the Python codebase under `src/maverick/`. The suite includes tests for models, names, config, registry, CLI, lambda handler, and session review modules (parser, analyzers, reporter, skills). Tests run automatically on pushes and PRs to `main` via GitHub Actions (`.github/workflows/unit-tests.yml`).
+Maverick follows its own testing standards with a pytest unit test suite covering the Python codebase under `src/maverick/`. The suite includes tests for models, names, config, registry, CLI, lambda handler, and session review modules (parser, analyzers, reporter, skills). Tests run automatically on pushes and PRs to `main` via GitHub Actions (`.github/workflows/ci.yml`).
 
 ## Further Reading
 

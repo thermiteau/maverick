@@ -4,7 +4,7 @@ scope: Why operational alerting is essential for LLM-generated code and how Mave
 relates-to:
   - logging-standards.md
   - scope-boundaries.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # Alerting Standards
@@ -47,7 +47,7 @@ flowchart TD
     A[mav-bp-alerting skill] -->|defines standards| B[upskill system]
     B -->|generates project-specific guidance| C[project alerting skill]
     C -->|constrains LLM during coding| D[code generation]
-    D -->|produces code with alerting| E[code-reviewer agent]
+    D -->|produces code with alerting| E[agent-code-reviewer]
     E -->|checks alerting compliance| F{compliant?}
     F -->|yes| G[local verification]
     F -->|no| H[reject with feedback]
@@ -64,9 +64,9 @@ The mav-bp-alerting skill defines universal alerting standards: severity levels,
 
 The upskill system analyses a project's existing alerting infrastructure and generates a project-specific alerting guide. This tells the LLM which alerting service the project uses (SNS, PagerDuty, Opsgenie, custom), what severity thresholds apply, and how alerts should be routed. Without this layer, the LLM applies generic alerting patterns that may not integrate with the project's operational setup.
 
-### Layer 3: code-reviewer agent
+### Layer 3: agent-code-reviewer
 
-The code-reviewer agent inspects error-handling code for alerting compliance. It checks that unrecoverable errors trigger alerts, that alert severity is appropriate, that alert context includes required fields, and that recoverable errors are not over-alerted. Violations are flagged with specific guidance.
+The `agent-code-reviewer` inspects error-handling code for alerting compliance. It checks that unrecoverable errors trigger alerts, that alert severity is appropriate, that alert context includes required fields, and that recoverable errors are not over-alerted. Violations are flagged with specific guidance.
 
 ## Severity Levels
 
@@ -96,7 +96,7 @@ Every alert must include sufficient context for an on-call responder to begin in
 | error_message     | Yes                | Human-readable description of what failed          |
 | timestamp         | Yes                | ISO 8601 timestamp of when the failure occurred    |
 | affected_resource | Yes                | The entity, endpoint, or operation that failed     |
-| correlation_id    | If available       | Request or trace ID for log correlation            |
+| correlationId     | If available       | Request or trace ID for log correlation            |
 | error_count       | If threshold-based | Number of occurrences that triggered the threshold |
 | log_pointer       | If available       | Direct link or query to related log entries        |
 | runbook_url       | If available       | Link to the relevant runbook for this failure type |
@@ -170,7 +170,7 @@ Alerts must be routed through a centralised alerting platform, not sent ad-hoc v
 
 ## Common Alerting Anti-Patterns in LLM-Generated Code
 
-The following anti-patterns appear frequently in LLM-generated code and are flagged by the code-reviewer agent.
+The following anti-patterns appear frequently in LLM-generated code and are flagged by the `agent-code-reviewer`.
 
 | Anti-pattern                | Description                                                                                          | Correct approach                                                                           |
 | --------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -202,4 +202,4 @@ The mav-scope-boundaries skill interacts with alerting in an important way: when
 - [Alarm fatigue](https://en.wikipedia.org/wiki/Alarm_fatigue)
 - [Incident management](https://en.wikipedia.org/wiki/Incident_management)
 - [Site reliability engineering](https://en.wikipedia.org/wiki/Site_reliability_engineering)
-- [Monitoring (computing)](https://en.wikipedia.org/wiki/Website_monitoring)
+- [Website monitoring](https://en.wikipedia.org/wiki/Website_monitoring)

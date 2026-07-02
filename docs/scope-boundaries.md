@@ -4,7 +4,7 @@ scope: Defining and enforcing the operating envelope for LLM agents
 relates-to:
   - llm-containment.md
   - security-review.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # Scope Boundaries
@@ -133,7 +133,7 @@ flowchart LR
     subgraph Explicit["Explicit instruction (permitted)"]
         E1["Issue: 'Update the Dockerfile<br/>to use Node 20'"]
         E2["User message: 'Modify the<br/>CI workflow to add linting'"]
-        E3["Issue comment: 'Delete the<br/>stale feature/old-api branch'"]
+        E3["Issue comment: 'Add rate-limit<br/>config to the api module'"]
     end
 
     subgraph Inferred["Inferred need (refused)"]

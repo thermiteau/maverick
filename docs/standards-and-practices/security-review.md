@@ -5,7 +5,7 @@ relates-to:
   - scope-boundaries.md
   - llm-containment.md
   - code-review.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # Security Review

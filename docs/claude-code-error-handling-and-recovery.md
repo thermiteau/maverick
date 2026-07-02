@@ -4,7 +4,7 @@ scope: Workflow resilience, state persistence, and crash recovery for LLM sessio
 relates-to:
   - scope-boundaries.md
   - cicd.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # Claude Code Error Handling and Recovery
@@ -51,35 +51,38 @@ All Maverick workflows use the same state file pattern:
 
 ### Issue workflow state contents
 
-| Field             | Purpose                                                      |
-| ----------------- | ------------------------------------------------------------ |
-| `phase`           | Current workflow phase (design, plan, implement, verify, PR) |
-| `branch`          | Branch name created for this work                            |
-| `issueNumber`     | The GitHub issue driving this work                           |
-| `designCommentId` | GitHub comment ID where the solution design was posted       |
-| `planCommentId`   | GitHub comment ID where the implementation plan was posted   |
-| `completedSteps`  | List of implementation steps already completed               |
-| `lastAction`      | Description of the last action taken before session ended    |
+The canonical schema is defined by the `mav-github-issue-workflow` skill:
 
-### Task workflow state contents
+```json
+{
+  "issue": 42,
+  "repo": "owner/repo",
+  "branch": "feat/42-short-description",
+  "phase": "understand|design|plan|branch|implement|complete",
+  "comments": {
+    "design": null,
+    "plan": null,
+    "completion": null
+  }
+}
+```
 
-| Field       | Purpose                                                      |
-| ----------- | ------------------------------------------------------------ |
-| `task_id`   | Task identifier (e.g., `TASK-001`)                           |
-| `branch`    | Branch name created for this work                            |
-| `phase`     | Current workflow phase (understand, design, plan, branch, implement, review, complete) |
-| `created`   | Timestamp of task creation                                   |
-
-For the task workflow, artefacts (design, plan, progress) are stored as committed files alongside the state file rather than as GitHub comments. This means `task.md`, `design.md`, `plan.md`, and `completion.md` survive branch operations and are recoverable from git history.
+| Field                 | Purpose                                                      |
+| --------------------- | ------------------------------------------------------------ |
+| `issue`               | The GitHub issue number driving this work                    |
+| `repo`                | `owner/repo` the work targets                                |
+| `branch`              | Branch name created for this work                            |
+| `phase`               | Current workflow phase (`understand`, `design`, `plan`, `branch`, `implement`, `complete`) |
+| `comments.design`     | GitHub comment ID where the solution design was posted       |
+| `comments.plan`       | GitHub comment ID where the implementation plan was posted   |
+| `comments.completion` | GitHub comment ID where the completion summary was posted    |
 
 ### Why each field matters
 
 - **phase** - tells the new session where to resume, preventing duplicate work
-- **branch** - prevents creating a second branch for the same issue or task
-- **comment IDs** (issue workflows) - allows the new session to read back its own artefacts from GitHub
-- **task_id** (task workflows) - identifies the task directory containing all artefacts
-- **completedSteps** - prevents re-implementing work that is already on the branch
-- **lastAction** - provides context about what was happening when the session ended
+- **branch** - prevents creating a second branch for the same issue
+- **comments.*** - GitHub comment IDs let the new session read back its own artefacts (design, plan, completion summary) from the issue
+- **issue / repo** - identify the GitHub issue and repository the resumed session must operate on
 
 ## Crash Recovery Flow
 
@@ -110,13 +113,14 @@ flowchart TD
 
 ### Recovery phases
 
-| Phase          | On resume                                  | Verification                                       |
-| -------------- | ------------------------------------------ | -------------------------------------------------- |
-| Design         | Read design from GitHub comment            | Comment exists and contains design content         |
-| Plan           | Read plan from GitHub comment              | Comment exists and contains plan steps             |
-| Implementation | Check completed steps against branch state | Each completed step has corresponding code changes |
-| Verification   | Re-run all checks                          | Lint, typecheck, and tests all pass                |
-| PR             | Check if PR exists                         | PR is open and linked to the issue                 |
+| Phase       | On resume                                       | Verification                                       |
+| ----------- | ----------------------------------------------- | -------------------------------------------------- |
+| `understand` | Re-read the issue                              | Issue exists and is readable                       |
+| `design`    | Read design from the GitHub comment             | `comments.design` set; comment contains design     |
+| `plan`      | Read plan from the GitHub comment               | `comments.plan` set; comment contains plan steps   |
+| `branch`    | Check out the recorded branch                   | Branch exists and matches `branch`                 |
+| `implement` | Compare branch state against the plan           | Completed steps have corresponding code changes    |
+| `complete`  | Check the completion summary and PR             | `comments.completion` set; PR open and linked      |
 
 ## Artefact Durability
 
@@ -260,7 +264,7 @@ stateDiagram-v2
 
 - Always check for existing state before starting work
 - Always verify state matches reality before resuming
-- Always persist artefacts immediately upon creation (GitHub comments for issue workflows, committed files for task workflows)
+- Always persist artefacts immediately upon creation (posted as GitHub comments and recorded by ID in the state file)
 - Never retry commands blindly - diagnose first
 - Never retry more than twice without human escalation
 - Never manually fix subagent failures - dispatch a new subagent

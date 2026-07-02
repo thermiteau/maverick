@@ -5,7 +5,7 @@ relates-to:
   - alerting-standards.md
   - comprehensive-testing.md
   - code-review.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # Logging Standards
@@ -55,7 +55,7 @@ flowchart TD
     A[mav-bp-logging skill] -->|defines standards| B[upskill system]
     B -->|generates project-specific guidance| C[project logging skill]
     C -->|constrains LLM during coding| D[code generation]
-    D -->|produces code with logging| E[code-reviewer agent]
+    D -->|produces code with logging| E[agent-code-reviewer]
     E -->|checks logging compliance| F{compliant?}
     F -->|yes| G[local verification]
     F -->|no| H[reject with feedback]
@@ -72,9 +72,9 @@ The mav-bp-logging skill defines universal logging standards that apply to all p
 
 The upskill system analyses a project's existing codebase and generates a project-specific logging implementation guide. This guide tells the LLM exactly which logging library to use, what format to follow, where logs are aggregated, and what project-specific fields are required. Without this layer, the LLM knows the principles but not the project's implementation.
 
-### Layer 3: code-reviewer agent
+### Layer 3: agent-code-reviewer
 
-The code-reviewer agent inspects every change for logging compliance. It checks that error paths include structured logging, that log levels are appropriate, that no sensitive data is logged, and that the project's logging library is used consistently. Violations are flagged with specific remediation guidance.
+The `agent-code-reviewer` inspects every change for logging compliance. It checks that error paths include structured logging, that log levels are appropriate, that no sensitive data is logged, and that the project's logging library is used consistently. Violations are flagged with specific remediation guidance.
 
 ## Log Levels
 
@@ -102,13 +102,14 @@ All log output must be structured as JSON with consistent fields.
 | level         | One of error, warn, debug                                 |
 | message       | Human-readable description of the event                   |
 | service       | Name of the service or application                        |
-| correlationId | Request or trace identifier for cross-service correlation |
+| context       | Object holding per-entry contextual fields (see below)    |
 
 ### Contextual fields for errors
 
-| Field         | Description                                   |
-| ------------- | --------------------------------------------- |
-| error.name    | Error class or type name                      |
+| Field          | Description                                                |
+| -------------- | ---------------------------------------------------------- |
+| correlationId  | Request or trace identifier for cross-service correlation  |
+| error.name     | Error class or type name                                   |
 | error.message | Error message text                            |
 | error.stack   | Stack trace (backend only, never frontend)    |
 | error.code    | Application-specific error code if applicable |
@@ -171,7 +172,7 @@ Logs must be routed to a centralised aggregation service rather than stored loca
 
 ## Common Logging Anti-Patterns in LLM-Generated Code
 
-The following anti-patterns appear frequently in LLM-generated code and are specifically flagged by the code-reviewer agent.
+The following anti-patterns appear frequently in LLM-generated code and are specifically flagged by the `agent-code-reviewer`.
 
 | Anti-pattern                        | Description                                                                                      | Correct approach                                                                  |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
@@ -203,11 +204,11 @@ Logging and alerting are complementary but distinct. Logging records what happen
 
 ### Logging and testing
 
-Tests should verify that error paths produce appropriate log output. The code-reviewer agent checks that error-handling code includes logging, and tests should confirm that the logged output contains the expected structured fields. See comprehensive-testing.md for test strategy details.
+Tests should verify that error paths produce appropriate log output. The `agent-code-reviewer` checks that error-handling code includes logging, and tests should confirm that the logged output contains the expected structured fields. See comprehensive-testing.md for test strategy details.
 
 ### Logging and code review
 
-The code-reviewer agent specifically checks logging compliance as part of its code quality review stage. It verifies correct log levels, structured format, no sensitive data, and consistent library usage. See code-review.md for the full review process.
+The `agent-code-reviewer` specifically checks logging compliance as part of its code quality review stage. It verifies correct log levels, structured format, no sensitive data, and consistent library usage. See code-review.md for the full review process.
 
 ## Further Reading
 

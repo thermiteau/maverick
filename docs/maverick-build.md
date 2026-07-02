@@ -2,8 +2,8 @@
 title: Maverick Build
 scope: Understanding the maverick build process, release workflow, and the rationale behind them
 relates-to:
-  - maverick-install.md
-last-verified: 2026-03-20
+  - overview.md
+last-verified: 2026-07-02
 ---
 
 # Maverick Build
@@ -66,7 +66,7 @@ make generate
 
 ## Releasing
 
-Releases are created using `scripts/release.sh`. The script bumps the version across all manifest files, updates the changelog, commits, and tags — keeping the process repeatable and consistent.
+Releases are created using `scripts/release.sh`. The script bumps the version across all manifest files, updates the changelog, and commits on a release branch — keeping the process repeatable and consistent. Tagging happens in CI (`release-finalize.yml`) after the release PR is merged, not in the script.
 
 ### Version locations
 
@@ -83,15 +83,19 @@ The version string appears in four files that must stay in sync:
 
 ### Usage
 
+The script takes a **bump type** — `major`, `minor`, or `patch` (default `patch`). It computes the next version from the current `-dev` version; it does **not** accept an explicit version number.
+
 ```bash
-# Preview what the release will do (no files modified)
-./scripts/release.sh --dry-run 0.2.0
+# Create a patch release (default)
+./scripts/release.sh patch
 
-# Create a release
-./scripts/release.sh 0.2.0
+# Or a minor / major release
+./scripts/release.sh minor
+./scripts/release.sh major
 
-# Or via Make
-make release VERSION=0.2.0
+# Equivalent Make targets
+make release          # patch
+make release-minor    # minor
 ```
 
 ### What the script does

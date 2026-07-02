@@ -22,6 +22,7 @@ Maverick coordinates multi-instance workflows through labels and machine-readabl
 | `claude-in-progress` | issue      | A Claude Code instance has claimed this issue | Claude Code instance (on claim)              |
 | `needs-human`        | issue + PR | Code reviewer ejected this for human handling | Claude Code instance (on eject)              |
 | `blocked-by:#N`      | issue      | Depends transitively on ejected issue `#N`    | Claude Code instance (via block propagation) |
+| `merged-to-<branch>` | issue      | The issue's PR was merged to `<branch>`       | Claude Code instance (on merge)              |
 
 Labels must be created once per repo. Maverick's `do-init` can create them automatically when present.
 
@@ -31,6 +32,7 @@ Labels must be created once per repo. Maverick's `do-init` can create them autom
 claim    → claude-in-progress added
 release  → claude-in-progress removed
 eject    → needs-human added (stays until human closes the issue)
+merge    → merged-to-<branch> added (on auto-merge, before the issue is closed)
 block    → blocked-by:#N added
 unblock  → blocked-by:#N removed (human only — Maverick never removes)
 ```

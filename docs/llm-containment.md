@@ -5,7 +5,7 @@ relates-to:
   - scope-boundaries.md
   - security-review.md
   - cicd.md
-last-verified: 2026-03-02
+last-verified: 2026-07-02
 ---
 
 # LLM Containment
@@ -219,7 +219,7 @@ The ideal LLM working environment is ephemeral -- created for a task and destroy
 - **Clean dependency installation** -- each environment installs dependencies fresh, preventing version drift
 - **Time-bounded** -- environments are automatically destroyed after a timeout, preventing orphaned resources
 
-Maverick's worker pipeline uses this pattern: each GitHub issue gets a fresh clone in a temporary directory that is cleaned up after the task completes, regardless of success or failure.
+Maverick's worker pipeline uses this pattern: each GitHub issue gets a fresh clone in a deterministic per-issue subdirectory of a persistent work directory (e.g. `/home/claude/work/{owner-repo}-{issue}`), cleaned up in a `finally` block after the task completes, regardless of success or failure.
 
 ## Destructive Operation Restrictions
 
