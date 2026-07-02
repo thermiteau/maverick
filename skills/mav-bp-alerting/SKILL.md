@@ -1,6 +1,8 @@
 ---
 name: mav-bp-alerting
 description: Alerting conventions for fatal errors in applications. Covers severity levels, alert context, centralised notification, and project alerting guidance. Applied when writing error handling or reviewing code.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Alerting Standards

@@ -109,7 +109,7 @@ Maverick encodes best practices as machine-readable artefacts that the LLM must 
 | ---------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | **Skills** | Define what good looks like - standards, conventions, workflows | `mav-bp-logging` defines log levels and structured format                                                                          |
 | **Agents** | Verify compliance autonomously - review, test, document         | `agent-code-reviewer` catches spec gaps, missing tests, and quality issues (security is handled separately by the `do-cybersecurity-review` skill) |
-| **Hooks**  | Enforce rules automatically at tool-call boundaries             | Block commits to protected branches, prevent secret exposure                                                                       |
+| **Hooks**  | Enforce rules automatically at tool-call boundaries             | The scope-guard hook gates destructive git ops, commits/pushes on protected branches, infrastructure edits, and production-pattern commands (ask in interactive sessions, deny in autonomous mode); a SessionEnd hook releases coordination claims on every exit path |
 
 ### The Enforcement Chain
 

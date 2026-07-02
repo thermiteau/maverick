@@ -21,7 +21,7 @@ Scan the current project for missing best-practice areas and produce a short-lis
 
 ## Invocation
 
-When invoked, process **all topics** in the table above unless `` names a specific topic — in that case process only that topic. Do not prompt the user for which topics to process.
+When invoked, process **all topics** in the table above unless `$ARGUMENTS` names a specific topic — in that case process only that topic. Do not prompt the user for which topics to process.
 
 ## Process
 

@@ -1,6 +1,8 @@
 ---
 name: mav-multi-instance-coordination
 description: Claim, lease, heartbeat, and release protocols for when multiple Claude Code instances may act on the same issue or epic concurrently. GitHub labels and marker comments are the coordination surface; local state is a cache.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 **Depends on:** mav-durability-on-gh, mav-block-propagation
@@ -144,13 +146,23 @@ This posts a takeover comment naming the prior instance and then runs
 claim with takeover permission. The prior instance's heartbeat will fail
 on its next attempt with `ClaimLost`.
 
-## Release-before-exit
+## Release on exit
 
-Every entry-point skill (do-issue-solo, do-issue-guided, do-epic) must
-register a release handler that fires on **every** exit path — success,
-eject, abort, crash-caught, user-interrupt. The easiest pattern is a
-trap-on-exit wrapper that calls `coord release` for every claim this
-instance still holds.
+Releases happen at three layers; entry-point skills rely on them instead
+of inventing exit handlers:
+
+1. **Explicit** — the skill runs `coord release --reason <merged|ejected|…>`
+   at its own workflow boundaries. This is the normal path and produces
+   the audit-trail reason.
+2. **SessionEnd hook** — the plugin runs `coord release-all` when the
+   session ends for any reason (done, user interrupt, crash-caught),
+   releasing every claim this instance recorded locally.
+3. **Lease expiry** — the 10-minute TTL is the designed crash path for
+   machine death; another instance takes over cleanly via `coord takeover`.
+
+Do **not** attempt trap-on-exit wrappers: each Bash tool call is a fresh
+shell, so a trap can never survive to session end — the pattern only
+produces false confidence.
 
 ## Rules
 

@@ -1,6 +1,8 @@
 ---
 name: mav-bp-task-tracking
 description: Task tracking and management conventions for all projects. Covers the requirement for external task tracking, issue hygiene, workflow integration, and traceability between tasks and code changes. Applied as a foundational project management requirement.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Task Tracking Standards

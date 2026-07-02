@@ -1,6 +1,8 @@
 ---
 name: mav-bp-api-design
 description: API design conventions for projects with API surfaces. Covers REST and GraphQL standards, versioning, error formats, pagination, documentation as code, and backwards compatibility. Applied when designing, implementing, or reviewing APIs.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # API Design Standards

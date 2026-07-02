@@ -1,6 +1,8 @@
 ---
 name: mav-bp-cicd-azure
 description: Monitoring Azure DevOps pipelines after pushing. Covers checking pipeline status, diagnosing build/release failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # CI Awareness — Azure DevOps

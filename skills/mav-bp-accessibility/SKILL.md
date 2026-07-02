@@ -1,6 +1,8 @@
 ---
 name: mav-bp-accessibility
 description: Accessibility conventions for projects with user-facing interfaces. Covers WCAG 2.1 AA compliance, semantic HTML, keyboard navigation, colour contrast, screen reader support, and automated a11y testing. Applied when building or reviewing user-facing web or mobile applications.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Accessibility Standards

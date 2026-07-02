@@ -1,7 +1,7 @@
 ---
 name: do-test
-description: Write or update tests for a code change. Operates in two modes: `unit` (module-scoped, fast, deterministic) and `integration` (crosses module / service / database boundaries). Intended to be invoked once per testable change from inside a do-issue-* or do-epic phase. Mode is required.
-argument-hint: mode: unit or integration
+description: 'Write or update tests for a code change. Operates in two modes: `unit` (module-scoped, fast, deterministic) and `integration` (crosses module / service / database boundaries). Intended to be invoked once per testable change from inside a do-issue-* or do-epic phase. Mode is required.'
+argument-hint: 'mode: unit or integration'
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -36,7 +36,7 @@ The check verifies the project is initialised and `uv` is on PATH.
 
 ## Mode Selection
 
-`` must specify a mode:
+`$ARGUMENTS` must specify a mode:
 
 - `unit` — module-scoped, fast, deterministic. No network, no real
   database, no real filesystem outside the test's own `tmp_path`.

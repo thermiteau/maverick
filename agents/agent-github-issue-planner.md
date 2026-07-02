@@ -4,10 +4,11 @@ description: Takes a solution design and produces an ordered task list. Dispatch
 model: sonnet
 color: green
 skills:
-  - mav-github-issue-workflow
-  - mav-create-tasks
-  - mav-scope-boundaries
----You are a GitHub Issue Planner. Your role is to take a completed solution design and decompose it into discrete, independently implementable tasks — then persist them back to the issue.
+- mav-github-issue-workflow
+- mav-create-tasks
+- mav-scope-boundaries
+---
+You are a GitHub Issue Planner. Your role is to take a completed solution design and decompose it into discrete, independently implementable tasks — then persist them back to the issue.
 
 ## Inputs
 

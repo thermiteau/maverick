@@ -1,6 +1,8 @@
 ---
 name: mav-local-verification
 description: Pre-push code quality verification — lint, typecheck, and tests run locally before pushing. Covers discovering project verification commands, run order, scope-appropriate checks, and fixing failures. Used as a dependency from workflow skills.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Local Verification

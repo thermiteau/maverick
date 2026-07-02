@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -97,6 +98,24 @@ def _coord_heartbeat_loop(args: argparse.Namespace) -> int:
 def _coord_release(args: argparse.Namespace) -> int:
     coordinator.release(args.repo, args.issue, reason=args.reason)
     print("released")
+    return 0
+
+
+def _coord_release_all(args: argparse.Namespace) -> int:
+    released = coordinator.release_all(reason=args.reason)
+    for repo, issue in released:
+        print(f"released {repo}#{issue}")
+    print(f"{len(released)} claim(s) released")
+    return 0
+
+
+def _coord_authorize(args: argparse.Namespace) -> int:
+    try:
+        auth = coordinator.authorize(args.repo, args.issue, args.scope)
+    except coordinator.AuthorizationRejected as e:
+        print(f"authorization rejected: {e}", file=sys.stderr)
+        return 2
+    _json_print(auth)
     return 0
 
 
@@ -316,6 +335,29 @@ def _issue_policy(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# pr — pre-merge gates
+# ---------------------------------------------------------------------------
+
+
+def _pr_auth_scan(args: argparse.Namespace) -> int:
+    from maverick import pr_gate
+
+    try:
+        files = pr_gate.pr_changed_files(args.repo, args.pr)
+    except subprocess.CalledProcessError as e:
+        print(f"auth-scan error: {e.stderr or e}", file=sys.stderr)
+        return 2
+    hits = pr_gate.scan_paths(files)
+    if hits:
+        print("gated paths touched — do not auto-merge; eject to needs-human:")
+        for path in hits:
+            print(f"  {path}")
+        return 3
+    print(f"clean ({len(files)} file(s) scanned)")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # git-workflow
 # ---------------------------------------------------------------------------
 
@@ -400,6 +442,30 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("issue", type=int)
     p.add_argument("--reason", default="complete")
     p.set_defaults(_handler=_coord_release)
+
+    p = coord_sub.add_parser(
+        "release-all",
+        help=(
+            "Release every claim this instance recorded locally. Idempotent; "
+            "used by the SessionEnd hook so abnormal exits still release."
+        ),
+    )
+    p.add_argument("--reason", default="session-end")
+    p.set_defaults(_handler=_coord_release_all)
+
+    p = coord_sub.add_parser(
+        "authorize",
+        help=(
+            "Verify the GitHub issue explicitly authorizes a guarded scope "
+            "(label maverick-authorize-<scope> or a 'Maverick-Authorize: <scope>' "
+            "body line) and record it in .maverick/session-auth.json for the "
+            "scope-guard hook. Exits 2 if the issue does not authorize it."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument("scope", help="Guarded scope to authorize (e.g. infra)")
+    p.set_defaults(_handler=_coord_authorize)
 
     p = coord_sub.add_parser("takeover", help="Take over a stale lease")
     p.add_argument("repo")
@@ -565,6 +631,26 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         help="Print the per-project issue close policy from .maverick/config.json",
     )
     p.set_defaults(_handler=_issue_policy)
+
+    # pr — pre-merge gates for autonomous flows
+    pr = subparsers.add_parser(
+        "pr",
+        help="Pre-merge gates for autonomous PR handling",
+    )
+    pr_sub = pr.add_subparsers(dest="pr_cmd", required=True)
+
+    p = pr_sub.add_parser(
+        "auth-scan",
+        help=(
+            "Scan a PR's changed files for auth-sensitive paths and CI workflow "
+            "definitions. Exit 0 = clean (safe to auto-merge), 3 = gated paths "
+            "touched (eject to needs-human instead of auto-merging), 2 = error. "
+            "Extra tokens: .maverick/config.json -> scope_guards.auth_paths."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("pr", help="PR number or URL")
+    p.set_defaults(_handler=_pr_auth_scan)
 
     # git-workflow — per-project branching config
     gw = subparsers.add_parser(

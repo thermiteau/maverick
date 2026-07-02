@@ -1,6 +1,8 @@
 ---
 name: mav-bp-dependency-management
 description: Dependency management conventions for all projects. Covers lock files, version pinning, vulnerability scanning, license compliance, update strategy, and minimal dependency principle. Applied when adding, updating, or reviewing dependencies.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Dependency Management Standards

@@ -1,6 +1,8 @@
 ---
 name: do-tech-docs
 description: Technical documentation standards — document structure, writing style, file organisation, mermaid diagrams, and validation. Referenced by do-docs and tech-docs-writer.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Technical Documentation

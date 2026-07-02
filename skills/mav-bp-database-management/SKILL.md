@@ -1,6 +1,8 @@
 ---
 name: mav-bp-database-management
 description: Database and data management conventions for all projects using databases. Covers schema migrations, backup strategy, data lifecycle, index management, and connection pooling. Applied when designing, implementing, or reviewing database interactions.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Database & Data Management Standards

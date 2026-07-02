@@ -2,6 +2,7 @@
 name: do-init
 description: Initialise a project for use with Maverick — verifies the GitHub App, installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, generates project skills, runs an initial cybersecurity audit, then commits the changes and opens a PR.
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # Init Maverick Project

@@ -1,7 +1,7 @@
 ---
 name: do-docs
 description: Create, restructure, or update technical documentation. Handles greenfield projects, refactoring non-compliant docs, and incremental updates after code changes.
-argument-hint: mode: greenfield, refactor, or update (auto-detected if omitted)
+argument-hint: 'mode: greenfield, refactor, or update (auto-detected if omitted)'
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -24,7 +24,7 @@ The check verifies the project is initialised and `uv` is on PATH.
 
 ## Task Detection
 
-If `` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:
+If `$ARGUMENTS` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:
 
 ```dot
 digraph detect {

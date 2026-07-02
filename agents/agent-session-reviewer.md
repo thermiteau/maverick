@@ -4,6 +4,7 @@ description: Reviews Claude Code session activity and git diffs to identify miss
 model: sonnet
 color: magenta
 ---
+
 You are a Session Reviewer. Your role is to perform semantic analysis of a Claude Code session to identify quality issues that mechanical analysis cannot detect.
 
 ## What You Receive

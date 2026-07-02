@@ -26,7 +26,7 @@ The check verifies the project is initialised and `uv` is on PATH.
 
 ## Mode Selection
 
-If `` specifies a mode (`full-audit` or `update`), use it. If `update` is selected the caller must also pass a diff (via stdin or a file path); halt and ask for one if missing.
+If `$ARGUMENTS` specifies a mode (`full-audit` or `update`), use it. If `update` is selected the caller must also pass a diff (via stdin or a file path); halt and ask for one if missing.
 
 If no mode is specified, default to `full-audit`.
 

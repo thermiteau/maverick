@@ -154,12 +154,80 @@ def main(args: Namespace) -> None:
         print("Detected modules:", ", ".join(modules) if modules else "(none)")
         print("Would write .maverick/config.json:")
         print(json.dumps(config, indent=2))
+        missing = _missing_permission_denies(Path("."))
+        if missing:
+            print("Would add permission deny rules to .claude/settings.json:")
+            for rule in missing:
+                print(f"  {rule}")
         return
 
     PROJECT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     print("Detected modules:", ", ".join(modules) if modules else "(none)")
     print(f"Wrote {config_path}")
+    write_permission_denies(Path("."))
+
+
+#: Baseline deny rules mirroring the scope-guard hook's hard limits. A second,
+#: hook-independent enforcement layer: permission rules keep working even if
+#: the user disables hooks (mav-scope-boundaries defence-in-depth).
+PERMISSION_DENY_RULES = (
+    "Bash(git push --force*)",
+    "Bash(git push -f*)",
+    "Edit(.github/workflows/**)",
+    "Write(.github/workflows/**)",
+)
+
+
+def _missing_permission_denies(project_dir: Path) -> list[str]:
+    """The baseline deny rules not yet present in .claude/settings.json."""
+    settings_path = project_dir / ".claude" / "settings.json"
+    existing: list[str] = []
+    if settings_path.exists():
+        try:
+            raw = json.loads(settings_path.read_text())
+            existing = list(raw.get("permissions", {}).get("deny", []))
+        except (json.JSONDecodeError, AttributeError):
+            return []  # unreadable settings — never risk clobbering (see writer)
+    return [r for r in PERMISSION_DENY_RULES if r not in existing]
+
+
+def write_permission_denies(project_dir: Path) -> bool:
+    """Merge Maverick's baseline deny rules into the project's settings.json.
+
+    Preserves everything already in the file and only appends missing rules.
+    If the file exists but cannot be parsed, it is left untouched (a warning
+    is printed) — init must never destroy a hand-edited settings file.
+    Returns True when the file was modified.
+    """
+    settings_path = project_dir / ".claude" / "settings.json"
+    settings: dict[str, Any] = {}
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text())
+        except json.JSONDecodeError:
+            print(
+                f"Warning: {settings_path} is not valid JSON — skipped adding "
+                "permission deny rules. Add them manually:",
+                *(f"  {r}" for r in PERMISSION_DENY_RULES),
+                sep="\n",
+            )
+            return False
+        if not isinstance(settings, dict):
+            print(f"Warning: {settings_path} is not a JSON object — skipped.")
+            return False
+
+    permissions = settings.setdefault("permissions", {})
+    deny = permissions.setdefault("deny", [])
+    missing = [r for r in PERMISSION_DENY_RULES if r not in deny]
+    if not missing:
+        return False
+
+    deny.extend(missing)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    print(f"Added {len(missing)} permission deny rule(s) to {settings_path}")
+    return True
 
 
 def clean(dry_run: bool = False) -> None:

@@ -1,6 +1,8 @@
 ---
 name: mav-bp-infrastructure-as-code
 description: Infrastructure as Code conventions for all deployed projects. Covers IaC principles, environment parity, secrets management in IaC, version control, and runbook fallback for unsupported platforms. Applied when reviewing or configuring infrastructure.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Infrastructure as Code Standards

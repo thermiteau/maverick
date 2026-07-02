@@ -59,9 +59,13 @@ a single story, dispatch `{{ SKILLS.DO_ISSUE_SOLO }}` instead.
      uv run maverick coord heartbeat-loop <repo> $issue >/dev/null 2>&1 &
    done
    ```
-6. **Register release handler** for every exit path. Run
-   `coord release` for every claimed issue; the matching `heartbeat-loop`
-   detects the cleared label on its next iteration and exits.
+6. **Release on exit is automatic.** The plugin's SessionEnd hook runs
+   `coord release-all`, releasing every claim this instance recorded —
+   the matching `heartbeat-loop` processes detect the cleared labels and
+   exit on their own; lease expiry covers machine death. Your only
+   explicit releases are the per-story ones at workflow boundaries
+   (merged / ejected). Do not attempt trap-on-exit wrappers — each Bash
+   call is a fresh shell, so a trap cannot survive to session end.
 
 ## Phase 1: Design + task decomposition (if needed)
 

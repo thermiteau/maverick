@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 # Work on GitHub Issue (Guided)
 
-Work on GitHub issue `` interactively. Follow every phase in order. Do not skip phases. Proceed autonomously through routine work, but pause for user confirmation at key decision points marked with **🔲 Checkpoint**.
+Work on GitHub issue `$ARGUMENTS` interactively. Follow every phase in order. Do not skip phases. Proceed autonomously through routine work, but pause for user confirmation at key decision points marked with **🔲 Checkpoint**.
 
 ## Preflight (mandatory)
 
@@ -24,7 +24,7 @@ The check verifies the project is initialised and required tools (`gh`, `git`, `
 
 ## Before You Begin
 
-If `` is empty or not a valid issue number, ask the user for the issue number before proceeding. Do not attempt any phase without it.
+If `$ARGUMENTS` is empty or not a valid issue number, ask the user for the issue number before proceeding. Do not attempt any phase without it.
 
 ## Phase 1-2: Understand the Issue and Solution Design (subagent)
 
@@ -32,7 +32,7 @@ Run Phases 1 and 2 as a subagent to keep the main context window clean for imple
 
 1. Initialise the issue state file per the mav-github-issue-workflow skill.
 2. Dispatch the **agent-issue-analyst** agent with:
-   - Issue number: ``
+   - Issue number: `$ARGUMENTS`
    - Mode: `guided`
 3. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `design`
@@ -46,7 +46,7 @@ Run Phases 1 and 2 as a subagent to keep the main context window clean for imple
 Run Phase 3 as a subagent to keep the main context window clean for implementation.
 
 1. Dispatch the **agent-github-issue-planner** agent with:
-   - Issue number: ``
+   - Issue number: `$ARGUMENTS`
    - Design comment ID from `.claude/issue-state.json`
 2. When the agent returns, verify:
    - `.claude/issue-state.json` has `phase` set to `tasks`

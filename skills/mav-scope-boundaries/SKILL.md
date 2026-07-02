@@ -1,6 +1,8 @@
 ---
 name: mav-scope-boundaries
 description: Defines what Claude Code must refuse to do without explicit authorisation. Covers infrastructure, auth, destructive git, and production systems. Applied automatically to all workflows.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Scope Boundaries
@@ -10,6 +12,28 @@ Hard limits on what Claude Code may do autonomously. These boundaries apply to a
 ## Principle
 
 **When in doubt, don't.** The cost of pausing to ask is low. The cost of an unauthorised destructive action is high.
+
+## Mechanical Enforcement
+
+These boundaries are not prose-only. The plugin's scope-guard hook
+(`hooks/scope_guard.py`, a `PreToolUse` hook) mechanically gates
+destructive git operations, commits/pushes on protected branches,
+infrastructure-path edits, and production-pattern commands — asking the
+user in interactive sessions and denying in autonomous mode. If the hook
+blocks an action you believe is authorized:
+
+- **Infrastructure:** record the issue-level authorization with
+  `uv run maverick coord authorize <repo> <issue> infra` (requires the
+  `maverick-authorize-infra` label or a `Maverick-Authorize: infra` body
+  line on the issue). Never write `.maverick/session-auth.json` directly.
+- **Destructive git:** ask the user for consent in the current session;
+  in autonomous mode there is no consent path — do not work around the
+  block.
+- **Production:** there is no override, in any mode.
+
+Do not disable the guard (`MAVERICK_GUARD_DISABLE`) or edit hook
+configuration to get past a block — a blocked action is a signal to
+escalate, not an obstacle to engineer around.
 
 ## Restricted Actions
 

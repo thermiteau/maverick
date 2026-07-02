@@ -1,6 +1,8 @@
 ---
 name: mav-bp-cicd-gitlab
 description: Monitoring GitLab CI/CD pipelines after pushing. Covers checking pipeline status, diagnosing job failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # CI Awareness — GitLab CI

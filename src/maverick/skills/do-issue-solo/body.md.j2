@@ -67,9 +67,27 @@ This phase is new in the workflow overhaul. Before any other phase.
    ```
    If two consecutive heartbeats fail, the loop exits non-zero — treat
    that as claim-lost and abort (do not push further work).
-5. Register a release handler that fires on every exit path (success,
-   eject, abort): `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason <reason>`.
-6. Cold-start hydrate per `{{ SKILLS.MAV_DURABILITY_ON_GH }}`. The
+5. Release is handled on every exit path without any action from you:
+   the plugin's SessionEnd hook runs `coord release-all` when the session
+   ends (normal exit, user interrupt, crash-caught), and lease expiry
+   (10-minute TTL) covers machine death. Your only release obligations
+   are the **explicit** ones at workflow boundaries: `--reason merged`
+   after auto-merge lands, `--reason ejected` on eject. Do not attempt
+   trap-on-exit wrappers — each Bash call is a fresh shell, so a trap
+   cannot survive to session end.
+6. **Authorization scopes** (only when needed): if the issue explicitly
+   authorizes infrastructure changes — the `maverick-authorize-infra`
+   label or a `Maverick-Authorize: infra` line in the issue body — record
+   it so the scope-guard hook permits those edits in autonomous mode:
+   ```bash
+   uv run maverick coord authorize <repo> {{ ARGUMENTS }} infra
+   ```
+   If the command exits non-zero, the issue does **not** authorize the
+   scope: do not make infrastructure changes; note the gap in the
+   solution design instead. Never write `.maverick/session-auth.json` by
+   any other means — the hook blocks it, and self-granting defeats the
+   authorization model.
+7. Cold-start hydrate per `{{ SKILLS.MAV_DURABILITY_ON_GH }}`. The
    skill is fully resumable — a fresh agent re-entering after a crash,
    stop, or context-exhaustion must skip phases that already completed
    rather than re-running them against an in-flight or merged PR (#41).
@@ -86,7 +104,7 @@ This phase is new in the workflow overhaul. Before any other phase.
 
    | Observed state | Resume at |
    |---|---|
-   | PR exists, state=`MERGED` | Phase 10 step 4 (post completion comment, close issue, release claim, destroy worktree) |
+   | PR exists, state=`MERGED` | Phase 10 step 6 (post completion comment, close issue, release claim, destroy worktree) |
    | PR exists, state=`OPEN`, CI failing | Phase 8 step 4 (fix CI, push) |
    | PR exists, state=`OPEN`, CI green, no review verdict | Phase 9 (dispatch reviewer) |
    | PR exists, state=`OPEN`, FAIL verdict on PR | Phase 11 (eject) |
@@ -459,12 +477,24 @@ next step is eject-to-human, not iterate.
        | grep -Eq '(Closes|Fixes|Resolves) #{{ ARGUMENTS }}\b' \
        || { echo "PR body missing 'Closes #{{ ARGUMENTS }}' — re-add before merging"; exit 1; }
    ```
-2. The Maverick GitHub App posts the approval:
+2. **Auth-path gate (hard).** Never auto-merge a PR that touches
+   authentication/authorization surfaces or CI workflow definitions —
+   those require human review regardless of the code-review verdict:
+   ```bash
+   uv run maverick pr auth-scan <repo> <pr-num>
+   ```
+   - Exit 0: clean — proceed.
+   - Exit 3: gated paths touched — **do not merge.** Treat this exactly
+     like a review FAIL: follow the eject path (apply `needs-human`,
+     post the scan output as a comment, release the claim) and stop.
+   - Exit 2: scan error — retry once; if it still fails, eject rather
+     than merging unverified.
+3. The Maverick GitHub App posts the approval:
    ```bash
    uv run maverick gh-app gh -- pr review <pr-url> --approve \
        --body "Approved by agent-code-reviewer at $(date -u +%FT%TZ)"
    ```
-3. Enable auto-merge (squash):
+4. Enable auto-merge (squash):
    ```bash
    uv run maverick gh-app gh -- pr merge <pr-url> --auto --squash
    ```
@@ -474,13 +504,13 @@ next step is eject-to-human, not iterate.
    adopted) the CI-side re-run of agent-code-reviewer. If all required
    checks were already green, GitHub merges immediately; otherwise it
    merges when they pass.
-4. **Wait for the merge to land** before continuing — poll
+5. **Wait for the merge to land** before continuing — poll
    `gh pr view <pr-url> --json state -q .state` until it reports
    `MERGED`. Cleanup steps below assume the PR is no longer in flight.
-5. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} merged`.
-6. Post the completion comment on the issue per
+6. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} merged`.
+7. Post the completion comment on the issue per
    `{{ SKILLS.MAV_GITHUB_ISSUE_WORKFLOW }}`.
-7. **Run the post-merge issue-lifecycle step.** This always posts an
+8. **Run the post-merge issue-lifecycle step.** This always posts an
    audit comment ("Resolved in PR #<P>; merged to <branch>.") and
    applies a `merged-to-<branch>` label, then closes the issue per the
    per-project policy in `.maverick/config.json`'s
@@ -496,13 +526,13 @@ next step is eject-to-human, not iterate.
    uv run maverick issue close-on-merge <repo> {{ ARGUMENTS }} \
        --pr <pr-num> --target <target-branch>
    ```
-8. Update phase to `complete` in the state file.
-9. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason merged`.
-10. Clean up:
+9. Update phase to `complete` in the state file.
+10. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason merged`.
+11. Clean up:
     - Local state file
     - Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
-11. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} complete`.
-12. **Emit per-phase narrative notes** so the report's Analysis section
+12. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} complete`.
+13. **Emit per-phase narrative notes** so the report's Analysis section
     has context for what happened. The JSONL is the authoritative
     record; the report is a pure render of it, so notes must land in
     the JSONL — do not edit the rendered Markdown by hand:
@@ -513,7 +543,7 @@ next step is eject-to-human, not iterate.
         --text "<one-sentence summary of what landed in Phase 5>"
     # ... one `report note` per phase that produced work worth narrating
     ```
-13. **Generate the workflow report**. Written to the **main repo's**
+14. **Generate the workflow report**. Written to the **main repo's**
     `.maverick/reports/` (resolved via `git rev-parse --git-common-dir`),
     not the destroyed worktree's. Re-runs are deterministic:
     ```bash

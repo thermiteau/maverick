@@ -49,7 +49,7 @@ The check verifies the project is initialised and `uv` is on PATH.
 
 Before editing, read and follow:
 
-- `mav-scope-boundaries` — implement only what ``
+- `mav-scope-boundaries` — implement only what `$ARGUMENTS`
   asks for. No unrelated cleanup, no opportunistic refactors, no
   abstractions for hypothetical future requirements. Three similar
   lines is better than a premature abstraction.
@@ -97,7 +97,7 @@ maverick-wide best practices.
 - **Tests are part of the change.** If the change is testable, write
   or update tests in the same task (or wrap that work in
   `do-test` as a sibling call before the commit).
-- **Stay inside the task envelope.** When `` is
+- **Stay inside the task envelope.** When `$ARGUMENTS` is
   ambiguous, ask for clarification rather than guess.
 
 ## Return Protocol

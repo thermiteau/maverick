@@ -10,7 +10,7 @@ disable-model-invocation: false
 
 # Work on GitHub Epic (Autonomous, DAG-scheduled)
 
-Work on epic issue `` end-to-end. Builds a dependency DAG
+Work on epic issue `$ARGUMENTS` end-to-end. Builds a dependency DAG
 from the epic's child stories, schedules them into waves, runs each wave
 in parallel via per-story worktrees, and drives every story through agent
 code review with binary PASS/FAIL verdicts.
@@ -36,7 +36,7 @@ fire — that workflow is optional and not enforced by preflight.
 
 ## Before You Begin
 
-`` must be the GitHub issue number of a Maverick **epic**
+`$ARGUMENTS` must be the GitHub issue number of a Maverick **epic**
 — an issue whose body contains a task table of child stories. If it is
 a single story, dispatch `do-issue-solo` instead.
 
@@ -54,7 +54,7 @@ a single story, dispatch `do-issue-solo` instead.
    - A specific wave if another instance already holds other stories.
    - Single story if another instance holds the epic but not the story
      you were asked about.
-4. **Claim**: `uv run maverick coord claim <repo>  --scope <csv-of-issues>`.
+4. **Claim**: `uv run maverick coord claim <repo> $ARGUMENTS --scope <csv-of-issues>`.
    On `ClaimRejected`, abort and report per
    `mav-multi-instance-coordination`.
 5. **Start heartbeat** for every issue in the claim scope. Run the
@@ -66,9 +66,13 @@ a single story, dispatch `do-issue-solo` instead.
      uv run maverick coord heartbeat-loop <repo> $issue >/dev/null 2>&1 &
    done
    ```
-6. **Register release handler** for every exit path. Run
-   `coord release` for every claimed issue; the matching `heartbeat-loop`
-   detects the cleared label on its next iteration and exits.
+6. **Release on exit is automatic.** The plugin's SessionEnd hook runs
+   `coord release-all`, releasing every claim this instance recorded —
+   the matching `heartbeat-loop` processes detect the cleared labels and
+   exit on their own; lease expiry covers machine death. Your only
+   explicit releases are the per-story ones at workflow boundaries
+   (merged / ejected). Do not attempt trap-on-exit wrappers — each Bash
+   call is a fresh shell, so a trap cannot survive to session end.
 
 ## Phase 1: Design + task decomposition (if needed)
 
@@ -95,7 +99,7 @@ Build a machine-readable DAG of child stories.
    `docs/conventions/github-markers.md`:
    ```json
    {
-     "epic": ,
+     "epic": $ARGUMENTS,
      "stories": {
        "140": {"deps": [], "files": ["app/src/boot.ts"]},
        "142": {"deps": ["140"], "files": ["app/src/admin/guard.ts"]}
@@ -106,7 +110,7 @@ Build a machine-readable DAG of child stories.
    resume from:
    ```bash
    # Write the DAG to a tmp file, then post via the GitHub App for a consistent audit trail.
-   uv run maverick gh-app gh -- issue comment  --body-file /tmp/dag-marker.md
+   uv run maverick gh-app gh -- issue comment $ARGUMENTS --body-file /tmp/dag-marker.md
    ```
    Alternatively, the CLI helper composes the marker for you — preferred:
    construct the payload JSON and post via the App's `gh` with a fenced
@@ -115,7 +119,7 @@ Build a machine-readable DAG of child stories.
 ## Phase 3: Wave grouping
 
 ```bash
-uv run maverick dag waves <repo> 
+uv run maverick dag waves <repo> $ARGUMENTS
 ```
 
 The output is a list of lists — each inner list is a set of stories with
@@ -131,7 +135,7 @@ can see execution order.
    - `in_flight` only if another instance's heartbeat is live for it
 2. Persist:
    ```bash
-   uv run maverick state set <repo>  <story> <status>
+   uv run maverick state set <repo> $ARGUMENTS <story> <status>
    ```
    Each call mirrors the local cache to the `maverick-state` marker on
    the epic.
@@ -143,8 +147,8 @@ remaining wave is fully blocked.
 
 ### Phase 5a: Select the next wave
 
-1. Read waves: `uv run maverick dag waves <repo> `.
-2. Read current state: `uv run maverick state show <repo> `.
+1. Read waves: `uv run maverick dag waves <repo> $ARGUMENTS`.
+2. Read current state: `uv run maverick state show <repo> $ARGUMENTS`.
 3. Pick the first wave whose every member is not yet merged.
 4. **Exclude stories carrying `blocked-by:#N`** — re-read the labels at
    selection time so human-resolved ejections automatically unblock.
@@ -198,7 +202,7 @@ For each story being worked on (whether as subagent or serially):
    (Phase 4 onward — branch is already created).
 3. **On FAIL from agent-code-reviewer (eject)**:
    - Mark story `ejected` in epic state:
-     `uv run maverick state set <repo>  <story> ejected`.
+     `uv run maverick state set <repo> $ARGUMENTS <story> ejected`.
    - Run block propagation per `mav-block-propagation`:
      - Write `maverick-bprop` marker on the epic.
      - Walk descendants, apply `blocked-by:#<story>` to each.
@@ -226,7 +230,7 @@ When every story in the wave is terminal (merged or ejected):
    - Call out the ejected stories as the human's queue.
 3. Update `maverick-state` one last time.
 4. Release the epic-level claim:
-   `uv run maverick coord release <repo>  --reason complete`.
+   `uv run maverick coord release <repo> $ARGUMENTS --reason complete`.
 5. The `heartbeat-loop` background processes self-terminate within one
    `--interval` window once their claims are released — `wait` for them
    if you backgrounded them with PIDs, or just let the parent shell exit.
@@ -238,7 +242,7 @@ When every story in the wave is terminal (merged or ejected):
    ```bash
    policy=$(uv run maverick issue policy)
    if [ "$policy" != "manual" ] && [ "$ejected_count" -eq 0 ]; then
-     gh issue close  \
+     gh issue close $ARGUMENTS \
        --comment "Epic complete: $merged_count stories merged."
    fi
    ```

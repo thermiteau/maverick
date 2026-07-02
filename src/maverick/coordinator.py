@@ -112,6 +112,65 @@ def _instance_id_path() -> Path:
     return Path("~/.maverick/instance_id").expanduser()
 
 
+def _claims_registry_path() -> Path:
+    """Local registry of claims held by instances on this machine.
+
+    The registry exists so that (a) the SessionEnd hook can release every
+    claim this session still holds without knowing repo/issue numbers, and
+    (b) the scope-guard hook can detect "this session is running an
+    autonomous workflow" (an instance that holds a claim is by definition
+    autonomous). It is a derivable cache — GitHub markers stay the source
+    of truth, and a stale registry entry is harmless: release is
+    idempotent and lease expiry covers machine death.
+    """
+    return Path("~/.maverick/active-claims.json").expanduser()
+
+
+def _read_claims_registry() -> list[dict[str, Any]]:
+    """Read the local claims registry, tolerating a missing/corrupt file."""
+    try:
+        raw = json.loads(_claims_registry_path().read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    claims = raw.get("claims") if isinstance(raw, dict) else None
+    return claims if isinstance(claims, list) else []
+
+
+def _write_claims_registry(claims: list[dict[str, Any]]) -> None:
+    path = _claims_registry_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"claims": claims}, indent=2) + "\n")
+    except OSError:
+        pass  # registry is best-effort; the GitHub marker is authoritative
+
+
+def _registry_add(repo: str, issue: int) -> None:
+    claims = [
+        c
+        for c in _read_claims_registry()
+        if not (c.get("repo") == repo and c.get("issue") == issue)
+    ]
+    claims.append(
+        {
+            "repo": repo,
+            "issue": issue,
+            "instance_id": instance_id(),
+            "claimed_at": _now_iso(),
+        }
+    )
+    _write_claims_registry(claims)
+
+
+def _registry_remove(repo: str, issue: int) -> None:
+    claims = [
+        c
+        for c in _read_claims_registry()
+        if not (c.get("repo") == repo and c.get("issue") == issue)
+    ]
+    _write_claims_registry(claims)
+
+
 def instance_id() -> str:
     """Short, unique id for this Maverick instance.
 
@@ -263,6 +322,10 @@ def claim(
                 f"#{issue} race lost — superseded by claim from instance {latest_holder}"
             )
 
+    # Record locally so the SessionEnd hook can release-all on exit and the
+    # scope-guard hook can detect autonomous mode.
+    _registry_add(repo, issue)
+
     return c
 
 
@@ -370,6 +433,92 @@ def release(
         preamble=f"<!-- maverick lease released: {reason} -->",
         env=env,
     )
+    _registry_remove(repo, issue)
+
+
+def release_all(
+    reason: str = "session-end", env: dict[str, str] | None = None
+) -> list[tuple[str, int]]:
+    """Release every claim this instance recorded in the local registry.
+
+    Designed for the SessionEnd hook: idempotent, tolerant of claims that
+    were already released or taken over remotely (each release failure is
+    swallowed — lease expiry is the backstop). Returns the (repo, issue)
+    pairs that were released.
+    """
+    mine = [c for c in _read_claims_registry() if c.get("instance_id") == instance_id()]
+    released: list[tuple[str, int]] = []
+    for c in mine:
+        repo, issue = c.get("repo"), c.get("issue")
+        if not isinstance(repo, str) or not isinstance(issue, int):
+            continue
+        try:
+            release(repo, issue, reason=reason, env=env)
+            released.append((repo, issue))
+        except Exception:
+            # Claim may already be gone (released, taken over, issue closed).
+            pass
+        # Drop the registry entry either way — release() also removes it,
+        # but the registry must never retain an entry past this pass.
+        _registry_remove(repo, issue)
+    return released
+
+
+AUTHORIZE_LABEL_PREFIX = "maverick-authorize-"
+AUTHORIZE_BODY_RE = r"(?im)^\s*maverick-authorize:\s*(?P<scopes>[a-z, -]+)\s*$"
+SESSION_AUTH_PATH = Path(".maverick/session-auth.json")
+
+
+class AuthorizationRejected(Exception):
+    """The issue does not carry an explicit authorization for the scope."""
+
+
+def authorize(
+    repo: str, issue: int, scope: str, env: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """Verify issue-level authorization for *scope* and record it locally.
+
+    Authorization must be explicit on the GitHub issue itself — either a
+    ``maverick-authorize-<scope>`` label or a ``Maverick-Authorize: <scope>``
+    line in the issue body. This function is the only sanctioned writer of
+    ``.maverick/session-auth.json`` (the scope-guard hook blocks direct
+    edits to that file), so an agent cannot self-grant a scope the issue
+    never authorized.
+    """
+    import re
+
+    scope = scope.strip().lower()
+    labels = _issue_labels(repo, issue)
+    granted = f"{AUTHORIZE_LABEL_PREFIX}{scope}" in labels
+
+    if not granted:
+        out = _gh("issue", "view", str(issue), "--repo", repo, "--json", "body", env=env)
+        body = json.loads(out).get("body") or ""
+        for m in re.finditer(AUTHORIZE_BODY_RE, body):
+            scopes = [s.strip() for s in m.group("scopes").split(",")]
+            if scope in scopes:
+                granted = True
+                break
+
+    if not granted:
+        raise AuthorizationRejected(
+            f"{repo}#{issue} does not authorize scope {scope!r}: add the "
+            f"'{AUTHORIZE_LABEL_PREFIX}{scope}' label or a 'Maverick-Authorize: "
+            f"{scope}' line to the issue body."
+        )
+
+    auth: dict[str, Any] = {"repo": repo, "issue": issue, "scopes": [scope]}
+    try:
+        existing = json.loads(SESSION_AUTH_PATH.read_text())
+        if existing.get("repo") == repo and existing.get("issue") == issue:
+            merged = sorted(set(existing.get("scopes") or []) | {scope})
+            auth["scopes"] = merged
+    except (OSError, json.JSONDecodeError):
+        pass
+    auth["granted_at"] = _now_iso()
+    SESSION_AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_AUTH_PATH.write_text(json.dumps(auth, indent=2) + "\n")
+    return auth
 
 
 def takeover(

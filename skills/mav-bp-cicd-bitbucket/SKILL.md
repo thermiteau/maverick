@@ -1,6 +1,8 @@
 ---
 name: mav-bp-cicd-bitbucket
 description: Monitoring Bitbucket Pipelines after pushing. Covers checking pipeline status, diagnosing build failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # CI Awareness — Bitbucket Pipelines

@@ -1,6 +1,8 @@
 ---
 name: mav-stacked-prs
 description: How to stack a PR on top of an unmerged sibling branch, and how to retarget it to the repo's default branch once the sibling merges. Prevents orphan-merge incidents when a dependent story is ready before its parent.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 **Depends on:** mav-git-workflow
