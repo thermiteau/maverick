@@ -71,4 +71,4 @@ your summary — do not trigger skill generation mid-task.
 | Hard-coded connection strings | Breaks across environments | Use environment variables or config |
 | Test requires manual environment setup | Not reproducible | Automate with containers or scripts |
 
-<!-- maverick-plugin-version: 3.3.10-dev -->
+<!-- maverick-plugin-version: 4.0.0 -->
