@@ -1,6 +1,6 @@
 ---
 name: do-pullrequest-review
-description: How to process code review feedback — verify before implementing, push back when wrong, clarify before acting on partial understanding. Applied when receiving review from the code-reviewer agent or human reviewers.
+description: How to process code review feedback — verify before implementing, push back when wrong, clarify before acting on partial understanding. Applied when receiving review from the agent-code-reviewer or human reviewers.
 disable-model-invocation: false
 ---
 
