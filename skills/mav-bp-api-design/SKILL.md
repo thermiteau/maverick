@@ -42,4 +42,4 @@ When reviewing code, flag these patterns:
 | No idempotency on payment/financial endpoints      | Duplicate processing risk          | Require idempotency keys                               |
 | API docs maintained separately from code           | Documentation drift                | Generate docs from source (OpenAPI, introspection)     |
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->

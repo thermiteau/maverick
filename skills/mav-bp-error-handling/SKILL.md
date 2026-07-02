@@ -39,4 +39,4 @@ Check for `docs/maverick/skills/error-handling/SKILL.md`. If present, read it â€
 | No error boundary around UI sections                | Single component crashes page  | Wrap sections in error boundaries with fallback UI |
 | Generic error message for all failures              | Poor user experience           | Distinguish client vs server errors                |
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->

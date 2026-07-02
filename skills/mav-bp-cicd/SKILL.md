@@ -71,4 +71,4 @@ configuration, change stages/jobs/gates, touch CI secrets or environment
 variables, or trigger production deployments. Always: monitor CI after
 pushing and fix failures before declaring work complete.
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->

@@ -44,4 +44,4 @@ When reviewing code for user-facing interfaces, flag these patterns:
 | Custom widget without keyboard handling | Inoperable for keyboard users | Implement full keyboard interaction pattern |
 | Error shown only by colour change | Screen readers cannot detect colour | Add text message and `aria-describedby` |
 
-<!-- maverick-plugin-version: 4.0.0 -->
+<!-- maverick-plugin-version: 4.0.1-dev -->
