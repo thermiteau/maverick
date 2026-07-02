@@ -47,7 +47,10 @@ class AgentConfig:
     description: str
     tools: list[str] = field(default_factory=list)
     disallowed_tools: list[str] = field(default_factory=list)
-    model: Literal["sonnet", "opus", "haiku", "inherit"] | None = None
+    # Model alias (e.g. "sonnet", "opus", "haiku", "inherit") or a full model
+    # ID. Deliberately a plain str: a Literal froze the schema to a model list
+    # that goes stale as new families ship.
+    model: str | None = None
     permission_mode: (
         Literal["default", "acceptEdits", "dontAsk", "bypassPermissions", "plan"] | None
     ) = None
@@ -64,11 +67,20 @@ class AgentConfig:
 
 @dataclass
 class TopicConfig:
-    """Configuration for an upskill topic."""
+    """Configuration for an upskill topic.
+
+    The scan hints are the single source of truth for detection — they
+    generate topics.json, the do-upskill body's hints section, and are
+    referenced by do-adopt. Duplicated hint lists across skills drifted
+    (modernization review, bp-M3); do not re-introduce copies.
+    """
 
     topic: str
     prompt: str
-    best_practice_skill: str  # skill name constant, e.g. "mav-bp-logging"
+    best_practice_skill: str  # skill name constant, e.g. "mav-bp-operability"
+    scan_dependencies: list[str] = field(default_factory=list)
+    scan_grep: str = ""
+    scan_files: list[str] = field(default_factory=list)
 
 
 @dataclass

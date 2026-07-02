@@ -1,8 +1,7 @@
 from maverick.models import SkillConfig
 from maverick.names import (
     DO_TEST,
-    MAV_BP_INTEGRATION_TESTING,
-    MAV_BP_UNIT_TESTING,
+    MAV_BP_TESTING,
     MAV_LOCAL_VERIFICATION,
     MAV_SCOPE_BOUNDARIES,
 )
@@ -20,8 +19,7 @@ CONFIG = SkillConfig(
     user_invocable=True,
     disable_model_invocation=False,
     depends_on=[
-        MAV_BP_UNIT_TESTING,
-        MAV_BP_INTEGRATION_TESTING,
+        MAV_BP_TESTING,
         MAV_LOCAL_VERIFICATION,
         MAV_SCOPE_BOUNDARIES,
     ],

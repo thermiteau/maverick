@@ -1,6 +1,8 @@
 ---
 name: mav-create-tasks
 description: How to decompose a solution design into discrete, independently implementable tasks. Used as a dependency from workflow skills.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Create Tasks

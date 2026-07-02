@@ -5,7 +5,7 @@ relates-to:
   - scope-boundaries.md
   - security-review.md
   - cicd.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # LLM Containment
@@ -103,6 +103,16 @@ Local configuration includes git hooks, linter configs, file permissions, .gitig
 - File permissions can be changed if the LLM's process has sufficient OS privileges
 
 Local configuration is useful as a fast feedback loop. It catches common mistakes before they leave the development environment. It is not a security boundary because the entity it is meant to constrain (the LLM) has the ability to modify the constraints.
+
+Maverick strengthens this layer substantially with plugin hooks that run
+outside the model's reasoning: the scope-guard hook deterministically
+gates destructive git operations, protected-branch commits,
+infrastructure edits, and production patterns at the tool-call boundary,
+and a SessionEnd hook guarantees coordination claims are released on
+every exit path. A hook denial overrides even permissive session modes.
+These are still local-layer controls — a user can disable hooks — which
+is why `maverick init` also writes permission deny rules and why the
+remote layer below remains the hard boundary.
 
 ### Layer 3: Remote Enforcement (Mandatory)
 

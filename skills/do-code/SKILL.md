@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-bp-error-handling, mav-bp-logging, mav-bp-application-security, mav-local-verification, mav-scope-boundaries, mav-systematic-debugging
-
 # Implement a Code Change
 
 Wraps implementation work in a Maverick skill so the workflow report
@@ -43,13 +41,17 @@ output to the user verbatim. Do not proceed.
 uv run maverick preflight do-code
 ```
 
+Skip the preflight when invoked from inside a `do-issue-*` or
+`do-epic` phase — the orchestrator already ran a stricter one this
+session. Run it only when this skill is invoked standalone.
+
 The check verifies the project is initialised and `uv` is on PATH.
 
 ## Standards to apply
 
 Before editing, read and follow:
 
-- `mav-scope-boundaries` — implement only what ``
+- `mav-scope-boundaries` — implement only what `$ARGUMENTS`
   asks for. No unrelated cleanup, no opportunistic refactors, no
   abstractions for hypothetical future requirements. Three similar
   lines is better than a premature abstraction.
@@ -57,7 +59,7 @@ Before editing, read and follow:
   boundaries only (user input, external APIs). Don't catch what
   framework guarantees rule out. No defensive code for scenarios that
   can't happen.
-- `mav-bp-logging` — log levels, structured fields, and
+- `mav-bp-operability` — log levels, structured fields, and
   the project's logging conventions.
 - `mav-bp-application-security` — input validation, secret
   handling, authn/authz patterns. If the change touches any of these,
@@ -97,7 +99,7 @@ maverick-wide best practices.
 - **Tests are part of the change.** If the change is testable, write
   or update tests in the same task (or wrap that work in
   `do-test` as a sibling call before the commit).
-- **Stay inside the task envelope.** When `` is
+- **Stay inside the task envelope.** When `$ARGUMENTS` is
   ambiguous, ask for clarification rather than guess.
 
 ## Return Protocol

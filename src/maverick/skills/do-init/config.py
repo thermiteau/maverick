@@ -16,6 +16,10 @@ CONFIG = SkillConfig(
         " cybersecurity audit, then commits the changes and opens a PR."
     ),
     user_invocable=True,
+    # Runs in an isolated forked context: the audit/setup work is
+    # self-contained and would otherwise pollute the caller's window
+    # (the #106 premature-stop class). The body is the fork's prompt.
+    context="fork",
     disable_model_invocation=True,
     depends_on=[
         DO_INSTALL,

@@ -1,6 +1,7 @@
 ---
 name: do-pullrequest-review
 description: How to process code review feedback — verify before implementing, push back when wrong, clarify before acting on partial understanding. Applied when receiving review from the agent-code-reviewer or human reviewers.
+user-invocable: false
 disable-model-invocation: false
 ---
 
@@ -15,6 +16,10 @@ Run this **first**. If it exits non-zero, halt and report the stderr output to t
 ```bash
 uv run maverick preflight do-pullrequest-review
 ```
+
+Skip the preflight when invoked from inside a `do-issue-*` or
+`do-epic` phase — the orchestrator already ran a stricter one this
+session. Run it only when this skill is invoked standalone.
 
 The check verifies the project is initialised and `gh`/`uv` are on PATH.
 

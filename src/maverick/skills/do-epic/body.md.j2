@@ -1,6 +1,4 @@
 
-**Depends on:** {{ DEPENDS_ON }}
-
 # Work on GitHub Epic (Autonomous, DAG-scheduled)
 
 Work on epic issue `{{ ARGUMENTS }}` end-to-end. Builds a dependency DAG
@@ -50,18 +48,23 @@ a single story, dispatch `{{ SKILLS.DO_ISSUE_SOLO }}` instead.
 4. **Claim**: `uv run maverick coord claim <repo> {{ ARGUMENTS }} --scope <csv-of-issues>`.
    On `ClaimRejected`, abort and report per
    `{{ SKILLS.MAV_MULTI_INSTANCE_COORDINATION }}`.
-5. **Start heartbeat** for every issue in the claim scope. Run the
-   self-terminating foreground loop in the background — it exits cleanly
-   when the matching `coord release` runs at session end, so there is no
-   manual `kill` step:
+5. **Start heartbeat daemons** for every issue in the claim scope. Each
+   daemon exits on its own when the matching claim is released; check
+   liveness anytime with `coord heartbeat-status`:
    ```bash
    for issue in <epic> <story1> <story2> …; do
-     uv run maverick coord heartbeat-loop <repo> $issue >/dev/null 2>&1 &
+     uv run maverick coord heartbeat-loop <repo> $issue --daemonize
    done
    ```
-6. **Register release handler** for every exit path. Run
-   `coord release` for every claimed issue; the matching `heartbeat-loop`
-   detects the cleared label on its next iteration and exits.
+   Never background the foreground loop with `&` — a process backgrounded
+   from a tool shell dies with the shell or leaks unobservably.
+6. **Release on exit is automatic.** The plugin's SessionEnd hook runs
+   `coord release-all`, releasing every claim this instance recorded —
+   the matching `heartbeat-loop` processes detect the cleared labels and
+   exit on their own; lease expiry covers machine death. Your only
+   explicit releases are the per-story ones at workflow boundaries
+   (merged / ejected). Do not attempt trap-on-exit wrappers — each Bash
+   call is a fresh shell, so a trap cannot survive to session end.
 
 ## Phase 1: Design + task decomposition (if needed)
 
@@ -96,14 +99,11 @@ Build a machine-readable DAG of child stories.
    }
    ```
 3. **Persist the DAG to GitHub** — this is durable for any instance to
-   resume from:
+   resume from. Write the payload JSON to a file and let the CLI compose
+   and upsert the fenced marker (never hand-compose marker comments):
    ```bash
-   # Write the DAG to a tmp file, then post via the GitHub App for a consistent audit trail.
-   uv run maverick gh-app gh -- issue comment {{ ARGUMENTS }} --body-file /tmp/dag-marker.md
+   uv run maverick gh-state write <repo> {{ ARGUMENTS }} maverick-dag --payload-file /tmp/dag.json
    ```
-   Alternatively, the CLI helper composes the marker for you — preferred:
-   construct the payload JSON and post via the App's `gh` with a fenced
-   `maverick-dag` block.
 
 ## Phase 3: Wave grouping
 
@@ -189,7 +189,9 @@ For each story being worked on (whether as subagent or serially):
    — if the story now carries `blocked-by:#N`, abort without pushing.
 2. Run the story through `{{ SKILLS.DO_ISSUE_SOLO }}`'s per-story phases
    (Phase 4 onward — branch is already created).
-3. **On FAIL from agent-code-reviewer (eject)**:
+3. **On FAIL from agent-code-reviewer (eject)** — FAIL means the
+   `MAVERICK_VERDICT: FAIL` marker parsed in `{{ SKILLS.DO_ISSUE_SOLO }}`
+   Phase 9; a missing or ambiguous marker counts as FAIL:
    - Mark story `ejected` in epic state:
      `uv run maverick state set <repo> {{ ARGUMENTS }} <story> ejected`.
    - Run block propagation per `{{ SKILLS.MAV_BLOCK_PROPAGATION }}`:

@@ -6,7 +6,7 @@ from maverick.names import (
     ALL_SKILL_NAMES,
     DO_ISSUE_GUIDED,
     DO_ISSUE_SOLO,
-    MAV_BP_LOGGING,
+    MAV_BP_OPERABILITY,
 )
 
 
@@ -17,7 +17,7 @@ class TestSkillNames:
     def test_known_skills_in_set(self):
         assert DO_ISSUE_SOLO in ALL_SKILL_NAMES
         assert DO_ISSUE_GUIDED in ALL_SKILL_NAMES
-        assert MAV_BP_LOGGING in ALL_SKILL_NAMES
+        assert MAV_BP_OPERABILITY in ALL_SKILL_NAMES
 
     def test_skill_names_are_kebab_case(self):
         for name in ALL_SKILL_NAMES:

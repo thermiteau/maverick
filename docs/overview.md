@@ -13,7 +13,7 @@ relates-to:
   - scope-boundaries.md
   - llm-containment.md
   - claude-code-error-handling-and-recovery.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 ## Overview
@@ -66,9 +66,9 @@ Running Claude Code locally works well for interactive development but does not 
 
 Maverick resolves this by deploying Claude Code workers to AWS. The infrastructure is managed via CloudFormation stacks, deployed either through the CLI (`maverick infra deploy`) or by uploading the standalone templates from `infra/` directly to the AWS Console. Workers are triggered by labelling GitHub issues, which fires a webhook that writes work items to DynamoDB. An EC2 instance polls the table and processes items autonomously.
 
-This is more involved than many users require and is not necessary to use Maverick. The plugin works on your local machine without any cloud infrastructure.
+This is more involved than many users require and is not necessary to use Maverick. The plugin works on your local machine without any cloud infrastructure — and for most remote needs the GitHub Action on-ramp (`templates/github/claude-maverick.yml`) is the simpler path.
 
-See [claude-code-workers.md](claude-code-workers.md) for full details.
+See [claude-code-workers.md](claude-code-workers.md) for the remote-execution decision matrix and full details.
 
 ## Why Each Practice Area Is Central
 
@@ -107,9 +107,9 @@ Maverick encodes best practices as machine-readable artefacts that the LLM must 
 
 | Mechanism  | Role                                                            | Example                                                                                                                            |
 | ---------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **Skills** | Define what good looks like - standards, conventions, workflows | `mav-bp-logging` defines log levels and structured format                                                                          |
+| **Skills** | Define what good looks like - standards, conventions, workflows | `mav-bp-operability` defines log levels and structured format                                                                          |
 | **Agents** | Verify compliance autonomously - review, test, document         | `agent-code-reviewer` catches spec gaps, missing tests, and quality issues (security is handled separately by the `do-cybersecurity-review` skill) |
-| **Hooks**  | Enforce rules automatically at tool-call boundaries             | Block commits to protected branches, prevent secret exposure                                                                       |
+| **Hooks**  | Enforce rules automatically at tool-call boundaries             | The scope-guard hook gates destructive git ops, commits/pushes on protected branches, infrastructure edits, and production-pattern commands (ask in interactive sessions, deny in autonomous mode); a SessionEnd hook releases coordination claims on every exit path |
 
 ### The Enforcement Chain
 
@@ -119,31 +119,32 @@ Every practice area follows the same enforcement pattern:
 
 Each link in this chain catches different classes of issues:
 
+- **Scope-guard hook** - mechanically gates destructive git operations, protected-branch commits, infrastructure edits, and production patterns at the tool-call boundary — before any other layer sees the action
 - **Best-practice skill** - prevents the LLM from using anti-patterns (e.g., console.log instead of structured logger)
 - **Project skill** - ensures the LLM uses the project's specific technology (e.g., Pino with CloudWatch transport)
 - **Local verification** - catches syntax errors, lint failures, and test failures before push
 - **CI pipeline** - catches environment-specific issues, dependency problems, cross-platform failures
 - **Pre-push security review** - `do-cybersecurity-review` runs in update mode against the diff and impact set; BLOCKING findings halt the push, FINDINGS are folded into the PR body
-- **Agent code review** - catches spec violations, missing tests, scope drift, maintainability problems (security is handled by the pre-push gate above, not here)
+- **Agent code review** - a read-only reviewer returns a machine-parsed binary verdict (`MAVERICK_VERDICT: PASS|FAIL`); a missing or ambiguous verdict fails safe. Catches spec violations, missing tests, scope drift, maintainability problems (security is handled by the pre-push gate above, not here)
+- **Auth-path merge gate** - `maverick pr auth-scan` blocks auto-merging PRs that touch authentication surfaces or CI workflow definitions, regardless of the review verdict
 - **Human review** - final gate for production-bound code
 
 ## Project Structure
 
 ```
 maverick/
-├── skills/                     # Machine-readable guidance (54 skills, build output)
-│   ├── mav-bp-*/               # Universal best-practice standards (21 skills)
-│   ├── mav-bp-cicd-*/          # Platform-specific CI/CD skills
+├── skills/                     # Machine-readable guidance (41 skills, build output)
+│   ├── mav-bp-*/               # Best-practice standards (14 skills): Maverick's
+│   │                           #   decisions + code-review anti-pattern tables
 │   ├── do-issue-*/             # GitHub issue workflow entry points
 │   ├── do-epic/                # Epic-driven parallel workflow
 │   ├── do-upskill/             # Project skill generation
 │   └── ...                     # Execution, governance, debugging
-├── agents/                     # Autonomous workers (6 agents, build output)
+├── agents/                     # Autonomous workers (5 agents, build output)
 │   ├── agent-code-reviewer.md
 │   ├── agent-issue-analyst.md
 │   ├── agent-github-issue-planner.md
 │   ├── agent-session-reviewer.md
-│   ├── agent-maverick.md
 │   └── agent-tech-docs-writer.md
 ├── hooks/                      # Tool-call enforcement rules (build output)
 ├── docs/                       # Philosophy and rationale (this directory)

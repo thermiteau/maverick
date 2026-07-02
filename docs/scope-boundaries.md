@@ -4,7 +4,7 @@ scope: Defining and enforcing the operating envelope for LLM agents
 relates-to:
   - llm-containment.md
   - security-review.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Scope Boundaries
@@ -57,6 +57,19 @@ flowchart TD
     style E fill:#f57c00,color:#fff
     style C fill:#388e3c,color:#fff
 ```
+
+The policy layer (the `mav-scope-boundaries` skill) is backed by a
+**mechanical layer** the model cannot forget or reason past:
+
+| Mechanism | What it enforces |
+| --- | --- |
+| Scope-guard hook (`PreToolUse`) | Destructive git ops, commits/pushes on protected branches, infrastructure-path edits, production-pattern commands. Rule hits **ask** the user in interactive sessions (that is the session consent the policy requires) and are **denied** in autonomous runs. Production patterns are denied in every mode — no consent carve-out. |
+| Verified authorization (`maverick coord authorize`) | Infrastructure edits in autonomous runs are permitted only when the GitHub issue itself carries the `maverick-authorize-infra` label or a `Maverick-Authorize: infra` body line. The CLI verifies the issue and records the grant; the hook blocks any other write to the authorization file, so an agent cannot self-grant. |
+| Permission deny rules | `maverick init` writes baseline deny rules (force-push, workflow-file edits) into the project's `.claude/settings.json` — a second layer that holds even if hooks are disabled. |
+| Auth-path merge gate (`maverick pr auth-scan`) | No autonomous auto-merge of a PR that touches authentication surfaces or CI workflow definitions, regardless of the code-review verdict. A hit ejects to human review. |
+| SessionEnd release + lease expiry | Coordination claims are released on every exit path; a dead machine's claim expires within minutes and another instance can take over cleanly. |
+
+On top of that mechanical floor, the skill layer still matters:
 
 - The mav-scope-boundaries skill is loaded as a dependency of every other skill
 - It defines four hard refusal categories that the LLM must never execute without explicit instruction

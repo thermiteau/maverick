@@ -1,12 +1,10 @@
 ---
 name: do-test
-description: Write or update tests for a code change. Operates in two modes: `unit` (module-scoped, fast, deterministic) and `integration` (crosses module / service / database boundaries). Intended to be invoked once per testable change from inside a do-issue-* or do-epic phase. Mode is required.
-argument-hint: mode: unit or integration
+description: 'Write or update tests for a code change. Operates in two modes: `unit` (module-scoped, fast, deterministic) and `integration` (crosses module / service / database boundaries). Intended to be invoked once per testable change from inside a do-issue-* or do-epic phase. Mode is required.'
+argument-hint: 'mode: unit or integration'
 user-invocable: true
 disable-model-invocation: false
 ---
-
-**Depends on:** mav-bp-unit-testing, mav-bp-integration-testing, mav-local-verification, mav-scope-boundaries
 
 # Write or Update Tests
 
@@ -32,11 +30,15 @@ output to the user verbatim. Do not proceed.
 uv run maverick preflight do-test
 ```
 
+Skip the preflight when invoked from inside a `do-issue-*` or
+`do-epic` phase — the orchestrator already ran a stricter one this
+session. Run it only when this skill is invoked standalone.
+
 The check verifies the project is initialised and `uv` is on PATH.
 
 ## Mode Selection
 
-`` must specify a mode:
+`$ARGUMENTS` must specify a mode:
 
 - `unit` — module-scoped, fast, deterministic. No network, no real
   database, no real filesystem outside the test's own `tmp_path`.
@@ -53,7 +55,7 @@ coverage.
 
 ## Unit Mode
 
-Apply `mav-bp-unit-testing` for the project's unit-testing
+Apply `mav-bp-testing` for the project's unit-testing
 conventions (test framework, naming, fixture style, assertion
 patterns).
 
@@ -75,7 +77,7 @@ patterns).
 
 ## Integration Mode
 
-Apply `mav-bp-integration-testing` for the project's
+Apply `mav-bp-testing` for the project's
 integration-testing conventions (which real services are stood up,
 fixture lifecycle, isolation strategy, slowness budget).
 

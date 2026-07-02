@@ -45,5 +45,7 @@ jobs:
           prompt: |
             Use the agent-code-reviewer agent to review this pull request.
             Run the two-stage review (spec compliance, then code quality) and
-            return a binary PASS / FAIL verdict via `gh pr review`. Comment
-            on specific lines for any issues. Do not attempt to apply fixes.
+            post a binary PASS / FAIL verdict via `gh pr review`. The review
+            body must end with the marker line `MAVERICK_VERDICT: PASS` or
+            `MAVERICK_VERDICT: FAIL` (exactly once). Comment on specific
+            lines for any issues. Do not attempt to apply fixes.

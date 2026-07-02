@@ -41,6 +41,28 @@ MARKER_KINDS = (
 # Phase names that may appear in a maverick-task-progress payload's `phase`
 # field. The list mirrors do-issue-solo's phase boundaries; agents resume
 # from the next phase after the recorded one (#41).
+#
+# The task-progress marker is the SINGLE state surface for issue-driven
+# work — it replaced the old `.claude/issue-state.json` local file, whose
+# schema had drifted from the skills that read it. Full payload shape:
+#
+#     {
+#       "phase": "<one of TASK_PROGRESS_PHASES>",
+#       "instance_id": "abc123def0",
+#       "updated_at": "2026-07-02T10:20:00Z",
+#       "branch": "feat/42-add-export",          // once created
+#       "comments": {                             // artefact comment ids
+#         "design": 123, "plan": 124,
+#         "tasks": 125, "completion": 126
+#       },
+#       "has_sub_issues": true,                   // >= 5 tasks path
+#       "authorized": ["infra"]                   // via `coord authorize`
+#     }
+#
+# Only `phase`, `instance_id`, and `updated_at` are always present; the
+# rest accrete as the workflow reaches them. Writers must MERGE into the
+# existing payload (see patch_task_progress) — a blind upsert that
+# rebuilds the payload from scratch would wipe the accreted fields.
 TASK_PROGRESS_PHASES = (
     "claimed",
     "design",
@@ -211,3 +233,43 @@ def delete_marker_comment(
         f"repos/{repo}/issues/comments/{comment_id}",
         env=env,
     )
+
+
+# ---------------------------------------------------------------------------
+# Task-progress payload helpers (the single issue-state surface)
+# ---------------------------------------------------------------------------
+
+
+def read_task_progress(repo: str, issue: int) -> dict[str, Any]:
+    """Return the latest task-progress payload for `issue`, or {} if absent."""
+    m = latest_marker(repo, issue, "maverick-task-progress")
+    return dict(m.payload) if m else {}
+
+
+def patch_task_progress(
+    repo: str,
+    issue: int,
+    updates: dict[str, Any],
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Merge `updates` into the task-progress payload and upsert the marker.
+
+    Top-level keys in `updates` replace the existing values, except
+    `comments`, which is merged key-wise so recording the plan comment id
+    never drops the design comment id. Returns the merged payload.
+    """
+    payload = read_task_progress(repo, issue)
+    updates = dict(updates)
+    if "comments" in updates:
+        merged_comments = {**payload.get("comments", {}), **(updates.pop("comments") or {})}
+        payload["comments"] = merged_comments
+    payload.update(updates)
+    upsert_marker(
+        repo,
+        issue,
+        "maverick-task-progress",
+        payload,
+        preamble="<!-- maverick task-progress -->",
+        env=env,
+    )
+    return payload

@@ -257,6 +257,13 @@ Halt and report to the user; do not auto-rebase or force-update.
 git checkout $STORY_BASE && git pull origin $STORY_BASE && git checkout -b $BRANCH_NAME
 ```
 
+## Versioning
+
+Releases follow **SemVer**; conventional-commit types drive the bump
+(`fix:` → patch, `feat:` → minor, breaking change → major). Version
+bumps land only via release commits/branches — never ad-hoc edits to
+version files mid-feature.
+
 ## Conventional Commits
 
 All commits must follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.

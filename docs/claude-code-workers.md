@@ -7,6 +7,32 @@ relates-to:
 last-verified: 2026-07-02
 ---
 
+## Choosing a Remote Execution Path
+
+There are three ways to run Maverick work away from your laptop. Pick the
+lightest one that covers your triggers — most users should start with the
+GitHub Action and never need the EC2 pipeline.
+
+| | **GitHub Action** (recommended start) | **Claude cloud Routines** | **Maverick EC2 workers** (this doc) |
+| --- | --- | --- | --- |
+| Setup | Install the Claude GitHub App, add one secret, copy `templates/github/claude-maverick.yml` | Configure in claude.ai/code (Pro/Max/Team) | Deploy AWS stacks, bake AMI, configure webhook |
+| Triggers | `@claude` mentions; `claude-do` label (via the template); schedules | Cron/presets; GitHub PR/release events; API fire | GitHub issue labelled `claude-do` via webhook |
+| Compute | GitHub-hosted runner (6 h/job cap) | Anthropic-hosted | Your EC2 instance — persistent, no time cap |
+| Billing | Your `ANTHROPIC_API_KEY` | Plan usage | Your API key + AWS |
+| Fits | Single stories, review responses, on-demand fixes | Recurring maintenance, PR-event automation | Long-running epics, fleets, self-hosted compute requirements, SSH access |
+| Auto-merge flow | Yes, when the Maverick GitHub App is configured via secrets | Restricted (`claude/` branches by default) | Yes — full do-issue-solo pipeline |
+
+The GitHub Action on-ramp template lives at
+`templates/github/claude-maverick.yml` — an interactive `@claude` job and
+a label-triggered autonomous `do-issue-solo` job, both with the Maverick
+plugin preloaded.
+
+> **Maintenance mode.** The EC2 worker pipeline below is kept for the
+> cases the hosted paths do not cover (persistent machines, epics beyond
+> runner time caps, self-hosted compute policies). It is re-evaluated
+> each release as the official GitHub Action and cloud Routines close
+> those gaps; prefer them where they suffice.
+
 ## Remote Compute
 
 Maverick completes development tasks autonomously at scale using cloud infrastructure to create a pipeline of work feeding worker instances.

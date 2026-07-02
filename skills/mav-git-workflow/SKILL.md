@@ -1,6 +1,8 @@
 ---
 name: mav-git-workflow
 description: Git branching strategy, commit conventions, merge conflict handling, and branch lifecycle. Implements a simplified Gitflow with protected branches and conventional commits. Covers worktree-based multi-story workflows and cross-references stacked-PR handling.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Git Workflow
@@ -260,6 +262,13 @@ Halt and report to the user; do not auto-rebase or force-update.
 ```bash
 git checkout $STORY_BASE && git pull origin $STORY_BASE && git checkout -b $BRANCH_NAME
 ```
+
+## Versioning
+
+Releases follow **SemVer**; conventional-commit types drive the bump
+(`fix:` → patch, `feat:` → minor, breaking change → major). Version
+bumps land only via release commits/branches — never ad-hoc edits to
+version files mid-feature.
 
 ## Conventional Commits
 

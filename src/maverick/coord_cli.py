@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,7 @@ from maverick import (
     gh_state,
     git_workflow,
     issue_lifecycle,
+    workflow_verbs,
     worktree,
 )
 
@@ -89,14 +91,49 @@ def _coord_heartbeat(args: argparse.Namespace) -> int:
 
 
 def _coord_heartbeat_loop(args: argparse.Namespace) -> int:
+    if getattr(args, "daemonize", False):
+        pid = coordinator.daemonize_heartbeat_loop(
+            args.repo, args.issue, interval_seconds=args.interval
+        )
+        _json_print({"daemon": True, "pid": pid})
+        return 0
     return coordinator.heartbeat_loop(
         args.repo, args.issue, interval_seconds=args.interval
     )
 
 
+def _coord_heartbeat_status(args: argparse.Namespace) -> int:
+    pid = coordinator.heartbeat_pid(args.repo, args.issue)
+    _json_print({"running": pid is not None, "pid": pid})
+    return 0 if pid is not None else 3
+
+
+def _coord_resume_point(args: argparse.Namespace) -> int:
+    _json_print(workflow_verbs.resume_point(args.repo, args.issue))
+    return 0
+
+
 def _coord_release(args: argparse.Namespace) -> int:
     coordinator.release(args.repo, args.issue, reason=args.reason)
     print("released")
+    return 0
+
+
+def _coord_release_all(args: argparse.Namespace) -> int:
+    released = coordinator.release_all(reason=args.reason)
+    for repo, issue in released:
+        print(f"released {repo}#{issue}")
+    print(f"{len(released)} claim(s) released")
+    return 0
+
+
+def _coord_authorize(args: argparse.Namespace) -> int:
+    try:
+        auth = coordinator.authorize(args.repo, args.issue, args.scope)
+    except coordinator.AuthorizationRejected as e:
+        print(f"authorization rejected: {e}", file=sys.stderr)
+        return 2
+    _json_print(auth)
     return 0
 
 
@@ -244,23 +281,23 @@ def _task_progress_read(args: argparse.Namespace) -> int:
 
 
 def _task_progress_set(args: argparse.Namespace) -> int:
-    """Upsert the do-issue-solo phase checkpoint marker. Always rolls one
+    """Merge-set the do-issue-solo phase checkpoint marker. Always rolls one
     marker per issue, so re-entering instances see the latest phase rather
-    than a paginated history."""
+    than a paginated history. Merge semantics (patch_task_progress) preserve
+    accreted fields — branch, comment ids, authorized scopes — across
+    checkpoints."""
     from datetime import datetime, timezone
 
-    payload = {
+    updates: dict[str, Any] = {
         "phase": args.phase,
         "instance_id": coordinator.instance_id(),
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    gh_state.upsert_marker(
-        args.repo,
-        args.issue,
-        "maverick-task-progress",
-        payload,
-        preamble="<!-- maverick task-progress -->",
-    )
+    if getattr(args, "branch", None):
+        updates["branch"] = args.branch
+    if getattr(args, "has_sub_issues", False):
+        updates["has_sub_issues"] = True
+    payload = gh_state.patch_task_progress(args.repo, args.issue, updates)
     # Best-effort timeline append for the `maverick report generate`
     # path. Local history; never fails the durable marker write.
     try:
@@ -312,6 +349,123 @@ def _issue_policy(args: argparse.Namespace) -> int:
     don't fit `close-on-merge` (notably epic-level close, which spans
     multiple PRs)."""
     print(issue_lifecycle.get_policy())
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# pr — pre-merge gates
+# ---------------------------------------------------------------------------
+
+
+def _pr_auth_scan(args: argparse.Namespace) -> int:
+    from maverick import pr_gate
+
+    try:
+        files = pr_gate.pr_changed_files(args.repo, args.pr)
+    except subprocess.CalledProcessError as e:
+        print(f"auth-scan error: {e.stderr or e}", file=sys.stderr)
+        return 2
+    hits = pr_gate.scan_paths(files)
+    if hits:
+        print("gated paths touched — do not auto-merge; eject to needs-human:")
+        for path in hits:
+            print(f"  {path}")
+        return 3
+    print(f"clean ({len(files)} file(s) scanned)")
+    return 0
+
+
+def _pr_wait(args: argparse.Namespace) -> int:
+    try:
+        timeout = workflow_verbs.parse_duration(args.timeout)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    until = "checks" if args.checks else "merged"
+    code = workflow_verbs.pr_wait(
+        args.repo, args.pr, until, timeout, interval_seconds=args.interval
+    )
+    labels = {
+        workflow_verbs.PR_WAIT_OK: "ok",
+        workflow_verbs.PR_WAIT_TIMEOUT: "timeout",
+        workflow_verbs.PR_WAIT_CLOSED: "closed-without-merge",
+        workflow_verbs.PR_WAIT_CHECKS_FAILED: "checks-failed",
+    }
+    print(labels.get(code, str(code)))
+    return code
+
+
+# ---------------------------------------------------------------------------
+# tasks / bprop / docs / issue comments
+# ---------------------------------------------------------------------------
+
+
+def _tasks_check(args: argparse.Namespace) -> int:
+    try:
+        result = workflow_verbs.tasks_check(args.repo, args.issue, args.n)
+    except (workflow_verbs.TasksCommentMissing, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    _json_print(result)
+    return 0
+
+
+def _bprop_run(args: argparse.Namespace) -> int:
+    try:
+        result = workflow_verbs.bprop_run(args.repo, args.epic, args.ejected)
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    _json_print(result)
+    return 0
+
+
+def _read_comment_body(args: argparse.Namespace) -> str:
+    if args.body_file == "-":
+        return sys.stdin.read()
+    return Path(args.body_file).read_text()
+
+
+def _issue_comment_post(args: argparse.Namespace) -> int:
+    comment_id = workflow_verbs.comment_post(
+        args.repo, args.issue, args.kind, _read_comment_body(args)
+    )
+    _json_print({"kind": args.kind, "comment_id": comment_id})
+    return 0
+
+
+def _issue_comment_update(args: argparse.Namespace) -> int:
+    try:
+        comment_id = workflow_verbs.comment_update(
+            args.repo, args.issue, args.kind, _read_comment_body(args)
+        )
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    _json_print({"kind": args.kind, "comment_id": comment_id})
+    return 0
+
+
+def _docs_shortlist(args: argparse.Namespace) -> int:
+    result = workflow_verbs.docs_shortlist(args.base, out_dir=Path(args.out_dir))
+    _json_print(result)
+    return 0
+
+
+def _gh_state_write(args: argparse.Namespace) -> int:
+    try:
+        payload = json.loads(Path(args.payload_file).read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"cannot read payload: {e}", file=sys.stderr)
+        return 2
+    comment_id = gh_state.upsert_marker(
+        args.repo,
+        args.issue,
+        args.kind,
+        payload,
+        preamble=args.preamble or f"<!-- maverick {args.kind} -->",
+    )
+    _json_print({"kind": args.kind, "comment_id": comment_id})
     return 0
 
 
@@ -383,7 +537,7 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
 
     p = coord_sub.add_parser(
         "heartbeat-loop",
-        help="Refresh the lease in a foreground loop until the claim is released",
+        help="Refresh the lease in a loop until the claim is released",
     )
     p.add_argument("repo")
     p.add_argument("issue", type=int)
@@ -393,13 +547,66 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         default=coordinator.HEARTBEAT_INTERVAL_MINUTES * 60,
         help="Seconds between heartbeats (default: HEARTBEAT_INTERVAL_MINUTES * 60)",
     )
+    p.add_argument(
+        "--daemonize",
+        action="store_true",
+        help=(
+            "Detach as a pidfile-managed daemon and return immediately. "
+            "Check liveness with `coord heartbeat-status`. Preferred over "
+            "shell backgrounding, which dies with the tool shell."
+        ),
+    )
     p.set_defaults(_handler=_coord_heartbeat_loop)
+
+    p = coord_sub.add_parser(
+        "heartbeat-status",
+        help="Report whether a daemonized heartbeat loop is alive (exit 3 if not)",
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.set_defaults(_handler=_coord_heartbeat_status)
+
+    p = coord_sub.add_parser(
+        "resume-point",
+        help=(
+            "Compute where a fresh instance should resume work on an issue "
+            "from the task-progress marker + PR/CI/verdict state. Replaces "
+            "the prose resume table in do-issue-solo Phase 0."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.set_defaults(_handler=_coord_resume_point)
 
     p = coord_sub.add_parser("release", help="Release a claim")
     p.add_argument("repo")
     p.add_argument("issue", type=int)
     p.add_argument("--reason", default="complete")
     p.set_defaults(_handler=_coord_release)
+
+    p = coord_sub.add_parser(
+        "release-all",
+        help=(
+            "Release every claim this instance recorded locally. Idempotent; "
+            "used by the SessionEnd hook so abnormal exits still release."
+        ),
+    )
+    p.add_argument("--reason", default="session-end")
+    p.set_defaults(_handler=_coord_release_all)
+
+    p = coord_sub.add_parser(
+        "authorize",
+        help=(
+            "Verify the GitHub issue explicitly authorizes a guarded scope "
+            "(label maverick-authorize-<scope> or a 'Maverick-Authorize: <scope>' "
+            "body line) and record it in .maverick/session-auth.json for the "
+            "scope-guard hook. Exits 2 if the issue does not authorize it."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument("scope", help="Guarded scope to authorize (e.g. infra)")
+    p.set_defaults(_handler=_coord_authorize)
 
     p = coord_sub.add_parser("takeover", help="Take over a stale lease")
     p.add_argument("repo")
@@ -502,6 +709,21 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     )
     p.set_defaults(_handler=_gh_state_read)
 
+    p = gs_sub.add_parser(
+        "write",
+        help=(
+            "Upsert a marker of a kind on an issue from a JSON payload file. "
+            "The sanctioned write path for markers without a dedicated verb "
+            "(e.g. maverick-dag) — never compose marker comments by hand."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument("kind", choices=list(gh_state.MARKER_KINDS))
+    p.add_argument("--payload-file", required=True, help="Path to the JSON payload")
+    p.add_argument("--preamble", help="Markdown shown above the fenced marker block")
+    p.set_defaults(_handler=_gh_state_write)
+
     # task-progress — per-issue do-issue-solo phase checkpoint (#41)
     tp = subparsers.add_parser(
         "task-progress",
@@ -514,13 +736,26 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("issue", type=int)
     p.set_defaults(_handler=_task_progress_read)
 
-    p = tp_sub.add_parser("set", help="Upsert the task-progress marker")
+    p = tp_sub.add_parser(
+        "set",
+        help=(
+            "Merge-set the task-progress marker (the single issue-state "
+            "surface). Accreted fields — branch, comment ids, authorized "
+            "scopes — survive across checkpoints."
+        ),
+    )
     p.add_argument("repo")
     p.add_argument("issue", type=int)
     p.add_argument(
         "phase",
         choices=list(gh_state.TASK_PROGRESS_PHASES),
         help="The do-issue-solo phase boundary just completed",
+    )
+    p.add_argument("--branch", help="Record the working branch in the payload")
+    p.add_argument(
+        "--has-sub-issues",
+        action="store_true",
+        help="Record that tasks were created as GitHub sub-issues (>= 5 tasks)",
     )
     p.set_defaults(_handler=_task_progress_set)
 
@@ -565,6 +800,128 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         help="Print the per-project issue close policy from .maverick/config.json",
     )
     p.set_defaults(_handler=_issue_policy)
+
+    cmt = iss_sub.add_parser(
+        "comment",
+        help=(
+            "Post/update artefact comments (design, plan, tasks, completion). "
+            "Uses the GitHub App identity when configured, returns the comment "
+            "id as JSON, and records it in the task-progress marker."
+        ),
+    )
+    cmt_sub = cmt.add_subparsers(dest="comment_cmd", required=True)
+
+    for verb, handler, help_text in (
+        ("post", _issue_comment_post, "Post a new artefact comment and record its id"),
+        ("update", _issue_comment_update, "Overwrite the recorded artefact comment"),
+    ):
+        p = cmt_sub.add_parser(verb, help=help_text)
+        p.add_argument("repo")
+        p.add_argument("issue", type=int)
+        p.add_argument(
+            "--kind",
+            required=True,
+            choices=list(workflow_verbs.COMMENT_KINDS),
+        )
+        p.add_argument(
+            "--body-file",
+            required=True,
+            help="Path to the markdown body, or '-' for stdin",
+        )
+        p.set_defaults(_handler=handler)
+
+    # pr — pre-merge gates for autonomous flows
+    pr = subparsers.add_parser(
+        "pr",
+        help="Pre-merge gates for autonomous PR handling",
+    )
+    pr_sub = pr.add_subparsers(dest="pr_cmd", required=True)
+
+    p = pr_sub.add_parser(
+        "auth-scan",
+        help=(
+            "Scan a PR's changed files for auth-sensitive paths and CI workflow "
+            "definitions. Exit 0 = clean (safe to auto-merge), 3 = gated paths "
+            "touched (eject to needs-human instead of auto-merging), 2 = error. "
+            "Extra tokens: .maverick/config.json -> scope_guards.auth_paths."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("pr", help="PR number or URL")
+    p.set_defaults(_handler=_pr_auth_scan)
+
+    p = pr_sub.add_parser(
+        "wait",
+        help=(
+            "Bounded wait for a PR to merge (default) or for its checks to "
+            "settle (--checks). Exit codes: 0 ok, 3 timeout, 4 closed "
+            "without merge, 5 checks failed. Replaces unbounded polling."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("pr", help="PR number or URL")
+    p.add_argument(
+        "--checks",
+        action="store_true",
+        help="Wait for checks to settle instead of the merge itself",
+    )
+    p.add_argument("--timeout", default="30m", help="e.g. 300s, 30m, 1h (default 30m)")
+    p.add_argument("--interval", type=int, default=15, help="Poll interval seconds")
+    p.set_defaults(_handler=_pr_wait)
+
+    # tasks — durable task-list operations
+    tasks = subparsers.add_parser(
+        "tasks", help="Operations on the durable tasks checklist comment"
+    )
+    tasks_sub = tasks.add_subparsers(dest="tasks_cmd", required=True)
+
+    p = tasks_sub.add_parser(
+        "check",
+        help=(
+            "Check off the nth (1-based) checkbox in the issue's tasks "
+            "comment. Idempotent. Replaces hand-edited comment PATCHes."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("issue", type=int)
+    p.add_argument("n", type=int, help="1-based task number to check off")
+    p.set_defaults(_handler=_tasks_check)
+
+    # bprop — block propagation
+    bprop = subparsers.add_parser(
+        "bprop", help="Block propagation across an epic's dependency DAG"
+    )
+    bprop_sub = bprop.add_subparsers(dest="bprop_cmd", required=True)
+
+    p = bprop_sub.add_parser(
+        "run",
+        help=(
+            "Run the marker-write-walk-clear protocol: label every transitive "
+            "descendant of an ejected story blocked-by:#N, comment each, "
+            "mirror epic state, clear the bprop marker. Idempotent and "
+            "resumable — safe to re-run after a crash mid-walk."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("epic", type=int)
+    p.add_argument("--ejected", type=int, required=True, help="The ejected story number")
+    p.set_defaults(_handler=_bprop_run)
+
+    # docs — docs-review support
+    docs = subparsers.add_parser("docs", help="Docs-review phase support")
+    docs_sub = docs.add_subparsers(dest="docs_cmd", required=True)
+
+    p = docs_sub.add_parser(
+        "shortlist",
+        help=(
+            "Build the candidate-doc shortlist for the docs-review phase from "
+            "the diff against a base branch. Writes diff.patch, "
+            "changed-paths.txt, and doc-shortlist.txt to --out-dir."
+        ),
+    )
+    p.add_argument("--base", required=True, help="Base branch (e.g. from git-workflow story-base)")
+    p.add_argument("--out-dir", default="/tmp", help="Output directory (default /tmp)")
+    p.set_defaults(_handler=_docs_shortlist)
 
     # git-workflow — per-project branching config
     gw = subparsers.add_parser(

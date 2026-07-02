@@ -106,6 +106,7 @@ class TestHookEventNames:
             "UserPromptSubmit",
             "Notification",
             "Stop",
+            "SubagentStart",
             "SubagentStop",
             "SessionStart",
             "SessionEnd",

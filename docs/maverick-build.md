@@ -34,7 +34,7 @@ All templates have access to:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `{{ SKILLS.<CONSTANT> }}` | Any skill name by its Python constant | `{{ SKILLS.MAV_BP_LOGGING }}` → `mav-bp-logging` |
+| `{{ SKILLS.<CONSTANT> }}` | Any skill name by its Python constant | `{{ SKILLS.MAV_BP_OPERABILITY }}` → `mav-bp-operability` |
 | `{{ AGENTS.<CONSTANT> }}` | Any agent name by its Python constant | `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer` |
 | `{{ ARGUMENTS }}` | User-supplied arguments (skills only) | |
 | `{{ DEPENDS_ON }}` | Comma-separated dependency list (skills only) | |

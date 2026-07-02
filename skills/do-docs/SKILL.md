@@ -1,12 +1,10 @@
 ---
 name: do-docs
 description: Create, restructure, or update technical documentation. Handles greenfield projects, refactoring non-compliant docs, and incremental updates after code changes.
-argument-hint: mode: greenfield, refactor, or update (auto-detected if omitted)
+argument-hint: 'mode: greenfield, refactor, or update (auto-detected if omitted)'
 user-invocable: true
 disable-model-invocation: false
 ---
-
-**Depends on:** do-tech-docs, mav-scope-boundaries
 
 # Documentation Workflow
 
@@ -20,11 +18,15 @@ Run this **first**. If it exits non-zero, halt and report the stderr output to t
 uv run maverick preflight do-docs
 ```
 
+Skip the preflight when invoked from inside a `do-issue-*` or
+`do-epic` phase — the orchestrator already ran a stricter one this
+session. Run it only when this skill is invoked standalone.
+
 The check verifies the project is initialised and `uv` is on PATH.
 
 ## Task Detection
 
-If `` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:
+If `$ARGUMENTS` specifies a mode (`greenfield`, `refactor`, or `update`), use it. Otherwise auto-detect:
 
 ```dot
 digraph detect {

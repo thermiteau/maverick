@@ -7,6 +7,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+A ground-up modernization of the plugin and CLI. Safety rules are now
+mechanically enforced, workflow state lives in one durable place, the
+hot-loop orchestration is deterministic code instead of prose, and the
+skill corpus is roughly half its former size while carrying more
+project-steering content. The full pipeline is validated end-to-end
+against a real repository (issue → design → tasks → implementation →
+docs and security gates → PR → review → auto-merge), including crash
+recovery via stale-claim takeover.
+
+### Added
+
+- **Mechanical scope-boundary enforcement.** A `PreToolUse` scope-guard
+  hook gates destructive git operations, commits/pushes on protected
+  branches, infrastructure-path edits, and production-pattern commands —
+  asking in interactive sessions, denying in autonomous runs, and denying
+  production patterns in every mode. `maverick init` additionally writes
+  baseline permission deny rules so a second layer holds even with hooks
+  disabled.
+- **Verified authorization.** `maverick coord authorize` grants guarded
+  scopes (e.g. `infra`) only when the GitHub issue itself carries the
+  authorization label or body marker; agents cannot self-grant, and the
+  guard blocks direct writes to the authorization file.
+- **Pre-merge auth scan.** `maverick pr auth-scan` blocks auto-merging
+  any PR touching authentication surfaces or CI workflow definitions,
+  independent of the review verdict.
+- **Deterministic workflow verbs.** `coord resume-point` (computes the
+  resume position from GitHub state), `coord heartbeat-loop --daemonize`
+  + `heartbeat-status` (pidfile-managed lease refresh), `coord
+  release-all`, `tasks check` (idempotent checklist updates), `bprop run`
+  (the whole block-propagation walk as one resumable command), `issue
+  comment post/update` (artefact comments with ids recorded
+  automatically), `docs shortlist`, `pr wait` (bounded waits with
+  distinct exit codes), and `gh-state write`.
+- **Automatic claim release.** A `SessionEnd` hook releases every claim
+  the session still holds; lease expiry remains the designed backstop for
+  machine death.
+- **Automatic report bookkeeping.** Subagent lifecycle hooks record
+  agent-dispatch intervals; invoking a tracked inner skill opens its
+  interval; `report end --auto` closes the most recent interval with one
+  short command; `report generate` flushes anything left open. The
+  workflow report now assembles itself.
+- **GitHub Action on-ramp.** `templates/github/claude-maverick.yml` runs
+  Maverick on GitHub-hosted runners — `@claude` mentions for interactive
+  help, or label an issue `claude-do` for an end-to-end autonomous run.
+  A decision matrix in the docs compares it with Claude cloud routines
+  and the self-hosted EC2 pipeline.
+- **Build-time guarantees.** The skill/agent build now fails loudly on
+  unknown template variables, validates every config against its
+  directory and the name registry, YAML-serializes frontmatter, and lints
+  that every non-invocable skill has at least one consumer.
+
+### Changed
+
+- **One state surface.** Issue-workflow state lives entirely in the
+  `maverick-task-progress` marker on the GitHub issue — phase, branch,
+  artefact comment ids, and authorized scopes, written only through the
+  CLI with merge semantics. The local `.claude/issue-state.json` file is
+  gone, and with it the schema drift between the file, the marker, and
+  the skills.
+- **A hardened merge gate.** `agent-code-reviewer` is read-only
+  (no file-editing tools), pinned to a strong model rather than
+  inheriting the caller's, and returns a machine-parsed
+  `MAVERICK_VERDICT: PASS|FAIL` marker — a missing or ambiguous marker is
+  treated as FAIL. Planner and session-reviewer run on a fast model
+  suited to their mechanical tasks.
+- **A leaner, sharper skill corpus.** Best-practice skills are rewritten
+  around Maverick's actual decisions plus their code-review anti-pattern
+  tables: logging, alerting, and observability merge into
+  `mav-bp-operability`; unit and integration testing merge into
+  `mav-bp-testing`; the four CI platform skills collapse into a
+  per-platform command table inside `mav-bp-cicd`. The workflow cluster
+  is deduplicated to one owner per topic with a single canonical retry
+  budget. Overall instruction load drops by roughly half.
+- **Self-contained flows run isolated.** `do-init`, `do-install`,
+  `do-adopt`, `do-cybersecurity-review`, and `do-maverick-alignment` run
+  in forked contexts, keeping the caller's window clean.
+- **Guided reviews review what ships.** `do-issue-guided` now runs code
+  review after the documentation and security phases, so the approved
+  diff is the merged diff, and it checks for existing autonomous claims
+  before starting.
+- **Upskill, consolidated.** `do-upskill` supports single-topic
+  generation, resolves plugin paths correctly from any project, draws
+  detection hints from one generated registry, and writes thin
+  `.claude/rules/` pointers so any session finds the project facts.
+  `do-adopt recommend` replaces the standalone `do-recommend` skill with
+  a single recommendation artifact format.
+- The alignment audit verifies the testing coverage gate it previously
+  only preached, and documents which practice areas are audit-backed
+  versus advisory.
+
+### Removed
+
+- `.claude/issue-state.json` and all jq-based state plumbing.
+- `agent-maverick` — forked skill contexts do its job natively.
+- `do-recommend` (folded into `do-adopt`), the four platform CI/CD
+  skills (absorbed into `mav-bp-cicd`), and five unreferenced
+  best-practice skills, with their few load-bearing rules folded into
+  the skills that are actually loaded.
+
+### Fixed
+
+- `{{ ARGUMENTS }}` now renders as the runtime `$ARGUMENTS` placeholder
+  in built skills; argument-bearing commands work as written.
+- `user-invocable`/`disable-model-invocation` frontmatter is emitted
+  explicitly, so reference skills actually ship non-invocable.
+- Agent frontmatter renders with a correct closing delimiter, and values
+  containing YAML metacharacters round-trip safely.
+- Subagent lifecycle hooks recognise namespaced plugin agent names.
+- Unit tests no longer write to the developer's real claims registry.
+
 ## [3.3.9] - 2026-07-02
 
 ## [3.3.8] - 2026-07-01

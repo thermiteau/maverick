@@ -118,7 +118,7 @@ PREREQS: dict[str, Prereqs] = {
 # not require them. Listed for clarity; absence from PREREQS is what makes
 # them exempt at runtime.
 BOOTSTRAP_SKILLS: frozenset[str] = frozenset(
-    {"do-install", "do-recommend", "do-adopt"}
+    {"do-install", "do-adopt"}
 )
 
 

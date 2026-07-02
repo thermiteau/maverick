@@ -3,6 +3,7 @@ name: do-cybersecurity-review
 description: Audit a codebase for security risks in one of two modes. In full-audit mode it scans the entire codebase and writes a findings report to docs/security-audit.md (run as part of do-init or on demand). In update mode it reviews only a diff plus the code it could impact, returning a structured findings list as a pre-push gate for do-issue-solo and do-issue-guided. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks.
 user-invocable: true
 disable-model-invocation: false
+context: fork
 ---
 
 # Cybersecurity Review
@@ -26,7 +27,7 @@ The check verifies the project is initialised and `uv` is on PATH.
 
 ## Mode Selection
 
-If `` specifies a mode (`full-audit` or `update`), use it. If `update` is selected the caller must also pass a diff (via stdin or a file path); halt and ask for one if missing.
+If `$ARGUMENTS` specifies a mode (`full-audit` or `update`), use it. If `update` is selected the caller must also pass a diff (via stdin or a file path); halt and ask for one if missing.
 
 If no mode is specified, default to `full-audit`.
 

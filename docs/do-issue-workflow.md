@@ -8,7 +8,7 @@ relates-to:
   - code-review.md
   - cicd.md
   - claude-code-error-handling-and-recovery.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Issue-driven Autonomous Workflow
@@ -43,12 +43,12 @@ flowchart TD
     %% ─────────────── Coordination ───────────────
     subgraph COORD[Coordination — claim and crash safety]
         direction TB
-        COLD[Cold-start: hydrate state from GitHub<br/>DAG, epic-state, claims, blocks, open PRs]
+        COLD[Cold-start: coord resume-point<br/>marker + PR + CI + verdict state]
         BLOCKED{Issue carries<br/>blocked-by label?}
         ABORT_BLOCKED([Abort: needs human resolution])
         TAKEN{Already claimed by<br/>another instance?}
         ABORT_TAKEN([Abort: in progress elsewhere])
-        CLAIM[Atomic claim<br/>label + lease comment + heartbeat]
+        CLAIM[Atomic claim<br/>label + lease + heartbeat daemon]
 
         COLD --> BLOCKED
         BLOCKED -- Yes --> ABORT_BLOCKED
@@ -123,7 +123,7 @@ flowchart TD
         RETARGET{Stacked branch:<br/>sibling base merged?}
         RT[Retarget PR base to story_base]
         CI_PUSH[Pre-push verification, push final state]
-        CI_WAIT[Monitor CI per mav-bp-cicd]
+        CI_WAIT[Bounded CI wait<br/>maverick pr wait --checks]
         CI_OK{CI passes?}
         CI_FIX[Read failure logs, fix locally]
         OPEN_PR[Open PR ready-for-review]
@@ -152,12 +152,14 @@ flowchart TD
     OPEN_PR --> REVIEW
 
     %% ─────────────── Code review — binary gate ───────────────
-    REVIEW[**HARD GATE** — agent-code-reviewer<br/>spec compliance, then code quality]
-    VERDICT{Verdict?}
+    REVIEW[**HARD GATE** — read-only agent-code-reviewer<br/>spec compliance, then code quality]
+    VERDICT{MAVERICK_VERDICT?<br/>missing/ambiguous = FAIL}
     REVIEW --> VERDICT
 
     %% ─── Approve path ───
-    VERDICT -- PASS --> APPROVE[Maverick GitHub App posts gh pr review --approve<br/>auditable agent-reviewed trail]
+    VERDICT -- PASS --> AUTHSCAN{pr auth-scan:<br/>auth/CI paths touched?}
+    AUTHSCAN -- Yes --> EJECT
+    AUTHSCAN -- No --> APPROVE[Maverick GitHub App posts gh pr review --approve<br/>auditable agent-reviewed trail]
     APPROVE --> AUTOMERGE[Auto-merge PR<br/>squash to story_base]
     AUTOMERGE --> RELEASE[Release claim on this story]
     RELEASE --> EPIC_OK{Story belongs<br/>to an epic?}
@@ -188,7 +190,13 @@ The very first step of every action skill is `uv run maverick preflight <skill-n
 
 Before any work begins, the workflow hydrates its view of the world from GitHub — the DAG comment on the parent epic (if any), the rolling state snapshot, every claim and lease comment, every `blocked-by` label. Local files are treated as a stale cache.
 
-The issue is then claimed atomically: a `claude-in-progress` label, a `maverick-claim` marker comment, and a lease comment with an instance id and expiry timestamp. The lease is refreshed by a heartbeat at a short interval (1–2 min) with a short TTL (5–10 min) so machine death is detected quickly. If another instance already holds a valid lease, the workflow aborts cleanly without modifying the issue. If the lease is stale, the new instance posts a takeover comment and proceeds.
+The issue is then claimed atomically: a `claude-in-progress` label, a `maverick-claim` marker comment, and a lease comment with an instance id and expiry timestamp. The lease is refreshed by a **pidfile-managed heartbeat daemon** (`coord heartbeat-loop --daemonize`, checked with `coord heartbeat-status`) at a short interval (1–2 min) with a short TTL (5–10 min) so machine death is detected quickly. If another instance already holds a valid lease, the workflow aborts cleanly without modifying the issue. If the lease is stale, the new instance posts a takeover comment and proceeds.
+
+Release is layered: explicit `coord release` at workflow boundaries, a SessionEnd hook that runs `coord release-all` on any exit path, and lease expiry as the machine-death backstop.
+
+If the issue explicitly authorizes guarded work (the `maverick-authorize-infra` label or a `Maverick-Authorize: infra` body line), the instance records it with `maverick coord authorize` — the scope-guard hook permits those edits in autonomous mode only against that verified grant.
+
+**Resume is computed, not reconstructed.** A fresh instance runs `maverick coord resume-point`, which reads the `maverick-task-progress` marker (the single state surface: phase, branch, artefact comment ids), finds the PR via the recorded branch, inspects CI and the review-verdict marker, and returns exactly where to continue. Every phase below ends with a marker checkpoint, so re-entry advances one boundary at a time.
 
 ### Pre-development
 
@@ -210,22 +218,22 @@ This is the core loop and is identical for epic-driven and standalone work:
 
 1. **Re-verify the claim.** A late `blocked-by` propagation from a sibling ejection or an expired lease aborts the story before any push.
 2. **Branch.** From `story_base` (the repo's default branch unless overridden) for an independent story; from a sibling branch when the story depends on a sibling whose PR is open but not yet merged (stacked PR pattern).
-3. **Implement task by task.** Each task: implement → local verification (lint, typecheck, tests) → conventional commit referencing the issue → **push immediately**. Pushing per task is a durability checkpoint — if the machine dies between tasks, the work survives.
+3. **Implement task by task.** Each task: implement (via `do-code`) → local verification (lint, typecheck, tests) → conventional commit referencing the issue → **push immediately** → check the task off durably (`maverick tasks check`). Pushing per task is a durability checkpoint — if the machine dies between tasks, the work survives. Dispatch intervals for the workflow report are recorded automatically by the plugin's lifecycle hooks; the model's only bookkeeping is a one-line outcome record per inner-skill dispatch.
 4. **Wrap up.** After the last task: full verification, then two mandatory pre-push reviews (always run, no skip path):
-   - **Documentation review** dispatches `agent-tech-docs-writer` in `update` mode against the diff — updates stale docs and creates new ones for new components. "No changes required" is a valid outcome but is recorded explicitly.
+   - **Documentation review** builds the diff and a candidate-doc shortlist in one deterministic step (`maverick docs shortlist`), then dispatches `agent-tech-docs-writer` in `update` mode — updating stale docs and creating new ones for new components. "No changes required" is a valid outcome but is recorded explicitly.
    - **Cybersecurity review** dispatches `do-cybersecurity-review` in `update` mode against the diff. Reviews the changed code AND the code that could be impacted by it (callers, importers, dependents — bounded to one or two hops). Returns PASS / FINDINGS / BLOCKING. **BLOCKING halts the workflow** and routes the user back to implementation; FINDINGS are folded into the PR description so the human reviewer and `agent-code-reviewer` see them; PASS is recorded as `Security review: no concerns.`
-   - Then: stacked-PR retarget guard if applicable, final push, CI monitoring, PR opens ready-for-review.
+   - Then: stacked-PR retarget guard if applicable, final push, and a **bounded** CI wait (`maverick pr wait --checks --timeout 30m` — distinct exit codes for green, failed, and timed-out checks; no unbounded polling). The PR opens ready-for-review.
 
 ### Code review — binary gate
 
-`agent-code-reviewer` runs in two stages against the open PR: **spec compliance** (does this implement what the issue actually asked for?) then **code quality** (correctness, test coverage of changed behaviour, scope discipline, maintainability). Security is explicitly *not* part of this gate — it is handled by the pre-push `do-cybersecurity-review` (Phase 7) and findings are already in the PR body by the time the agent reviews. The verdict is **PASS** or **FAIL** — there is no "approve with suggestions" middle ground.
+`agent-code-reviewer` — read-only, pinned to a strong model — runs in two stages against the open PR: **spec compliance** (does this implement what the issue actually asked for?) then **code quality** (correctness, test coverage of changed behaviour, scope discipline, maintainability). Security is explicitly *not* part of this gate — it is handled by the pre-push `do-cybersecurity-review` (Phase 7) and findings are already in the PR body by the time the agent reviews. The verdict is a machine-parsed marker line — `MAVERICK_VERDICT: PASS` or `MAVERICK_VERDICT: FAIL`, nothing in between — and a missing or ambiguous marker is treated as FAIL: the gate fails safe.
 
-- **PASS** → the Maverick GitHub App posts `gh pr review --approve` with the verdict (via `maverick gh-app gh -- pr review`), and the PR auto-merges (`gh pr merge --auto --squash`). The claim is released.
+- **PASS** → the **auth-path gate** runs first: `maverick pr auth-scan` blocks the merge if the PR touches authentication surfaces or CI workflow definitions, ejecting to human review regardless of the verdict. On a clean scan, the Maverick GitHub App posts `gh pr review --approve` (via `maverick gh-app gh -- pr review`) and the PR auto-merges (`gh pr merge --auto --squash`), with a bounded `pr wait` for the merge to land. The claim is released.
 - **FAIL** → the PR is ejected: a `needs-human` label is applied to the issue and PR, the review is posted as a comment, and the claim is released. The agent does **not** attempt to fix and retry.
 
 ### Block propagation (epic path only)
 
-When a story in an epic is ejected, every transitive descendant in the DAG is labelled `blocked-by:#<ejected-story>`. Any in-flight subagent working on a now-blocked story has its claim released and its work discarded — that work would have been built on a foundation that's not landing. A propagation marker (`maverick-bprop`) is written before the walk and cleared after, so a crash mid-walk is resumable without leaving partial blocks.
+When a story in an epic is ejected, `maverick bprop run` labels every transitive descendant in the DAG `blocked-by:#<ejected-story>` — the whole marker-write-walk-clear protocol is one idempotent, resumable command rather than an agent-executed graph walk. Any in-flight subagent working on a now-blocked story has its claim released and its work discarded — that work would have been built on a foundation that's not landing. A crash mid-walk leaves the `maverick-bprop` marker; re-running the command resumes exactly where the walk stopped.
 
 ### Termination
 
@@ -240,5 +248,8 @@ When a story in an epic is ejected, every transitive descendant in the DAG is la
 | Lease + heartbeat with short TTL                       | Machine death is detected within minutes, not hours; another instance can take over      |
 | Push after every task                                  | Work survives machine death at task granularity, not story granularity                   |
 | Code review is binary and the only merge gate           | No silent low-quality merges; rejection routes to human, not back to the agent           |
+| The verdict is a parsed marker, absent ⇒ FAIL          | The most consequential parse in the system cannot be gamed by persuasive prose           |
+| Auth-touching PRs never auto-merge                     | `pr auth-scan` enforces human review of auth and CI-definition changes mechanically       |
+| Coordination and state live in CLI verbs, not prose    | Claims, resume, checklists, block walks, and waits are deterministic code with exit codes |
 | Block propagation is idempotent and resumable          | A crash mid-walk leaves a marker; the next instance resumes the walk without duplication |
 | Re-verify claim and block label before each push       | Late-arriving block propagations are honoured without orphaning a doomed branch          |

@@ -5,10 +5,13 @@ relates-to:
   - alerting-standards.md
   - comprehensive-testing.md
   - code-review.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Logging Standards
+
+> **Skill note:** logging, alerting, and observability standards are enforced by the single `mav-bp-operability` skill — one operational discipline, one skill. This document covers the logging facet in depth.
+
 
 Logging records events during program execution to support debugging, monitoring, and auditing. In LLM-driven development, logging takes on heightened importance: code generated at speed without human oversight must produce operational telemetry that allows teams to diagnose failures after the fact. Without enforced logging standards, LLM-generated code is functionally a black box in production.
 
@@ -52,7 +55,7 @@ Maverick treats logging as a first-class quality gate through a multi-layer enfo
 
 ```mermaid
 flowchart TD
-    A[mav-bp-logging skill] -->|defines standards| B[upskill system]
+    A[mav-bp-operability skill] -->|defines standards| B[upskill system]
     B -->|generates project-specific guidance| C[project logging skill]
     C -->|constrains LLM during coding| D[code generation]
     D -->|produces code with logging| E[agent-code-reviewer]
@@ -64,9 +67,9 @@ flowchart TD
     I -->|final verification| J[merged code]
 ```
 
-### Layer 1: mav-bp-logging skill
+### Layer 1: mav-bp-operability skill
 
-The mav-bp-logging skill defines universal logging standards that apply to all projects. It specifies log levels, structured format requirements, centralisation expectations, and data sensitivity rules. This skill is loaded into every LLM session that generates or modifies code.
+The mav-bp-operability skill defines universal logging standards that apply to all projects. It specifies log levels, structured format requirements, centralisation expectations, and data sensitivity rules. This skill is loaded into every LLM session that generates or modifies code.
 
 ### Layer 2: project-specific logging skill
 
@@ -168,7 +171,7 @@ Logs must be routed to a centralised aggregation service rather than stored loca
 - No mixing of console.log with structured loggers
 - Log format must be identical across all services to enable cross-service queries
 - The LLM must check for an existing logging setup before introducing any logging code
-- If no logging setup exists, the LLM must follow the project-specific logging skill or fall back to the mav-bp-logging skill defaults
+- If no logging setup exists, the LLM must follow the project-specific logging skill or fall back to the mav-bp-operability skill defaults
 
 ## Common Logging Anti-Patterns in LLM-Generated Code
 
@@ -194,7 +197,7 @@ The upskill system is central to making logging standards actionable for each pr
 - What project-specific fields are required (tenant ID, environment, deployment version)
 - Whether the project has different logging configurations for different environments
 
-The output is a project-specific logging skill that the LLM loads alongside the universal mav-bp-logging skill. This layered approach means the LLM knows both the general principles (from the bestpractice skill) and the specific implementation details (from the project skill). Without the project-specific layer, the LLM would follow correct principles but produce logging that does not integrate with the project's existing observability stack.
+The output is a project-specific logging skill that the LLM loads alongside the universal mav-bp-operability skill. This layered approach means the LLM knows both the general principles (from the bestpractice skill) and the specific implementation details (from the project skill). Without the project-specific layer, the LLM would follow correct principles but produce logging that does not integrate with the project's existing observability stack.
 
 ## Relationship to Other Standards
 

@@ -112,7 +112,12 @@ INTERVAL_ACTIONS: frozenset[str] = frozenset(
     {"agent-dispatch", "skill-dispatch", "question"}
 )
 
-OUTCOMES: frozenset[str] = frozenset({"success", "failure", "blocked", "skipped"})
+OUTCOMES: frozenset[str] = frozenset(
+    {"success", "failure", "blocked", "skipped", "unknown"}
+)
+# "unknown" is reserved for intervals flushed at generate time because no
+# explicit `end` ever ran — the row still lands (duration audit beats a
+# hole in the timeline), flagged as unverified.
 
 PHASES: frozenset[str] = frozenset(TASK_PROGRESS_PHASES)
 
@@ -466,6 +471,20 @@ def _current_skill(issue: int, repo_root: Path | None = None) -> str | None:
     for e in reversed(events):
         if e.get("action") == "run-start":
             return e.get("maverick_skill")
+    return None
+
+
+def _current_phase(issue: int, repo_root: Path | None = None) -> str | None:
+    """The workflow phase as of the latest phase-bearing row.
+
+    Lets `report begin`/`end` omit --phase: `task-progress set` already
+    appends a phase-boundary row at every checkpoint, so the timeline
+    knows the current phase without the caller restating it.
+    """
+    events = load_timeline(timeline_path(issue, repo_root=repo_root))
+    for e in reversed(events):
+        if e.get("action") in ("phase-boundary", "run-start") and e.get("phase"):
+            return e.get("phase")
     return None
 
 
@@ -1095,7 +1114,10 @@ def _report_begin(args: argparse.Namespace) -> int:
         print(f"warning: `begin {args.action}` overwriting still-open interval ({key})", file=sys.stderr)
     pending[key] = {
         "start_ts": _now_iso(),
-        "phase": args.phase,
+        # --phase may be omitted: the timeline already knows the current
+        # phase from the last phase-boundary row (written by
+        # `task-progress set`). Hooks rely on this.
+        "phase": args.phase or _current_phase(args.issue),
         "agent": args.agent,
         "skill_name": args.skill_name,
         "topic": args.topic,
@@ -1104,34 +1126,97 @@ def _report_begin(args: argparse.Namespace) -> int:
     return 0
 
 
+def _close_interval(
+    issue: int,
+    key: str,
+    open_iv: dict[str, Any],
+    args: argparse.Namespace,
+    outcome: str,
+) -> None:
+    """Append the closed-interval row for one pending entry."""
+    action = key.split(":", 1)[0]
+    agent_ctx = getattr(args, "agent", None) or open_iv.get("agent")
+    inner_skill = getattr(args, "skill_name", None) or open_iv.get("skill_name")
+    event = _build_base(args, action, agent=agent_ctx, skill_name=inner_skill)
+    event["start_ts"] = open_iv["start_ts"]
+    event["end_ts"] = _now_iso()
+    event["phase"] = (
+        getattr(args, "phase", None) or open_iv.get("phase") or _current_phase(issue) or ""
+    )
+    event["outcome"] = outcome
+    if agent_ctx:
+        event["maverick_agent"] = agent_ctx
+    if inner_skill:
+        event["dispatched_skill"] = inner_skill
+    if getattr(args, "notes", None):
+        event["notes"] = args.notes
+    append_event(event)
+
+
 def _report_end(args: argparse.Namespace) -> int:
-    """Close an interval. Writes the final row with start_ts + end_ts + outcome."""
+    """Close an interval. Writes the final row with start_ts + end_ts + outcome.
+
+    Two modes:
+    - Classic: `end <action> --agent/--skill-name/--topic ...` closes the
+      matching interval.
+    - Auto: `end --auto` closes the most recently opened pending interval,
+      inheriting every identifier from it. Optional --if-action/--if-agent
+      guards make it safe for hooks: when the guard does not match, it is
+      a warning no-op (exit 1), never a wrong-row write.
+    """
+    pending_file = pending_path(args.issue)
+    pending = _read_pending(pending_file)
+
+    if getattr(args, "auto", False):
+        candidates = sorted(
+            pending.items(), key=lambda kv: kv[1].get("start_ts") or ""
+        )
+        if getattr(args, "if_action", None):
+            candidates = [
+                (k, v) for k, v in candidates if k.split(":", 1)[0] == args.if_action
+            ]
+        if getattr(args, "if_agent", None):
+            candidates = [
+                (k, v) for k, v in candidates if v.get("agent") == args.if_agent
+            ]
+        if not candidates:
+            print("warning: `end --auto` found no matching open interval; skipping", file=sys.stderr)
+            return 1
+        key, open_iv = candidates[-1]
+        pending.pop(key)
+        _write_pending(pending_file, pending)
+        _close_interval(args.issue, key, open_iv, args, args.outcome)
+        return 0
+
     if args.action not in INTERVAL_ACTIONS:
         print(f"error: `end` only valid for interval actions: {sorted(INTERVAL_ACTIONS)}", file=sys.stderr)
         return 2
-    pending = _read_pending(pending_path(args.issue))
     key = _pending_key(args.action, agent=args.agent, skill=args.skill_name, topic=args.topic)
     open_iv = pending.pop(key, None)
     if open_iv is None:
         print(f"warning: `end {args.action}` with no matching open begin ({key}); skipping row", file=sys.stderr)
         return 1
-    _write_pending(pending_path(args.issue), pending)
-
-    agent_ctx = args.agent or open_iv.get("agent")
-    inner_skill = args.skill_name or open_iv.get("skill_name")
-    event = _build_base(args, args.action, agent=agent_ctx, skill_name=inner_skill)
-    event["start_ts"] = open_iv["start_ts"]
-    event["end_ts"] = _now_iso()
-    event["phase"] = args.phase or open_iv.get("phase") or ""
-    event["outcome"] = args.outcome
-    if agent_ctx:
-        event["maverick_agent"] = agent_ctx
-    if inner_skill:
-        event["dispatched_skill"] = inner_skill
-    if args.notes:
-        event["notes"] = args.notes
-    append_event(event)
+    _write_pending(pending_file, pending)
+    _close_interval(args.issue, key, open_iv, args, args.outcome)
     return 0
+
+
+def _flush_dangling_intervals(issue: int, args: argparse.Namespace) -> int:
+    """Close every still-open interval as outcome=unknown.
+
+    Run by `report generate` so a crashed or forgetful run still renders
+    every dispatch it opened — a row with an unverified outcome beats a
+    hole in the timeline. Returns the number flushed.
+    """
+    pending_file = pending_path(issue)
+    pending = _read_pending(pending_file)
+    if not pending:
+        return 0
+    for key, open_iv in sorted(pending.items(), key=lambda kv: kv[1].get("start_ts") or ""):
+        _close_interval(issue, key, open_iv, args, "unknown")
+        print(f"warning: flushed dangling interval {key} as outcome=unknown", file=sys.stderr)
+    _write_pending(pending_file, {})
+    return len(pending)
 
 
 def _report_commit(args: argparse.Namespace) -> int:
@@ -1164,6 +1249,7 @@ def _report_resume(args: argparse.Namespace) -> int:
 def _report_generate(args: argparse.Namespace) -> int:
     issue = args.issue
     repo_root = _main_repo_root()
+    _flush_dangling_intervals(issue, args)
     tpath = timeline_path(issue, repo_root=repo_root)
     events = load_timeline(tpath)
     if not events:
@@ -1303,7 +1389,7 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p = r_sub.add_parser("begin", help="Open an interval (agent-dispatch / skill-dispatch / question)")
     p.add_argument("action", choices=sorted(INTERVAL_ACTIONS))
     _add_issue(p)
-    _add_phase(p)
+    _add_phase(p, required=False)  # omitted -> inherited from the timeline
     p.add_argument("--agent", help="Agent name (for agent-dispatch)")
     p.add_argument("--skill-name", dest="skill_name", help="Skill name (for skill-dispatch)")
     p.add_argument("--topic", help="Question topic (for question)")
@@ -1311,10 +1397,33 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.set_defaults(_handler=_report_begin)
 
     # end
-    p = r_sub.add_parser("end", help="Close an interval opened by `begin`")
-    p.add_argument("action", choices=sorted(INTERVAL_ACTIONS))
+    p = r_sub.add_parser(
+        "end",
+        help=(
+            "Close an interval opened by `begin`. With --auto, closes the "
+            "most recently opened pending interval (identifiers inherited) — "
+            "only --outcome is needed."
+        ),
+    )
+    p.add_argument("action", nargs="?", choices=sorted(INTERVAL_ACTIONS))
     _add_issue(p)
     p.add_argument("--outcome", required=True, choices=sorted(OUTCOMES))
+    p.add_argument(
+        "--auto",
+        action="store_true",
+        help="Close the most recently opened pending interval",
+    )
+    p.add_argument(
+        "--if-action",
+        dest="if_action",
+        choices=sorted(INTERVAL_ACTIONS),
+        help="With --auto: only close an interval of this action (hook guard)",
+    )
+    p.add_argument(
+        "--if-agent",
+        dest="if_agent",
+        help="With --auto: only close an interval opened for this agent (hook guard)",
+    )
     p.add_argument("--phase", choices=sorted(PHASES))
     p.add_argument("--agent")
     p.add_argument("--skill-name", dest="skill_name")

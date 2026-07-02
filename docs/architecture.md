@@ -2,7 +2,7 @@
 title: Maverick Architecture
 scope: Best practice workflows
 relates-to:
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Architecture
@@ -13,11 +13,11 @@ Skills are markdown files with YAML frontmatter that load into the LLM's context
 
 | Category            | Skills                                                                                                                                                                                                          | Purpose                                                        |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Best Practices**  | logging, alerting, observability, linting, unit-testing, integration-testing, error-handling, application-security, code-review, api-design, accessibility, database-management, dependency-management, documentation, environment-management, infrastructure-as-code, solutions-design, source-control, task-tracking, versioning | Define standards for each practice area                        |
+| **Best Practices**  | operability (logging+alerting+observability), testing (unit+integration), linting, error-handling, application-security, code-review, remote-code-review, api-design, accessibility, database-management, dependency-management, environment-management, infrastructure-as-code, cicd | Define Maverick's opinionated standards for each practice area |
 | **Workflow**        | do-issue-solo, do-issue-guided, do-epic, mav-create-solution-design, mav-create-tasks                                                                                                                          | Orchestrate multi-step development workflows                   |
 | **Execution**       | mav-plan-execution, mav-local-verification                                                                                                                                                                     | Control how tasks are executed and verified                    |
 | **Git & GitHub**    | mav-git-workflow, mav-github-issue-workflow                                                                                                                                                                    | Define branching, commit, and issue interaction patterns       |
-| **CI/CD Platforms** | mav-bp-cicd, mav-bp-cicd-github, mav-bp-cicd-gitlab, mav-bp-cicd-azure, mav-bp-cicd-bitbucket                                                                                                                | Platform-agnostic standards and platform-specific monitoring   |
+| **CI/CD**           | mav-bp-cicd                                                                                                                                                                                                    | Pipeline standards plus a per-platform monitoring command table |
 | **Governance**      | mav-scope-boundaries, mav-claude-code-recovery, mav-systematic-debugging                                                                                                                                      | Define hard limits and resilience patterns                     |
 | **Project Setup**   | do-upskill, do-maverick-alignment, do-tech-docs, do-pullrequest-review                                                                                                                                         | Generate project skills, audit codebases, manage documentation |
 
@@ -38,12 +38,14 @@ flowchart TD
     STUB --> OUT
 ```
 
-- Scans the codebase for each topic defined in `skills/do-upskill/topics.json`
+- Scans the codebase per topic — all topics from `skills/do-upskill/topics.json`, or exactly one when invoked with a topic argument (`/do-upskill logging`)
 - If an implementation exists (e.g., Pino logger configured), documents exactly what's there
 - If no implementation exists but a best-practice skill is available, generates a **recommended** implementation tailored to the project's stack
 - Project skills are version-controlled and editable - the team can review and adjust recommendations
+- Each generated skill also writes a thin `.claude/rules/maverick-<topic>.md` pointer so any session — with or without Maverick loaded — finds the project facts
+- `do-adopt` implements the top recommendation for a gap (or, with `recommend`, stops after writing the recommendation as a `status: recommended` project skill)
 
-Default topics scanned: logging, alerting, observability, unit-testing, integration-testing, linting, error-handling, application-security, code-review, api-design, accessibility, database-management, dependency-management, documentation, environment-management, infrastructure-as-code, solutions-design, source-control, task-tracking, versioning, CI/CD.
+Default topics scanned: logging, alerting, observability, unit-testing, integration-testing, linting, error-handling, application-security, code-review, api-design, accessibility, database-management, dependency-management, environment-management, infrastructure-as-code, CI/CD. (Topics map to the merged best-practice skills — e.g. logging/alerting/observability all draw on mav-bp-operability.)
 
 ### Agents
 

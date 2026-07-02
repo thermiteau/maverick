@@ -57,3 +57,22 @@ def make_edit_tool_call(
         input_data={"file_path": file_path, "old_string": "x", "new_string": "y"},
         file_path=file_path,
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_claims_registry(tmp_path, monkeypatch):
+    """Keep the local claims registry out of the developer's real home dir.
+
+    coordinator.claim()/takeover()/release() write to
+    ~/.maverick/active-claims.json (the SessionEnd-hook / autonomous-mode
+    registry). Any test that exercises them without patching the path
+    would pollute — and be polluted by — the machine's real registry.
+    Discovered when fake test claims (me/r#42) showed up in the real file.
+    """
+    from maverick import coordinator
+
+    monkeypatch.setattr(
+        coordinator,
+        "_claims_registry_path",
+        lambda: tmp_path / "active-claims.json",
+    )

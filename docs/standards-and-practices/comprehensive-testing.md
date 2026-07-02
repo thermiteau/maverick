@@ -4,10 +4,13 @@ scope: Why rigorous testing is the primary quality gate for LLM-generated code a
 relates-to:
   - code-review.md
   - cicd.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Comprehensive Testing
+
+> **Skill note:** unit and integration testing standards are enforced by the single `mav-bp-testing` skill. This document covers the full testing strategy.
+
 
 Testing verifies that software behaves as intended. In LLM-driven development, testing is not just a quality practice - it is the primary mechanism that determines whether generated code actually works. An LLM cannot mentally execute the code it produces. Tests close this gap by providing concrete, automated evidence of correctness.
 
@@ -54,7 +57,7 @@ Maverick enforces testing through multiple reinforcing mechanisms across the dev
 
 ```mermaid
 flowchart TD
-    A[mav-bp-unit-testing skill] -->|defines standards| B[do-upskill system]
+    A[mav-bp-testing skill] -->|defines standards| B[do-upskill system]
     B -->|generates project-specific test guidance| C[project test skill]
     C -->|constrains LLM during coding| D[code generation with tests]
 
@@ -77,8 +80,8 @@ flowchart TD
 
 | Skill                                     | Role                                                                                     |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------- |
-| mav-bp-unit-testing                       | Defines universal unit test standards: strategy, coverage targets, quality criteria      |
-| mav-bp-integration-testing                | Defines integration test standards: scope, external dependencies, data isolation         |
+| mav-bp-testing                       | Defines universal unit test standards: strategy, coverage targets, quality criteria      |
+| mav-bp-testing                | Defines integration test standards: scope, external dependencies, data isolation         |
 | mav-local-verification                    | Requires all tests to pass locally before code is committed                              |
 | Project-specific test skill (via do-upskill) | Specifies the project's test framework, conventions, and additional requirements       |
 

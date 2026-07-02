@@ -1,6 +1,8 @@
 ---
 name: mav-bp-remote-code-review
 description: Mandatory remote code review on every pull request. Defines the contract for a GitHub Actions workflow that runs the agent-code-reviewer in CI when a PR is opened, synchronized, or reopened. Used as a dependency by do-issue-solo and do-epic to enforce the review gate, and by do-maverick-alignment to audit the workflow's presence.
+user-invocable: false
+disable-model-invocation: true
 ---
 
 # Remote Code Review (Optional CI Gate)

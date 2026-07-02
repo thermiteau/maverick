@@ -3,7 +3,7 @@ from maverick.names import (
     DO_CODE,
     MAV_BP_APPLICATION_SECURITY,
     MAV_BP_ERROR_HANDLING,
-    MAV_BP_LOGGING,
+    MAV_BP_OPERABILITY,
     MAV_LOCAL_VERIFICATION,
     MAV_SCOPE_BOUNDARIES,
     MAV_SYSTEMATIC_DEBUGGING,
@@ -23,7 +23,7 @@ CONFIG = SkillConfig(
     disable_model_invocation=False,
     depends_on=[
         MAV_BP_ERROR_HANDLING,
-        MAV_BP_LOGGING,
+        MAV_BP_OPERABILITY,
         MAV_BP_APPLICATION_SECURITY,
         MAV_LOCAL_VERIFICATION,
         MAV_SCOPE_BOUNDARIES,

@@ -279,6 +279,10 @@ def main():
         "gh-state",
         "task-progress",
         "issue",
+        "pr",
+        "tasks",
+        "bprop",
+        "docs",
         "git-workflow",
         "report",
     ):

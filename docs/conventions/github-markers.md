@@ -23,6 +23,7 @@ Maverick coordinates multi-instance workflows through labels and machine-readabl
 | `needs-human`        | issue + PR | Code reviewer ejected this for human handling | Claude Code instance (on eject)              |
 | `blocked-by:#N`      | issue      | Depends transitively on ejected issue `#N`    | Claude Code instance (via block propagation) |
 | `merged-to-<branch>` | issue      | The issue's PR was merged to `<branch>`       | Claude Code instance (on merge)              |
+| `maverick-authorize-<scope>` | issue | Human grants a guarded scope (e.g. `infra`) for this issue | Human (verified by `maverick coord authorize`) |
 
 Labels must be created once per repo. Maverick's `do-init` can create them automatically when present.
 
@@ -63,6 +64,7 @@ General shape:
 | `maverick-claim` | Each claimed issue | One per active claim | Identifies the claiming instance |
 | `maverick-lease` | Each claimed issue | One rolling | Heartbeat timestamp |
 | `maverick-bprop` | Epic issue | One (transient) | Block-propagation in-flight; absent when propagation is complete |
+| `maverick-task-progress` | Each story issue | One rolling | The single issue-state surface: phase checkpoint, branch, artefact comment ids, authorized scopes |
 
 "One rolling" means the single latest comment of that kind is authoritative; older ones are historical noise. Use the upsert pattern (update-in-place if the kind exists; otherwise post) — see `mav-durability-on-gh`.
 
@@ -132,6 +134,41 @@ refresh every ~2 minutes.
 ```
 
 Once every descendant appears in `labelled`, delete the comment.
+`uv run maverick bprop run` owns the full write-walk-clear protocol.
+
+**`maverick-task-progress`**
+
+```json
+{
+  "phase": "claimed|design|tasks|branch|implement|docs|security|pr_open|ci_green|review|merged|complete|ejected",
+  "instance_id": "abc123def0",
+  "updated_at": "2026-07-02T10:20:00Z",
+  "branch": "feat/42-add-export",
+  "comments": {"design": 123, "plan": 124, "tasks": 125, "completion": 126},
+  "has_sub_issues": true,
+  "authorized": ["infra"]
+}
+```
+
+Only `phase`, `instance_id`, and `updated_at` are always present; the
+rest accrete as the workflow reaches them. Writers must merge, never
+replace — `maverick task-progress set` and `maverick issue comment post`
+are the sanctioned write paths, and `maverick coord resume-point` is the
+sanctioned way to turn this payload into a resume decision.
+
+## PR review verdict marker
+
+The code-review gate communicates through a marker line rather than
+prose: the reviewer's reply (and, in the CI re-run, the posted PR
+review) must end with exactly one line
+
+```text
+MAVERICK_VERDICT: PASS
+```
+
+or `MAVERICK_VERDICT: FAIL`. Orchestrators parse only this line; absent
+or ambiguous markers are treated as FAIL. `maverick coord resume-point`
+reads the same marker off the PR when computing where to resume.
 
 ## Parser contract
 

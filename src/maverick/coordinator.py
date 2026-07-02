@@ -112,6 +112,65 @@ def _instance_id_path() -> Path:
     return Path("~/.maverick/instance_id").expanduser()
 
 
+def _claims_registry_path() -> Path:
+    """Local registry of claims held by instances on this machine.
+
+    The registry exists so that (a) the SessionEnd hook can release every
+    claim this session still holds without knowing repo/issue numbers, and
+    (b) the scope-guard hook can detect "this session is running an
+    autonomous workflow" (an instance that holds a claim is by definition
+    autonomous). It is a derivable cache — GitHub markers stay the source
+    of truth, and a stale registry entry is harmless: release is
+    idempotent and lease expiry covers machine death.
+    """
+    return Path("~/.maverick/active-claims.json").expanduser()
+
+
+def _read_claims_registry() -> list[dict[str, Any]]:
+    """Read the local claims registry, tolerating a missing/corrupt file."""
+    try:
+        raw = json.loads(_claims_registry_path().read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    claims = raw.get("claims") if isinstance(raw, dict) else None
+    return claims if isinstance(claims, list) else []
+
+
+def _write_claims_registry(claims: list[dict[str, Any]]) -> None:
+    path = _claims_registry_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"claims": claims}, indent=2) + "\n")
+    except OSError:
+        pass  # registry is best-effort; the GitHub marker is authoritative
+
+
+def _registry_add(repo: str, issue: int) -> None:
+    claims = [
+        c
+        for c in _read_claims_registry()
+        if not (c.get("repo") == repo and c.get("issue") == issue)
+    ]
+    claims.append(
+        {
+            "repo": repo,
+            "issue": issue,
+            "instance_id": instance_id(),
+            "claimed_at": _now_iso(),
+        }
+    )
+    _write_claims_registry(claims)
+
+
+def _registry_remove(repo: str, issue: int) -> None:
+    claims = [
+        c
+        for c in _read_claims_registry()
+        if not (c.get("repo") == repo and c.get("issue") == issue)
+    ]
+    _write_claims_registry(claims)
+
+
 def instance_id() -> str:
     """Short, unique id for this Maverick instance.
 
@@ -263,6 +322,10 @@ def claim(
                 f"#{issue} race lost — superseded by claim from instance {latest_holder}"
             )
 
+    # Record locally so the SessionEnd hook can release-all on exit and the
+    # scope-guard hook can detect autonomous mode.
+    _registry_add(repo, issue)
+
     return c
 
 
@@ -340,6 +403,82 @@ def heartbeat_loop(
         signal.signal(signal.SIGTERM, prev_term)
 
 
+def heartbeat_pidfile(repo: str, issue: int) -> Path:
+    """Pidfile for a daemonized heartbeat loop."""
+    safe_repo = repo.replace("/", "__")
+    return Path(f"~/.maverick/heartbeats/{safe_repo}--{issue}.pid").expanduser()
+
+
+def heartbeat_pid(repo: str, issue: int) -> int | None:
+    """Return the pid of a live daemonized heartbeat loop, or None."""
+    path = heartbeat_pidfile(repo, issue)
+    try:
+        pid = int(path.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)  # signal 0: existence check only
+    except (ProcessLookupError, PermissionError):
+        return None
+    return pid
+
+
+def daemonize_heartbeat_loop(
+    repo: str,
+    issue: int,
+    interval_seconds: int = HEARTBEAT_INTERVAL_MINUTES * 60,
+) -> int:
+    """Start heartbeat_loop as a detached daemon. Returns the daemon pid.
+
+    Replaces the old skill instruction to background the foreground loop
+    with `>/dev/null 2>&1 &` — a process backgrounded from a sandboxed
+    tool shell either dies with the shell or leaks unobservably. The
+    daemon double-forks, writes a pidfile, and removes it on exit, so
+    `coord heartbeat-status` can always answer "is my lease being
+    refreshed?". Idempotent: a live daemon for the same claim is reused.
+    """
+    existing = heartbeat_pid(repo, issue)
+    if existing is not None:
+        return existing
+
+    pidfile = heartbeat_pidfile(repo, issue)
+    pidfile.parent.mkdir(parents=True, exist_ok=True)
+
+    read_fd, write_fd = os.pipe()  # child reports its final pid to the caller
+    if os.fork():  # original process: wait for the grandchild pid
+        os.close(write_fd)
+        with os.fdopen(read_fd) as r:
+            pid = int(r.read().strip() or "0")
+        os.wait()  # reap the intermediate child
+        return pid
+
+    # Intermediate child: new session, second fork so the daemon can never
+    # reacquire a controlling terminal.
+    os.close(read_fd)
+    os.setsid()
+    if os.fork():
+        os._exit(0)
+
+    # Daemon (grandchild)
+    pid = os.getpid()
+    try:
+        pidfile.write_text(f"{pid}\n")
+        with os.fdopen(write_fd, "w") as w:
+            w.write(f"{pid}\n")
+        devnull = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(devnull, fd)
+        code = heartbeat_loop(repo, issue, interval_seconds=interval_seconds)
+    except Exception:
+        code = 1
+    finally:
+        try:
+            pidfile.unlink()
+        except OSError:
+            pass
+    os._exit(code)
+
+
 def release(
     repo: str,
     issue: int,
@@ -370,6 +509,101 @@ def release(
         preamble=f"<!-- maverick lease released: {reason} -->",
         env=env,
     )
+    _registry_remove(repo, issue)
+
+
+def release_all(
+    reason: str = "session-end", env: dict[str, str] | None = None
+) -> list[tuple[str, int]]:
+    """Release every claim this instance recorded in the local registry.
+
+    Designed for the SessionEnd hook: idempotent, tolerant of claims that
+    were already released or taken over remotely (each release failure is
+    swallowed — lease expiry is the backstop). Returns the (repo, issue)
+    pairs that were released.
+    """
+    mine = [c for c in _read_claims_registry() if c.get("instance_id") == instance_id()]
+    released: list[tuple[str, int]] = []
+    for c in mine:
+        repo, issue = c.get("repo"), c.get("issue")
+        if not isinstance(repo, str) or not isinstance(issue, int):
+            continue
+        try:
+            release(repo, issue, reason=reason, env=env)
+            released.append((repo, issue))
+        except Exception:
+            # Claim may already be gone (released, taken over, issue closed).
+            pass
+        # Drop the registry entry either way — release() also removes it,
+        # but the registry must never retain an entry past this pass.
+        _registry_remove(repo, issue)
+    return released
+
+
+AUTHORIZE_LABEL_PREFIX = "maverick-authorize-"
+AUTHORIZE_BODY_RE = r"(?im)^\s*maverick-authorize:\s*(?P<scopes>[a-z, -]+)\s*$"
+SESSION_AUTH_PATH = Path(".maverick/session-auth.json")
+
+
+class AuthorizationRejected(Exception):
+    """The issue does not carry an explicit authorization for the scope."""
+
+
+def authorize(
+    repo: str, issue: int, scope: str, env: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """Verify issue-level authorization for *scope* and record it locally.
+
+    Authorization must be explicit on the GitHub issue itself — either a
+    ``maverick-authorize-<scope>`` label or a ``Maverick-Authorize: <scope>``
+    line in the issue body. This function is the only sanctioned writer of
+    ``.maverick/session-auth.json`` (the scope-guard hook blocks direct
+    edits to that file), so an agent cannot self-grant a scope the issue
+    never authorized.
+    """
+    import re
+
+    scope = scope.strip().lower()
+    labels = _issue_labels(repo, issue)
+    granted = f"{AUTHORIZE_LABEL_PREFIX}{scope}" in labels
+
+    if not granted:
+        out = _gh("issue", "view", str(issue), "--repo", repo, "--json", "body", env=env)
+        body = json.loads(out).get("body") or ""
+        for m in re.finditer(AUTHORIZE_BODY_RE, body):
+            scopes = [s.strip() for s in m.group("scopes").split(",")]
+            if scope in scopes:
+                granted = True
+                break
+
+    if not granted:
+        raise AuthorizationRejected(
+            f"{repo}#{issue} does not authorize scope {scope!r}: add the "
+            f"'{AUTHORIZE_LABEL_PREFIX}{scope}' label or a 'Maverick-Authorize: "
+            f"{scope}' line to the issue body."
+        )
+
+    auth: dict[str, Any] = {"repo": repo, "issue": issue, "scopes": [scope]}
+    try:
+        existing = json.loads(SESSION_AUTH_PATH.read_text())
+        if existing.get("repo") == repo and existing.get("issue") == issue:
+            merged = sorted(set(existing.get("scopes") or []) | {scope})
+            auth["scopes"] = merged
+    except (OSError, json.JSONDecodeError):
+        pass
+    auth["granted_at"] = _now_iso()
+    SESSION_AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SESSION_AUTH_PATH.write_text(json.dumps(auth, indent=2) + "\n")
+    # Mirror to the durable task-progress marker so a resuming instance can
+    # re-derive the local auth file from GitHub. Best-effort: the local
+    # grant (verified above) is the enforcement input either way.
+    try:
+        from maverick.gh_state import patch_task_progress
+
+        patch_task_progress(repo, issue, {"authorized": auth["scopes"]}, env=env)
+    except Exception:
+        pass
+    return auth
 
 
 def takeover(

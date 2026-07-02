@@ -8,10 +8,18 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Template as Jinja2Template
+import yaml
+from jinja2 import Environment, StrictUndefined
 
 from maverick.models import AgentConfig, GlobalConfig, SkillConfig
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
+
+# StrictUndefined makes any undefined template variable fail the build loudly
+# instead of silently rendering as an empty string (which shipped broken
+# commands like `coord read <repo> ` when ARGUMENTS was missing from the
+# context, and would silently delete a cross-reference on any SKILLS/AGENTS
+# constant typo).
+_JINJA_ENV = Environment(undefined=StrictUndefined)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -73,6 +81,45 @@ def _load_config(config_path: Path) -> Any:
     return module.CONFIG
 
 
+def _validate_config(config: Any, config_path: Path, registered_names: set[str]) -> Any:
+    """Validate a discovered config against its directory and the name registry.
+
+    A CONFIG whose name doesn't match its directory would render to a path
+    nothing references; a name missing from names.py would break the
+    ``{{ SKILLS.X }}`` / ``{{ AGENTS.X }}`` constant system. Both were
+    previously silent — fail the build instead.
+    """
+    dir_name = config_path.parent.name
+    if config.name != dir_name:
+        raise ValueError(
+            f"{config_path}: CONFIG.name {config.name!r} does not match its "
+            f"directory name {dir_name!r}."
+        )
+    if config.name not in registered_names:
+        raise ValueError(
+            f"{config_path}: {config.name!r} is not registered in maverick.names — "
+            "add a name constant and register it in ALL_SKILL_NAMES/ALL_AGENT_NAMES."
+        )
+    return config
+
+
+def _dump_frontmatter(data: dict[str, Any]) -> str:
+    """Serialize a frontmatter mapping to a fenced YAML block.
+
+    Uses yaml.safe_dump rather than string concatenation so values containing
+    YAML-significant characters (``: ``, ``#``, leading ``[``/``{``) are quoted
+    correctly instead of silently truncating or breaking the block.
+    """
+    body = yaml.safe_dump(
+        data,
+        sort_keys=False,
+        default_flow_style=False,
+        allow_unicode=True,
+        width=100_000,  # never hard-wrap long descriptions
+    ).rstrip("\n")
+    return f"---\n{body}\n---"
+
+
 # ---------------------------------------------------------------------------
 # Skills
 # ---------------------------------------------------------------------------
@@ -80,33 +127,41 @@ def _load_config(config_path: Path) -> Any:
 
 def discover_skills(templates_dir: Path = SKILLS_TEMPLATES_DIR) -> list[SkillConfig]:
     """Find all skill directories that contain a config.py and load them."""
-    return [_load_config(p) for p in sorted(templates_dir.glob("*/config.py"))]
+    return [
+        _validate_config(_load_config(p), p, ALL_SKILL_NAMES)
+        for p in sorted(templates_dir.glob("*/config.py"))
+    ]
 
 
 def _build_skill_frontmatter(skill: SkillConfig) -> str:
-    """Build YAML frontmatter from a SkillConfig."""
-    lines = ["---"]
-    lines.append(f"name: {skill.name}")
+    """Build YAML frontmatter from a SkillConfig.
+
+    The two invocation flags are always emitted explicitly. Claude Code's
+    runtime defaults are ``user-invocable: true`` and
+    ``disable-model-invocation: false`` — the opposite of this config
+    schema's defaults — so omitting a flag silently inverted the declared
+    intent for every non-invocable reference skill.
+    """
+    data: dict[str, Any] = {"name": skill.name}
 
     if skill.description:
-        lines.append(f"description: {skill.description}")
+        data["description"] = skill.description
     if skill.argument_hint:
-        lines.append(f"argument-hint: {skill.argument_hint}")
-    if skill.user_invocable:
-        lines.append("user-invocable: true")
-    if not skill.disable_model_invocation:
-        lines.append("disable-model-invocation: false")
+        data["argument-hint"] = skill.argument_hint
+    data["user-invocable"] = skill.user_invocable
+    data["disable-model-invocation"] = skill.disable_model_invocation
     if skill.allowed_tools:
-        lines.append(f"allowed-tools: {', '.join(skill.allowed_tools)}")
+        data["allowed-tools"] = ", ".join(skill.allowed_tools)
     if skill.model:
-        lines.append(f"model: {skill.model}")
+        data["model"] = skill.model
     if skill.context:
-        lines.append(f"context: {skill.context}")
+        data["context"] = skill.context
     if skill.agent:
-        lines.append(f"agent: {skill.agent}")
+        data["agent"] = skill.agent
+    if skill.hooks:
+        data["hooks"] = skill.hooks
 
-    lines.append("---")
-    return "\n".join(lines)
+    return _dump_frontmatter(data)
 
 
 def render_skill(
@@ -125,8 +180,13 @@ def render_skill(
         context["DEPENDS_ON"] = ", ".join(skill.depends_on)
     context["SKILLS"] = SKILLS_DICT
     context["AGENTS"] = AGENTS_DICT
+    # ARGUMENTS is a *runtime* placeholder, not a build-time value: emit the
+    # literal $ARGUMENTS token that Claude Code substitutes when the skill is
+    # invoked. (It previously rendered as "" via Jinja's default Undefined,
+    # stripping the issue number out of every argument-bearing command.)
+    context["ARGUMENTS"] = "$ARGUMENTS"
 
-    body = Jinja2Template(body).render(**context)
+    body = _JINJA_ENV.from_string(body).render(**context)
 
     frontmatter = _build_skill_frontmatter(skill)
     version_marker = f"\n\n<!-- maverick-plugin-version: {_get_version()} -->\n"
@@ -185,42 +245,44 @@ def render_all_skills(
 
 def _build_agent_frontmatter(agent: AgentConfig) -> str:
     """Build YAML frontmatter from an AgentConfig."""
-    lines = ["---"]
-    lines.append(f"name: {agent.name}")
-    lines.append(f"description: {agent.description}")
+    data: dict[str, Any] = {"name": agent.name, "description": agent.description}
 
     if agent.model:
-        lines.append(f"model: {agent.model}")
+        data["model"] = agent.model
     if agent.color:
-        lines.append(f"color: {agent.color}")
+        data["color"] = agent.color
     if agent.permission_mode:
-        lines.append(f"permissionMode: {agent.permission_mode}")
+        data["permissionMode"] = agent.permission_mode
     if agent.max_turns is not None:
-        lines.append(f"maxTurns: {agent.max_turns}")
+        data["maxTurns"] = agent.max_turns
     if agent.background:
-        lines.append("background: true")
+        data["background"] = True
     if agent.isolation:
-        lines.append(f"isolation: {agent.isolation}")
+        data["isolation"] = agent.isolation
     if agent.memory:
-        lines.append(f"memory: {agent.memory}")
+        data["memory"] = agent.memory
     if agent.tools:
-        lines.append(f"tools: {', '.join(agent.tools)}")
+        data["tools"] = ", ".join(agent.tools)
     if agent.disallowed_tools:
-        lines.append(f"disallowedTools: {', '.join(agent.disallowed_tools)}")
+        data["disallowedTools"] = ", ".join(agent.disallowed_tools)
     if agent.skills:
-        lines.append("skills:")
-        for skill in agent.skills:
-            lines.append(f"  - {skill}")
+        data["skills"] = list(agent.skills)
+    if agent.mcp_servers:
+        data["mcpServers"] = agent.mcp_servers
+    if agent.hooks:
+        data["hooks"] = agent.hooks
 
-    lines.append("---")
-    return "\n".join(lines)
+    return _dump_frontmatter(data)
 
 
 def discover_agents(
     templates_dir: Path = AGENTS_TEMPLATES_DIR,
 ) -> list[AgentConfig]:
     """Find all agent directories that contain a config.py and load them."""
-    return [_load_config(p) for p in sorted(templates_dir.glob("*/config.py"))]
+    return [
+        _validate_config(_load_config(p), p, ALL_AGENT_NAMES)
+        for p in sorted(templates_dir.glob("*/config.py"))
+    ]
 
 
 def render_agent(
@@ -237,13 +299,16 @@ def render_agent(
     context["SKILLS"] = SKILLS_DICT
     context["AGENTS"] = AGENTS_DICT
 
-    body = Jinja2Template(body).render(**context)
+    body = _JINJA_ENV.from_string(body).render(**context)
 
     frontmatter = _build_agent_frontmatter(agent)
     version_marker = f"\n\n<!-- maverick-plugin-version: {_get_version()} -->\n"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{agent.name}.md"
-    output_path.write_text(frontmatter + body + version_marker)
+    # The newline after the frontmatter fence is load-bearing: without it a
+    # body that starts with text produces `---You are...`, which strict
+    # frontmatter parsers fail to terminate.
+    output_path.write_text(frontmatter + "\n" + body + version_marker)
     return output_path
 
 
@@ -289,7 +354,7 @@ def render_docs_skills(
         if name in by_name
     ]
 
-    rendered = Jinja2Template(body).render(skills=skills)
+    rendered = _JINJA_ENV.from_string(body).render(skills=skills)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(rendered)
     return output_path

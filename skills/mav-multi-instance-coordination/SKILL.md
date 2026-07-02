@@ -1,9 +1,9 @@
 ---
 name: mav-multi-instance-coordination
 description: Claim, lease, heartbeat, and release protocols for when multiple Claude Code instances may act on the same issue or epic concurrently. GitHub labels and marker comments are the coordination surface; local state is a cache.
+user-invocable: false
+disable-model-invocation: true
 ---
-
-**Depends on:** mav-durability-on-gh, mav-block-propagation
 
 # Multi-Instance Coordination
 
@@ -72,21 +72,12 @@ instances reading the marker can see exactly what you own.
 
 ## Atomic claim
 
-The `claim` primitive does four things, in order:
-
-1. Adds the `claude-in-progress` label (idempotent — repeating is safe).
-2. Posts a `maverick-claim` marker with this instance's id, host, scope,
-   and `claimed_at` timestamp.
-3. Writes an initial `maverick-lease` marker with `expires_at` set to
-   10 minutes from now.
-4. **Re-reads** the claim markers to detect simultaneous claims.
-
-GitHub's API is not strongly ordered, so step 1 alone is insufficient —
-two instances can both see "no label" and then both write the label. Step
-4 is the race-detection check: if the re-read shows more than one
-`maverick-claim` marker with an active instance, the instance with the
-**lower id (lexicographic)** wins, and every other instance runs
-`release` and aborts.
+Run `uv run maverick coord claim <repo> <issue>`. The behavioural
+contract is all you need: **exit 0 means you own the claim; non-zero
+means you do not — abort cleanly without modifying the issue.** Race
+detection, tie-breaking, and label/marker/lease mechanics live inside the
+CLI (see `docs/conventions/github-markers.md` for internals); never
+re-implement or second-guess them.
 
 ## Heartbeat
 
@@ -144,13 +135,23 @@ This posts a takeover comment naming the prior instance and then runs
 claim with takeover permission. The prior instance's heartbeat will fail
 on its next attempt with `ClaimLost`.
 
-## Release-before-exit
+## Release on exit
 
-Every entry-point skill (do-issue-solo, do-issue-guided, do-epic) must
-register a release handler that fires on **every** exit path — success,
-eject, abort, crash-caught, user-interrupt. The easiest pattern is a
-trap-on-exit wrapper that calls `coord release` for every claim this
-instance still holds.
+Releases happen at three layers; entry-point skills rely on them instead
+of inventing exit handlers:
+
+1. **Explicit** — the skill runs `coord release --reason <merged|ejected|…>`
+   at its own workflow boundaries. This is the normal path and produces
+   the audit-trail reason.
+2. **SessionEnd hook** — the plugin runs `coord release-all` when the
+   session ends for any reason (done, user interrupt, crash-caught),
+   releasing every claim this instance recorded locally.
+3. **Lease expiry** — the 10-minute TTL is the designed crash path for
+   machine death; another instance takes over cleanly via `coord takeover`.
+
+Do **not** attempt trap-on-exit wrappers: each Bash tool call is a fresh
+shell, so a trap can never survive to session end — the pattern only
+produces false confidence.
 
 ## Rules
 

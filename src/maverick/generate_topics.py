@@ -28,7 +28,14 @@ def generate_topics_json(output_dir: Path = SKILLS_OUTPUT_DIR) -> Path:
         {
             "topic": t.topic,
             "prompt": t.prompt,
+            # Plugin-relative; consumers resolve against ${CLAUDE_PLUGIN_ROOT}
+            # because the runtime cwd is the target project, not the plugin.
             "bestPracticeSkill": f"skills/{t.best_practice_skill}/SKILL.md",
+            "scanHints": {
+                "dependencies": t.scan_dependencies,
+                "grep": t.scan_grep,
+                "files": t.scan_files,
+            },
         }
         for t in topics
     ]

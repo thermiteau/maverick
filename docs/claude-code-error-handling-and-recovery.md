@@ -40,59 +40,59 @@ These skills create a layered recovery system: state files track progress locall
 
 State persistence bridges the gap between stateless LLM sessions and multi-session workflows. The state file records what the LLM has done so that a new session can continue rather than restart.
 
-### State file locations
+### State locations
 
-All Maverick workflows use the same state file pattern:
+Issue-level state lives **on GitHub, not in a local file**:
 
-| Workflow | State file | Gitignored |
-| --- | --- | --- |
-| `do-issue-solo` / `do-issue-guided` | `.claude/issue-state.json` | Yes |
-| `do-epic` | `.claude/epic-state.json` (mirrored to `maverick-state` GitHub comment) | Yes |
+| Workflow | State surface |
+| --- | --- |
+| `do-issue-solo` / `do-issue-guided` | `maverick-task-progress` marker comment on the issue |
+| `do-epic` | `maverick-state` marker on the epic (locally cached in `.claude/epic-state.json`, gitignored) |
 
 ### Issue workflow state contents
 
-The canonical schema is defined by the `mav-github-issue-workflow` skill:
+The canonical schema is defined in `src/maverick/gh_state.py` (the CLI is
+the only writer — skills never compose marker comments by hand):
 
 ```json
 {
-  "issue": 42,
-  "repo": "owner/repo",
+  "phase": "claimed|design|tasks|branch|implement|docs|security|pr_open|ci_green|review|merged|complete|ejected",
+  "instance_id": "abc123def0",
+  "updated_at": "2026-07-02T10:20:00Z",
   "branch": "feat/42-short-description",
-  "phase": "understand|design|plan|branch|implement|complete",
   "comments": {
-    "design": null,
-    "plan": null,
-    "completion": null
-  }
+    "design": 123,
+    "plan": 124,
+    "tasks": 125,
+    "completion": 126
+  },
+  "has_sub_issues": true,
+  "authorized": ["infra"]
 }
 ```
 
-| Field                 | Purpose                                                      |
-| --------------------- | ------------------------------------------------------------ |
-| `issue`               | The GitHub issue number driving this work                    |
-| `repo`                | `owner/repo` the work targets                                |
-| `branch`              | Branch name created for this work                            |
-| `phase`               | Current workflow phase (`understand`, `design`, `plan`, `branch`, `implement`, `complete`) |
-| `comments.design`     | GitHub comment ID where the solution design was posted       |
-| `comments.plan`       | GitHub comment ID where the implementation plan was posted   |
-| `comments.completion` | GitHub comment ID where the completion summary was posted    |
+Only `phase`, `instance_id`, and `updated_at` are always present; the
+rest accrete as the workflow reaches them. Writes go through
+`maverick task-progress set` (merge semantics) and
+`maverick issue comment post` (records comment ids automatically).
 
 ### Why each field matters
 
 - **phase** - tells the new session where to resume, preventing duplicate work
-- **branch** - prevents creating a second branch for the same issue
-- **comments.*** - GitHub comment IDs let the new session read back its own artefacts (design, plan, completion summary) from the issue
-- **issue / repo** - identify the GitHub issue and repository the resumed session must operate on
+- **branch** - lets `maverick coord resume-point` find the PR, and prevents creating a second branch
+- **comments.*** - GitHub comment IDs let the new session read back its own artefacts (design, plan, tasks, completion summary)
+- **instance_id / updated_at** - identify which instance last checkpointed and when
+- **authorized** - scope grants verified against the issue by `maverick coord authorize`
 
 ## Crash Recovery Flow
 
-When a new session starts and finds existing state, it must verify and resume rather than start fresh.
+When a new session starts and finds existing state, it must verify and resume rather than start fresh. The resume position is computed deterministically by `maverick coord resume-point`, which reads the marker, locates the PR via the recorded branch, and inspects CI and the review verdict.
 
 ```mermaid
 flowchart TD
-    A[Session starts] --> B{State file exists?}
+    A[Session starts] --> B{task-progress marker exists?}
     B -->|No| C[Start from beginning]
-    B -->|Yes| D[Read state file]
+    B -->|Yes| D[Run coord resume-point]
     D --> E{Branch exists?}
     E -->|No| F[State is stale - start fresh]
     E -->|Yes| G[Checkout branch]
@@ -113,14 +113,17 @@ flowchart TD
 
 ### Recovery phases
 
-| Phase       | On resume                                       | Verification                                       |
+| Recorded phase | Resume at | Verification |
 | ----------- | ----------------------------------------------- | -------------------------------------------------- |
-| `understand` | Re-read the issue                              | Issue exists and is readable                       |
-| `design`    | Read design from the GitHub comment             | `comments.design` set; comment contains design     |
-| `plan`      | Read plan from the GitHub comment               | `comments.plan` set; comment contains plan steps   |
-| `branch`    | Check out the recorded branch                   | Branch exists and matches `branch`                 |
-| `implement` | Compare branch state against the plan           | Completed steps have corresponding code changes    |
-| `complete`  | Check the completion summary and PR             | `comments.completion` set; PR open and linked      |
+| _(none)_ / `claimed` | Understand the issue                     | Issue exists and is readable                       |
+| `design`    | Create tasks                                    | `comments.design` set; comment contains design     |
+| `tasks`     | Create worktree + branch                        | `comments.tasks` set, or sub-issues exist          |
+| `branch`    | Implement tasks                                 | Branch exists and matches `branch`                 |
+| `implement` | Continue from first unchecked task              | Completed tasks have corresponding commits         |
+| `docs` / `security` | Next gate (security / open PR)          | Gate outcome recorded on the PR body draft         |
+| `pr_open` / `ci_green` / `review` | PR-state dependent (CI, verdict) | `coord resume-point` refines via checks + `MAVERICK_VERDICT` |
+| `merged`    | Post-merge cleanup                              | PR state is `MERGED`                               |
+| `complete` / `ejected` | Nothing to resume                    | Terminal states                                    |
 
 ## Artefact Durability
 
