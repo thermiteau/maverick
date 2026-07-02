@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** do-recommend, mav-bp-linting, mav-bp-unit-testing, mav-git-workflow, mav-local-verification
-
 # Adopt Best-Practice Technologies
 
 Scan the current project for missing best-practice areas and **implement the top recommendation** for each gap. This is the action counterpart to `do-recommend` — instead of listing options, it installs and configures the best-fit tool directly.
@@ -17,7 +15,7 @@ Scan the current project for missing best-practice areas and **implement the top
 | Topic | Best-Practice Skill | What to detect |
 | ----- | ------------------- | -------------- |
 | linting | mav-bp-linting | Linter configs, formatter configs, lint scripts, pre-commit hooks |
-| unit-testing | mav-bp-unit-testing | Test frameworks, test runners, coverage tools, test files |
+| unit-testing | mav-bp-testing | Test frameworks, test runners, coverage tools, test files |
 
 ## Invocation
 

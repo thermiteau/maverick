@@ -88,11 +88,6 @@ Idempotent, resumable propagation of a `blocked-by:#N` block from an ejected sto
 Accessibility conventions for projects with user-facing interfaces. Covers WCAG 2.1 AA compliance, semantic HTML, keyboard navigation, colour contrast, screen reader support, and automated a11y testing. Applied when building or reviewing user-facing web or mobile applications.
 
 
-## mav-bp-alerting
-
-Alerting conventions for fatal errors in applications. Covers severity levels, alert context, centralised notification, and project alerting guidance. Applied when writing error handling or reviewing code.
-
-
 ## mav-bp-api-design
 
 API design conventions for projects with API surfaces. Covers REST and GraphQL standards, versioning, error formats, pagination, documentation as code, and backwards compatibility. Applied when designing, implementing, or reviewing APIs.
@@ -106,26 +101,6 @@ Application security conventions for all projects. Covers OWASP Top 10 awareness
 ## mav-bp-cicd
 
 Platform-agnostic CI/CD conventions. Covers pipeline stages, quality gates, environment promotion, secrets management, artifact handling, and deployment boundaries. Applied when configuring or reviewing CI/CD pipelines.
-
-
-## mav-bp-cicd-azure
-
-Monitoring Azure DevOps pipelines after pushing. Covers checking pipeline status, diagnosing build/release failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
-
-
-## mav-bp-cicd-bitbucket
-
-Monitoring Bitbucket Pipelines after pushing. Covers checking pipeline status, diagnosing build failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
-
-
-## mav-bp-cicd-github
-
-Monitoring GitHub Actions pipelines after pushing. Covers checking workflow status, diagnosing CI failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
-
-
-## mav-bp-cicd-gitlab
-
-Monitoring GitLab CI/CD pipelines after pushing. Covers checking pipeline status, diagnosing job failures, and respecting pipeline boundaries. Used as a dependency from workflow skills.
 
 
 ## mav-bp-code-review
@@ -143,11 +118,6 @@ Database and data management conventions for all projects using databases. Cover
 Dependency management conventions for all projects. Covers lock files, version pinning, vulnerability scanning, license compliance, update strategy, and minimal dependency principle. Applied when adding, updating, or reviewing dependencies.
 
 
-## mav-bp-documentation
-
-Documentation conventions for all projects. Covers minimum documentation requirements, documentation freshness enforcement, AI-readable structure, and the relationship between human and machine audiences. Applied when creating or reviewing project documentation.
-
-
 ## mav-bp-environment-management
 
 Environment management conventions for all projects. Covers reproducible local development, environment parity, .env patterns, developer onboarding, and containerised development. Applied when setting up or reviewing development environments.
@@ -163,24 +133,14 @@ Error handling conventions for all applications. Covers error propagation, retry
 Infrastructure as Code conventions for all deployed projects. Covers IaC principles, environment parity, secrets management in IaC, version control, and runbook fallback for unsupported platforms. Applied when reviewing or configuring infrastructure.
 
 
-## mav-bp-integration-testing
-
-Integration testing conventions for applications. Covers test scope, external dependency management, environment setup, data isolation, and project testing guidance. Applied when writing or reviewing integration tests.
-
-
 ## mav-bp-linting
 
 Linting conventions for applications. Covers linter selection, rule configuration, auto-formatting, CI integration, and project linting guidance. Applied when writing or reviewing code, or configuring developer tooling.
 
 
-## mav-bp-logging
+## mav-bp-operability
 
-Logging conventions for backend and frontend applications. Covers log levels, structured logging, centralised aggregation, and project logging guidance. Applied when writing or reviewing code that includes logging.
-
-
-## mav-bp-observability
-
-Observability conventions for deployed applications. Covers metrics collection, distributed tracing, health checks, SLIs/SLOs, and dashboards. Complements the logging and alerting skills to complete the observability picture. Applied when designing or reviewing operational aspects of services.
+Operability standards — logging, alerting, and observability as one discipline. Maverick's opinionated rules: error-only log levels (no info), structured JSON logs, alert-at-the-boundary, correlation across logs/metrics/traces. Applied when writing or reviewing code that logs, alerts, or instruments.
 
 
 ## mav-bp-remote-code-review
@@ -188,29 +148,9 @@ Observability conventions for deployed applications. Covers metrics collection, 
 Mandatory remote code review on every pull request. Defines the contract for a GitHub Actions workflow that runs the agent-code-reviewer in CI when a PR is opened, synchronized, or reopened. Used as a dependency by do-issue-solo and do-epic to enforce the review gate, and by do-maverick-alignment to audit the workflow's presence.
 
 
-## mav-bp-solutions-design
+## mav-bp-testing
 
-Solutions design conventions for all projects. Covers the requirement for design before implementation, design documentation persistence, requirements traceability, and Architecture Decision Records. Applied before starting implementation of any non-trivial change.
-
-
-## mav-bp-source-control
-
-Source control conventions for all projects. Covers the requirement for remote repositories, repository hygiene, .gitignore standards, and sensitive file protection. Applied as a foundational requirement for all projects.
-
-
-## mav-bp-task-tracking
-
-Task tracking and management conventions for all projects. Covers the requirement for external task tracking, issue hygiene, workflow integration, and traceability between tasks and code changes. Applied as a foundational project management requirement.
-
-
-## mav-bp-unit-testing
-
-Unit testing conventions for applications. Covers test design, isolation, structure, mocking discipline, and project testing guidance. Applied when writing or reviewing unit tests.
-
-
-## mav-bp-versioning
-
-Versioning and deprecation conventions for projects producing libraries, APIs, or SDKs. Covers semantic versioning, changelog maintenance, deprecation policies, and breaking change management. Applied when releasing or reviewing versioned artifacts.
+Testing standards — unit and integration testing as one discipline. Maverick's opinionated rules: behaviour over implementation, mock at boundaries only, 60% unit-coverage CI gate, critical-path integration coverage with a no-decrease ratchet. Applied when writing or reviewing tests.
 
 
 ## mav-claude-code-recovery

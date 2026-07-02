@@ -333,7 +333,7 @@ class TestRenderAgent:
         agent_dir = templates_dir / "agent-ref"
         agent_dir.mkdir(parents=True)
         (agent_dir / "body.md.j2").write_text(
-            "Use {{ SKILLS.MAV_BP_LOGGING }} and {{ AGENTS.AGENT_CODE_REVIEWER }}"
+            "Use {{ SKILLS.MAV_BP_OPERABILITY }} and {{ AGENTS.AGENT_CODE_REVIEWER }}"
         )
 
         output_dir = tmp_path / "output"
@@ -341,7 +341,7 @@ class TestRenderAgent:
         result = render_agent(agent, templates_dir, output_dir)
 
         content = result.read_text()
-        assert "mav-bp-logging" in content
+        assert "mav-bp-operability" in content
         assert "agent-code-reviewer" in content
 
     def test_newline_after_frontmatter_fence(self, tmp_path: Path):
@@ -414,10 +414,50 @@ class TestRealSourceTree:
     def test_reference_skills_are_non_invocable_in_output(self):
         """The bp reference tier must actually ship non-invocable."""
         by_name = {s.name: s for s in discover_skills()}
-        logging_skill = by_name["mav-bp-logging"]
+        logging_skill = by_name["mav-bp-operability"]
         parsed = _parse_frontmatter(_build_skill_frontmatter(logging_skill) + "\n")
         assert parsed["disable-model-invocation"] is True
         assert parsed["user-invocable"] is False
+
+    def test_every_skill_has_a_consumer(self):
+        """No orphaned skills: every non-user-invocable skill must be
+        referenced by at least one other skill/agent (config or template)
+        — a skill nothing loads is dead weight shipped into every
+        installation. This lint would have caught the six orphans the
+        modernization review found by hand.
+        """
+        from maverick.registry import AGENTS_TEMPLATES_DIR, SKILLS_TEMPLATES_DIR
+
+        skills = discover_skills()
+
+        # Build the reference corpus: every config's depends_on/skills
+        # Reference corpus keyed by source directory, so a skill's own
+        # body/config never counts as its consumer. config.py text catches
+        # consumers beyond depends_on (e.g. do-upskill's TopicConfig
+        # best_practice_skill references).
+        sources: dict[str, str] = {}
+        for tpl_dir in (SKILLS_TEMPLATES_DIR, AGENTS_TEMPLATES_DIR):
+            for path in list(tpl_dir.glob("*/body.md.j2")) + list(tpl_dir.glob("*/config.py")):
+                key = f"{tpl_dir.name}/{path.parent.name}"
+                sources[key] = sources.get(key, "") + path.read_text()
+
+        orphans = []
+        for cfg in skills:
+            if cfg.user_invocable:
+                continue  # entry points are their own consumers
+            constant = cfg.name.upper().replace("-", "_")
+            own_key = f"skills/{cfg.name}"
+            referenced = any(
+                cfg.name in text or constant in text
+                for key, text in sources.items()
+                if key != own_key
+            )
+            if not referenced:
+                orphans.append(cfg.name)
+        assert not orphans, (
+            f"orphaned skills with no consumer: {orphans} — wire them into a "
+            "workflow/agent or delete them"
+        )
 
 
 class TestCleanOutput:

@@ -2,7 +2,6 @@ from maverick.models import SkillConfig, TopicConfig
 from maverick.names import (
     DO_UPSKILL,
     MAV_BP_ACCESSIBILITY,
-    MAV_BP_ALERTING,
     MAV_BP_API_DESIGN,
     MAV_BP_APPLICATION_SECURITY,
     MAV_BP_CICD,
@@ -11,11 +10,9 @@ from maverick.names import (
     MAV_BP_ENVIRONMENT_MANAGEMENT,
     MAV_BP_ERROR_HANDLING,
     MAV_BP_INFRASTRUCTURE_AS_CODE,
-    MAV_BP_INTEGRATION_TESTING,
     MAV_BP_LINTING,
-    MAV_BP_LOGGING,
-    MAV_BP_OBSERVABILITY,
-    MAV_BP_UNIT_TESTING,
+    MAV_BP_OPERABILITY,
+    MAV_BP_TESTING,
 )
 
 CONFIG = SkillConfig(
@@ -36,7 +33,7 @@ TOPICS: list[TopicConfig] = [
             " configuration, log levels, structured logging patterns, and where logs"
             " are sent. Use the logging best practice skill to guide the implementation."
         ),
-        best_practice_skill=MAV_BP_LOGGING,
+        best_practice_skill=MAV_BP_OPERABILITY,
     ),
     TopicConfig(
         topic="alerting",
@@ -45,7 +42,7 @@ TOPICS: list[TopicConfig] = [
             " mechanisms, notification services, severity levels, and alert routing."
             " Use the alerting best practice skill to guide the implementation."
         ),
-        best_practice_skill=MAV_BP_ALERTING,
+        best_practice_skill=MAV_BP_OPERABILITY,
     ),
     TopicConfig(
         topic="unit-testing",
@@ -54,7 +51,7 @@ TOPICS: list[TopicConfig] = [
             " test frameworks, test runners, test coverage tools, and test data"
             " generation. Use the best practice skill to guide the implementation."
         ),
-        best_practice_skill=MAV_BP_UNIT_TESTING,
+        best_practice_skill=MAV_BP_TESTING,
     ),
     TopicConfig(
         topic="integration-testing",
@@ -63,7 +60,7 @@ TOPICS: list[TopicConfig] = [
             " for integration test frameworks, test runners, test coverage tools, and"
             " test data generation."
         ),
-        best_practice_skill=MAV_BP_INTEGRATION_TESTING,
+        best_practice_skill=MAV_BP_TESTING,
     ),
     TopicConfig(
         topic="linting",
@@ -82,9 +79,7 @@ TOPICS: list[TopicConfig] = [
             " (.github/workflows/), GitLab CI (.gitlab-ci.yml), Azure DevOps"
             " (azure-pipelines.yml), and any other CI/CD configuration. Document the"
             " pipeline stages, quality gates, and deployment strategy. If the platform"
-            " is GitHub Actions, GitLab CI, or Azure DevOps, also note which"
-            " platform-specific skill applies (mav-bp-cicd-github, mav-bp-cicd-gitlab,"
-            " or mav-bp-cicd-azure). If the platform is none of these three, create a"
+            " is detected, create a"
             " detailed project skill describing the specific platform's configuration,"
             " commands for monitoring pipeline status, common failure patterns, and"
             " platform boundaries. Use the CI/CD best practice skill to guide the"
@@ -123,7 +118,7 @@ TOPICS: list[TopicConfig] = [
             " definitions. Use the observability best practice skill to guide the"
             " implementation."
         ),
-        best_practice_skill=MAV_BP_OBSERVABILITY,
+        best_practice_skill=MAV_BP_OPERABILITY,
     ),
     TopicConfig(
         topic="api-design",

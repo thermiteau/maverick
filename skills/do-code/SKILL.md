@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-bp-error-handling, mav-bp-logging, mav-bp-application-security, mav-local-verification, mav-scope-boundaries, mav-systematic-debugging
-
 # Implement a Code Change
 
 Wraps implementation work in a Maverick skill so the workflow report
@@ -61,7 +59,7 @@ Before editing, read and follow:
   boundaries only (user input, external APIs). Don't catch what
   framework guarantees rule out. No defensive code for scenarios that
   can't happen.
-- `mav-bp-logging` — log levels, structured fields, and
+- `mav-bp-operability` — log levels, structured fields, and
   the project's logging conventions.
 - `mav-bp-application-security` — input validation, secret
   handling, authn/authz patterns. If the change touches any of these,

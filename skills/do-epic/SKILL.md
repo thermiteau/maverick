@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-multi-instance-coordination, mav-durability-on-gh, mav-block-propagation, mav-git-workflow, mav-stacked-prs, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-bp-remote-code-review, mav-claude-code-recovery, do-issue-solo
-
 # Work on GitHub Epic (Autonomous, DAG-scheduled)
 
 Work on epic issue `$ARGUMENTS` end-to-end. Builds a dependency DAG

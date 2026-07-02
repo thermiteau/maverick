@@ -5,8 +5,6 @@ user-invocable: false
 disable-model-invocation: true
 ---
 
-**Depends on:** mav-durability-on-gh, mav-block-propagation
-
 # Multi-Instance Coordination
 
 Several Claude Code instances, on different machines, may be asked to act on

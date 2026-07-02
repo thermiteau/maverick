@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-bp-linting, mav-bp-unit-testing
-
 # Recommend Best-Practice Technologies
 
 Scan the current project for missing best-practice areas and produce a short-list of 1–3 technology recommendations for each gap. Output is a recommendation file per topic, not an implementation.
@@ -17,7 +15,7 @@ Scan the current project for missing best-practice areas and produce a short-lis
 | Topic | Best-Practice Skill | What to detect |
 | ----- | ------------------- | -------------- |
 | linting | mav-bp-linting | Linter configs, formatter configs, lint scripts, pre-commit hooks |
-| unit-testing | mav-bp-unit-testing | Test frameworks, test runners, coverage tools, test files |
+| unit-testing | mav-bp-testing | Test frameworks, test runners, coverage tools, test files |
 
 ## Invocation
 

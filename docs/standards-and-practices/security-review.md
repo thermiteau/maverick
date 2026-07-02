@@ -127,8 +127,8 @@ Each of the eight `do-cybersecurity-review` categories has the same shape: the B
 | Authentication / authorisation     | Hashing algorithm, session management, route protection, admin gating                          | `mav-bp-application-security` — Authentication and Authorisation |
 | Input validation / output encoding | Schema validation at boundaries, template auto-escape, parameterised SQL, safe file/command   | `mav-bp-application-security` — Input Validation, Injection Prevention |
 | Transport / headers / CORS         | HTTPS enforcement, baseline security headers, scoped CORS                                      | `mav-bp-application-security` — Security Headers and CSP |
-| Data at rest, logging redaction    | Encryption of sensitive data, logs not leaking PII or auth headers                             | `mav-bp-application-security`; `mav-bp-logging` |
-| Logging / monitoring / rate-limit  | Auth-failure logging, brute-force detection, rate-limit on login / password-reset / signup     | `mav-bp-logging`; `mav-bp-alerting`       |
+| Data at rest, logging redaction    | Encryption of sensitive data, logs not leaking PII or auth headers                             | `mav-bp-application-security`; `mav-bp-operability` |
+| Logging / monitoring / rate-limit  | Auth-failure logging, brute-force detection, rate-limit on login / password-reset / signup     | `mav-bp-operability`; `mav-bp-operability`       |
 | Container / infrastructure         | Non-root containers, pinned base images, `.dockerignore`, bucket policies                      | `mav-bp-infrastructure-as-code`           |
 
 This separation means the security review skill stays small — it grows by editing the audit categories' detection heuristics, not by re-litigating the standard each time.

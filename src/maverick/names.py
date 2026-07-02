@@ -20,31 +20,19 @@ DO_TECH_DOCS = "do-tech-docs"
 DO_TEST = "do-test"
 DO_UPSKILL = "do-upskill"
 MAV_BP_ACCESSIBILITY = "mav-bp-accessibility"
-MAV_BP_ALERTING = "mav-bp-alerting"
 MAV_BP_API_DESIGN = "mav-bp-api-design"
 MAV_BP_APPLICATION_SECURITY = "mav-bp-application-security"
 MAV_BP_CICD = "mav-bp-cicd"
-MAV_BP_CICD_AZURE = "mav-bp-cicd-azure"
-MAV_BP_CICD_BITBUCKET = "mav-bp-cicd-bitbucket"
-MAV_BP_CICD_GITHUB = "mav-bp-cicd-github"
-MAV_BP_CICD_GITLAB = "mav-bp-cicd-gitlab"
 MAV_BP_CODE_REVIEW = "mav-bp-code-review"
 MAV_BP_DATABASE_MANAGEMENT = "mav-bp-database-management"
 MAV_BP_DEPENDENCY_MANAGEMENT = "mav-bp-dependency-management"
-MAV_BP_DOCUMENTATION = "mav-bp-documentation"
 MAV_BP_ENVIRONMENT_MANAGEMENT = "mav-bp-environment-management"
 MAV_BP_ERROR_HANDLING = "mav-bp-error-handling"
 MAV_BP_INFRASTRUCTURE_AS_CODE = "mav-bp-infrastructure-as-code"
-MAV_BP_INTEGRATION_TESTING = "mav-bp-integration-testing"
 MAV_BP_LINTING = "mav-bp-linting"
-MAV_BP_LOGGING = "mav-bp-logging"
-MAV_BP_OBSERVABILITY = "mav-bp-observability"
+MAV_BP_OPERABILITY = "mav-bp-operability"
 MAV_BP_REMOTE_CODE_REVIEW = "mav-bp-remote-code-review"
-MAV_BP_SOLUTIONS_DESIGN = "mav-bp-solutions-design"
-MAV_BP_SOURCE_CONTROL = "mav-bp-source-control"
-MAV_BP_TASK_TRACKING = "mav-bp-task-tracking"
-MAV_BP_UNIT_TESTING = "mav-bp-unit-testing"
-MAV_BP_VERSIONING = "mav-bp-versioning"
+MAV_BP_TESTING = "mav-bp-testing"
 MAV_BLOCK_PROPAGATION = "mav-block-propagation"
 MAV_CLAUDE_CODE_RECOVERY = "mav-claude-code-recovery"
 MAV_CREATE_SOLUTION_DESIGN = "mav-create-solution-design"
@@ -76,31 +64,19 @@ ALL_SKILL_NAMES = {
     DO_TEST,
     DO_UPSKILL,
     MAV_BP_ACCESSIBILITY,
-    MAV_BP_ALERTING,
     MAV_BP_API_DESIGN,
     MAV_BP_APPLICATION_SECURITY,
     MAV_BP_CICD,
-    MAV_BP_CICD_AZURE,
-    MAV_BP_CICD_BITBUCKET,
-    MAV_BP_CICD_GITHUB,
-    MAV_BP_CICD_GITLAB,
     MAV_BP_CODE_REVIEW,
     MAV_BP_DATABASE_MANAGEMENT,
     MAV_BP_DEPENDENCY_MANAGEMENT,
-    MAV_BP_DOCUMENTATION,
     MAV_BP_ENVIRONMENT_MANAGEMENT,
     MAV_BP_ERROR_HANDLING,
     MAV_BP_INFRASTRUCTURE_AS_CODE,
-    MAV_BP_INTEGRATION_TESTING,
     MAV_BP_LINTING,
-    MAV_BP_LOGGING,
-    MAV_BP_OBSERVABILITY,
+    MAV_BP_OPERABILITY,
     MAV_BP_REMOTE_CODE_REVIEW,
-    MAV_BP_SOLUTIONS_DESIGN,
-    MAV_BP_SOURCE_CONTROL,
-    MAV_BP_TASK_TRACKING,
-    MAV_BP_UNIT_TESTING,
-    MAV_BP_VERSIONING,
+    MAV_BP_TESTING,
     MAV_BLOCK_PROPAGATION,
     MAV_CLAUDE_CODE_RECOVERY,
     MAV_CREATE_SOLUTION_DESIGN,

@@ -5,8 +5,6 @@ user-invocable: false
 disable-model-invocation: true
 ---
 
-**Depends on:** mav-git-workflow
-
 # Stacked PRs
 
 When story B depends on story A and A's PR isn't merged yet, B branches from

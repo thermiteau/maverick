@@ -3,7 +3,7 @@ from maverick.names import (
     DO_ADOPT,
     DO_RECOMMEND,
     MAV_BP_LINTING,
-    MAV_BP_UNIT_TESTING,
+    MAV_BP_TESTING,
     MAV_GIT_WORKFLOW,
     MAV_LOCAL_VERIFICATION,
 )
@@ -21,7 +21,7 @@ CONFIG = SkillConfig(
     depends_on=[
         DO_RECOMMEND,
         MAV_BP_LINTING,
-        MAV_BP_UNIT_TESTING,
+        MAV_BP_TESTING,
         MAV_GIT_WORKFLOW,
         MAV_LOCAL_VERIFICATION,
     ],

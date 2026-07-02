@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** do-tech-docs, mav-scope-boundaries
-
 # Documentation Workflow
 
 Create, restructure, or update technical documentation. Operates in three modes depending on the current state of the project's documentation.

@@ -54,7 +54,7 @@ Maverick enforces testing through multiple reinforcing mechanisms across the dev
 
 ```mermaid
 flowchart TD
-    A[mav-bp-unit-testing skill] -->|defines standards| B[do-upskill system]
+    A[mav-bp-testing skill] -->|defines standards| B[do-upskill system]
     B -->|generates project-specific test guidance| C[project test skill]
     C -->|constrains LLM during coding| D[code generation with tests]
 
@@ -77,8 +77,8 @@ flowchart TD
 
 | Skill                                     | Role                                                                                     |
 | ----------------------------------------- | ---------------------------------------------------------------------------------------- |
-| mav-bp-unit-testing                       | Defines universal unit test standards: strategy, coverage targets, quality criteria      |
-| mav-bp-integration-testing                | Defines integration test standards: scope, external dependencies, data isolation         |
+| mav-bp-testing                       | Defines universal unit test standards: strategy, coverage targets, quality criteria      |
+| mav-bp-testing                | Defines integration test standards: scope, external dependencies, data isolation         |
 | mav-local-verification                    | Requires all tests to pass locally before code is committed                              |
 | Project-specific test skill (via do-upskill) | Specifies the project's test framework, conventions, and additional requirements       |
 

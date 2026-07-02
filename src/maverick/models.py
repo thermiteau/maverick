@@ -71,7 +71,7 @@ class TopicConfig:
 
     topic: str
     prompt: str
-    best_practice_skill: str  # skill name constant, e.g. "mav-bp-logging"
+    best_practice_skill: str  # skill name constant, e.g. "mav-bp-operability"
 
 
 @dataclass

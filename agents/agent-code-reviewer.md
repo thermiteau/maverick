@@ -5,8 +5,9 @@ model: opus
 color: yellow
 disallowedTools: Edit, Write, NotebookEdit
 skills:
-- mav-bp-logging
-- mav-bp-alerting
+- mav-bp-code-review
+- mav-bp-operability
+- mav-bp-testing
 - mav-scope-boundaries
 ---
 

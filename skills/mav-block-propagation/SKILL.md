@@ -5,8 +5,6 @@ user-invocable: false
 disable-model-invocation: true
 ---
 
-**Depends on:** mav-durability-on-gh
-
 # Block Propagation
 
 When an agent-code-reviewer ejects a PR for human handling, every

@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-scope-boundaries, mav-git-workflow, mav-github-issue-workflow, mav-create-solution-design, mav-create-tasks, mav-plan-execution, mav-local-verification, mav-bp-cicd, mav-claude-code-recovery, mav-bp-logging, mav-bp-alerting, mav-systematic-debugging, do-docs, do-cybersecurity-review, do-pullrequest-review
-
 # Work on GitHub Issue (Guided)
 
 Work on GitHub issue `$ARGUMENTS` interactively. Follow every phase in order. Do not skip phases. Proceed autonomously through routine work, but pause for user confirmation at key decision points marked with **🔲 Checkpoint**.

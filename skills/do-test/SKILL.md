@@ -6,8 +6,6 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-**Depends on:** mav-bp-unit-testing, mav-bp-integration-testing, mav-local-verification, mav-scope-boundaries
-
 # Write or Update Tests
 
 Wraps test-writing work in a Maverick skill so the workflow report
@@ -57,7 +55,7 @@ coverage.
 
 ## Unit Mode
 
-Apply `mav-bp-unit-testing` for the project's unit-testing
+Apply `mav-bp-testing` for the project's unit-testing
 conventions (test framework, naming, fixture style, assertion
 patterns).
 
@@ -79,7 +77,7 @@ patterns).
 
 ## Integration Mode
 
-Apply `mav-bp-integration-testing` for the project's
+Apply `mav-bp-testing` for the project's
 integration-testing conventions (which real services are stood up,
 fixture lifecycle, isolation strategy, slowness budget).
 

@@ -7,53 +7,17 @@ disable-model-invocation: true
 
 # Code Review Standards
 
-Ensure all code changes are reviewed before merging. Reviews catch defects, share knowledge, and maintain codebase quality. Optimise for small, focused pull requests with timely, constructive feedback.
+Ensure all code changes are reviewed before merging; in Maverick the reviewer is agent-code-reviewer running in-session, backed by branch-protection gates.
 
-## Principles
+## Maverick's Rules
 
-1. **All changes reviewed before merge** — no code reaches a protected branch without at least one approval from a reviewer who was not the author
-2. **Small PRs get better reviews** — large diffs lead to superficial reviews. Keep pull requests focused and digestible.
-3. **Review for correctness, test coverage, and maintainability** — style issues are handled by linters; security is handled separately by `do-cybersecurity-review` as a pre-push gate
-4. **Automated checks supplement, not replace, human review** — linting, type checking, and AI review catch mechanical issues; humans assess design, intent, and edge cases
+- **No unreviewed merges**: at least one approval on protected branches; no self-approval; stale approvals are dismissed when new commits are pushed; all CI checks must pass. Never disable or skip a check to merge faster — fix the check or the code.
+- **Security is out of scope for PR review** — it runs as a separate pre-push gate via `do-cybersecurity-review` (update mode against the diff and impact set) before the PR is opened. By review time, security findings are already surfaced and folded into the PR body.
+- **Review scope**: correctness, maintainability, test coverage, documentation. Style and formatting are the linter's job — do not comment on them. Do not review generated code (codegen, lockfiles) line by line, and do not request changes to correct-but-different approaches on personal preference.
+- **Verdict discipline**: distinguish blocking findings from non-blocking (prefix "nit:" or "optional:"); demonstrate understanding of the change rather than rubber-stamping; approve once the code is correct, tested, and maintainable — do not hold changes hostage for perfection. AI review findings require judgement — dismiss false positives with reasoning, never silently.
+- **Automated checks pass before review begins** — do not review code that fails lint, type checks, or tests.
 
-## Mandatory Review Requirements
-
-- **At least one approval** before merging to any protected branch (e.g., `main`)
-- **No self-approvals** — the author cannot approve their own pull request
-- **Stale approvals dismissed on new pushes** — if the author pushes new commits after approval, the approval is invalidated and a re-review is required
-- **All CI checks passing** — do not merge with failing lints, tests, or type checks
-
-## Review Scope
-
-Every review should evaluate the change against these dimensions:
-
-| Dimension          | What to check                                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------------------------- |
-| **Correctness**    | Does the code do what it claims? Are edge cases handled? Are assumptions documented?                  |
-| **Maintainability** | Is the code readable? Are names clear? Is complexity justified? Will the next developer understand it? |
-| **Test coverage**  | Are new code paths tested? Are edge cases covered? Do tests actually assert meaningful outcomes?       |
-| **Documentation**  | Are public APIs documented? Are non-obvious decisions explained? Is the PR description clear?          |
-
-**Security is out of scope** for the PR review process. It runs as a separate pre-push gate via `do-cybersecurity-review` (in update mode against the diff and impact set) before the PR is opened. By the time a reviewer sees a PR, security findings have already been surfaced and folded into the PR body.
-
-## Reviewer Responsibilities
-
-- **Understand the change** — read the PR description, linked issue, and relevant context before reviewing code
-- **Check edge cases** — think about what happens with empty inputs, nulls, concurrent access, large data sets, and failure modes
-- **Be timely** — complete reviews within one business day (see Review SLA below)
-- **Be constructive** — explain *why* something is a problem, not just that it is. Suggest alternatives.
-- **Distinguish blocking from non-blocking** — prefix optional suggestions with "nit:" or "optional:" so the author knows what must be addressed
-- **Approve when satisfied** — do not hold PRs hostage for perfection. If the code is correct, well-tested, and maintainable, approve it.
-
-## Author Responsibilities
-
-- **Self-review first** — review your own diff before requesting review. Catch obvious issues yourself.
-- **Write clear descriptions** — explain what the PR does, why it is needed, and how to test it. Link the relevant issue.
-- **Keep PRs small and focused** — one logical change per PR. Do not bundle unrelated changes.
-- **Respond to feedback promptly** — address comments, push fixes, or explain your reasoning within one business day
-- **Do not take feedback personally** — review comments are about the code, not the author
-
-## PR Size Guidance
+## PR Size
 
 | Size              | Lines changed | Review quality | Recommendation                                |
 | ----------------- | ------------- | -------------- | --------------------------------------------- |
@@ -62,49 +26,7 @@ Every review should evaluate the change against these dimensions:
 | **Large**         | 400 - 800     | Declining      | Split if possible. Flag to reviewers.         |
 | **Too large**     | > 800         | Poor           | Must split. Reviewers cannot effectively review this. |
 
-### How to Split Large PRs
-
-- **By layer** — separate backend and frontend changes
-- **By feature slice** — implement one endpoint or one UI component per PR
-- **By phase** — refactor first (separate PR), then add new functionality
-- **By dependency** — extract shared utilities or models into a preparatory PR
-
-## Review SLA
-
-| Action                         | Target                    |
-| ------------------------------ | ------------------------- |
-| First review comment           | Within 1 business day     |
-| Follow-up after author responds | Within 4 business hours   |
-| Final approval                 | Within 2 business days of PR creation |
-
-If a review will be delayed, communicate proactively. A quick "I'll review this tomorrow" is better than silence.
-
-## Automated Review Integration
-
-Automated tools handle mechanical checks so human reviewers can focus on design and logic:
-
-| Tool                                         | What it catches                                      |
-| -------------------------------------------- | ---------------------------------------------------- |
-| **Linters**                                  | Style violations, unused imports, formatting          |
-| **Type checkers**                            | Type mismatches, null safety, missing returns         |
-| **Test suites**                              | Regressions, broken functionality                    |
-| **AI code review** (agent-code-reviewer) | Spec compliance, correctness, test coverage, maintainability |
-| **AI security review** (do-cybersecurity-review) | Pre-push gate scoped to changed code + impact set |
-
-### Rules for Automated Reviews
-
-- **Automated checks must pass before human review** — do not waste reviewer time on code that does not compile or pass lint
-- **AI review findings require human judgement** — AI reviewers may flag false positives. The human reviewer makes the final call.
-- **Do not disable checks to merge faster** — if a check is wrong, fix the check configuration, do not skip it
-
-## What NOT to Review
-
-Human review time is expensive. Do not spend it on issues that automated tools handle:
-
-- **Style and formatting** — linters and formatters enforce this. Do not comment on brace placement, indentation, or trailing commas.
-- **Personal preferences** — if both approaches are correct, readable, and maintainable, do not request a change to match your personal style
-- **Trivial naming** — unless a name is actively misleading, do not bikeshed over whether `getData` should be `fetchData`
-- **Generated code** — auto-generated files (protobuf, GraphQL codegen, lockfiles) do not need line-by-line review
+Split strategies: by layer (backend vs frontend), by feature slice (one endpoint/component per PR), by phase (refactor PR before feature PR), or by dependency (extract shared utilities/models into a preparatory PR).
 
 ## Detecting Code Review Anti-Patterns
 
@@ -112,7 +34,6 @@ Human review time is expensive. Do not spend it on issues that automated tools h
 | ------------------------------------------------- | ---------------------------------- | ---------------------------------------------------- |
 | PR merged without any review                      | No review gate                     | Enable branch protection requiring approvals         |
 | PR with 1000+ lines changed                       | Too large to review effectively    | Split into smaller, focused PRs                      |
-| Review pending for 3+ business days               | SLA violation                      | Escalate or reassign reviewer                        |
 | All review comments are style nits                 | Wasted review effort               | Configure linters to catch style; focus on logic     |
 | Reviewer approves without comments on large PR     | Rubber-stamp review                | Reviewers must demonstrate understanding of the change |
 | Author pushes "fix review" commits without context | Lost review trail                  | Explain what was changed in response to which comment |

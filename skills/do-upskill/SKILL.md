@@ -217,7 +217,7 @@ digraph not_found {
 
 ### With a Best-Practice Skill Available
 
-1. **Read the best-practice skill** for the topic (e.g. `skills/mav-bp-logging/SKILL.md`)
+1. **Read the best-practice skill** for the topic (e.g. `skills/mav-bp-operability/SKILL.md`)
 2. **Analyse the codebase context** — identify the language, framework, deployment target (e.g. Node.js + Fastify on AWS Lambda), existing dependencies, and project structure
 3. **Generate a recommended implementation** — apply the best-practice guidance to the specific codebase, choosing concrete technologies and patterns that fit the project's stack
 

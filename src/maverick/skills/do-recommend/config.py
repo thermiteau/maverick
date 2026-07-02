@@ -2,7 +2,7 @@ from maverick.models import SkillConfig
 from maverick.names import (
     DO_RECOMMEND,
     MAV_BP_LINTING,
-    MAV_BP_UNIT_TESTING,
+    MAV_BP_TESTING,
 )
 
 CONFIG = SkillConfig(
@@ -18,6 +18,6 @@ CONFIG = SkillConfig(
     disable_model_invocation=False,
     depends_on=[
         MAV_BP_LINTING,
-        MAV_BP_UNIT_TESTING,
+        MAV_BP_TESTING,
     ],
 )

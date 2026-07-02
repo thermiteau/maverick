@@ -44,7 +44,7 @@ Maverick enforces alerting through the same multi-layer pattern used for all bes
 
 ```mermaid
 flowchart TD
-    A[mav-bp-alerting skill] -->|defines standards| B[upskill system]
+    A[mav-bp-operability skill] -->|defines standards| B[upskill system]
     B -->|generates project-specific guidance| C[project alerting skill]
     C -->|constrains LLM during coding| D[code generation]
     D -->|produces code with alerting| E[agent-code-reviewer]
@@ -56,9 +56,9 @@ flowchart TD
     I --> J[merged code with alerting]
 ```
 
-### Layer 1: mav-bp-alerting skill
+### Layer 1: mav-bp-operability skill
 
-The mav-bp-alerting skill defines universal alerting standards: severity levels, context requirements, deduplication rules, and anti-patterns to avoid. This skill is loaded into every LLM session.
+The mav-bp-operability skill defines universal alerting standards: severity levels, context requirements, deduplication rules, and anti-patterns to avoid. This skill is loaded into every LLM session.
 
 ### Layer 2: project-specific alerting skill
 

@@ -5,8 +5,6 @@ user-invocable: false
 disable-model-invocation: true
 ---
 
-**Depends on:** mav-git-workflow
-
 # GitHub Issue Workflow Patterns
 
 Reusable patterns for GitHub issue interactions. Workflow skills (e.g., do-issue-guided, do-issue-solo) reference this skill for consistent GitHub operations.
