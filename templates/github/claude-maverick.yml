@@ -1,0 +1,106 @@
+# maverick:github-action-onramp
+#
+# The low-friction remote-execution path for Maverick: run Claude Code with
+# the Maverick plugin on GitHub-hosted runners via the official
+# anthropics/claude-code-action. Most users should start here — the
+# self-hosted EC2 worker pipeline (docs/claude-code-workers.md) is only
+# needed for persistent machines, long-running epics, or fleets.
+#
+# Two jobs:
+#   1. mention  — interactive: respond to @claude mentions in issues/PRs
+#                 with the Maverick plugin loaded (skills, agents, hooks).
+#   2. label    — autonomous: an issue labelled `claude-do` runs
+#                 do-issue-solo end-to-end on the runner.
+#
+# Setup:
+#   1. Install the Claude GitHub App on the repository
+#      (https://github.com/apps/claude).
+#   2. Add the ANTHROPIC_API_KEY repository secret.
+#   3. Copy this file to .github/workflows/claude-maverick.yml.
+#   4. Create the `claude-do` label (Maverick's do-init can do this).
+#
+# Notes:
+#   - The autonomous job needs the Maverick GitHub App configured if you
+#     want the approve/auto-merge steps to run as the App identity
+#     (~/.maverick/config.json gh_app section). Without it, do-issue-solo
+#     falls back to the user credential paths it documents, and the
+#     auto-merge step is skipped in favour of a ready-for-review PR.
+#   - GitHub-hosted runners cap a job at 6 hours; scope labelled issues
+#     accordingly (single stories, not epics).
+#   - Runner state is ephemeral: Maverick's durability model (GitHub
+#     markers, push-per-task, lease expiry) is what makes reruns safe.
+
+name: Claude Maverick
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write # required by anthropics/claude-code-action@v1 (OIDC)
+
+concurrency:
+  group: claude-maverick-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: false # never kill an autonomous run mid-story
+
+jobs:
+  mention:
+    # Interactive: any @claude mention in an issue or PR comment.
+    if: >-
+      (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment')
+      && contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5 # Maverick's CLI verbs run via uv
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: |
+            https://github.com/thermiteau/maverick
+          plugins: |
+            maverick@thermite
+
+  label:
+    # Autonomous: label an issue `claude-do` and Maverick works it
+    # end-to-end (understand -> design -> tasks -> implement -> docs ->
+    # security -> PR -> review). This is the GitHub-hosted equivalent of
+    # the EC2 worker pipeline's webhook trigger.
+    if: >-
+      github.event_name == 'issues'
+      && github.event.action == 'labeled'
+      && github.event.label.name == 'claude-do'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: |
+            https://github.com/thermiteau/maverick
+          plugins: |
+            maverick@thermite
+          prompt: |
+            Use the maverick:do-issue-solo skill to complete GitHub issue
+            #${{ github.event.issue.number }} autonomously. Follow every
+            phase of the skill. If preflight reports the Maverick GitHub
+            App is not configured, complete the workflow through opening
+            the ready-for-review PR and stop before the approve/auto-merge
+            phase.

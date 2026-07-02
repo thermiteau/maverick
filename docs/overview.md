@@ -66,9 +66,9 @@ Running Claude Code locally works well for interactive development but does not 
 
 Maverick resolves this by deploying Claude Code workers to AWS. The infrastructure is managed via CloudFormation stacks, deployed either through the CLI (`maverick infra deploy`) or by uploading the standalone templates from `infra/` directly to the AWS Console. Workers are triggered by labelling GitHub issues, which fires a webhook that writes work items to DynamoDB. An EC2 instance polls the table and processes items autonomously.
 
-This is more involved than many users require and is not necessary to use Maverick. The plugin works on your local machine without any cloud infrastructure.
+This is more involved than many users require and is not necessary to use Maverick. The plugin works on your local machine without any cloud infrastructure — and for most remote needs the GitHub Action on-ramp (`templates/github/claude-maverick.yml`) is the simpler path.
 
-See [claude-code-workers.md](claude-code-workers.md) for full details.
+See [claude-code-workers.md](claude-code-workers.md) for the remote-execution decision matrix and full details.
 
 ## Why Each Practice Area Is Central
 
