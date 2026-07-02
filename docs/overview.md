@@ -138,12 +138,11 @@ maverick/
 │   ├── do-epic/                # Epic-driven parallel workflow
 │   ├── do-upskill/             # Project skill generation
 │   └── ...                     # Execution, governance, debugging
-├── agents/                     # Autonomous workers (6 agents, build output)
+├── agents/                     # Autonomous workers (5 agents, build output)
 │   ├── agent-code-reviewer.md
 │   ├── agent-issue-analyst.md
 │   ├── agent-github-issue-planner.md
 │   ├── agent-session-reviewer.md
-│   ├── agent-maverick.md
 │   └── agent-tech-docs-writer.md
 ├── hooks/                      # Tool-call enforcement rules (build output)
 ├── docs/                       # Philosophy and rationale (this directory)

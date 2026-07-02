@@ -99,7 +99,6 @@ ALL_SKILL_NAMES = {
 AGENT_CODE_REVIEWER = "agent-code-reviewer"
 AGENT_ISSUE_ANALYST = "agent-issue-analyst"
 AGENT_GITHUB_ISSUE_PLANNER = "agent-github-issue-planner"
-AGENT_MAVERICK = "agent-maverick"
 AGENT_TECH_DOCS_WRITER = "agent-tech-docs-writer"
 AGENT_SESSION_REVIEWER = "agent-session-reviewer"
 
@@ -107,7 +106,6 @@ ALL_AGENT_NAMES = {
     AGENT_CODE_REVIEWER,
     AGENT_ISSUE_ANALYST,
     AGENT_GITHUB_ISSUE_PLANNER,
-    AGENT_MAVERICK,
     AGENT_TECH_DOCS_WRITER,
     AGENT_SESSION_REVIEWER,
 }

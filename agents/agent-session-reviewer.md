@@ -3,6 +3,8 @@ name: agent-session-reviewer
 description: Reviews Claude Code session activity and git diffs to identify missed opportunities, duplicated code, and quality issues.
 model: haiku
 color: magenta
+background: true
+memory: project
 disallowedTools: Edit, Write, NotebookEdit
 ---
 

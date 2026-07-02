@@ -3,15 +3,19 @@ name: do-install
 description: Install the maverick CLI tool system-wide from the plugin directory.
 user-invocable: true
 disable-model-invocation: false
+context: fork
 ---
 
 # Install Maverick CLI
 
 Install the `maverick` CLI from wherever this plugin is loaded — marketplace cache or local dev checkout.
 
-## Dispatch
+## Execution Context
 
-Dispatch the **maverick** agent with task `install` and any user-provided arguments. The agent will follow the process below and return a structured result.
+This skill runs in its own forked context (`context: fork`) — you are
+executing it directly; there is no separate agent to dispatch. Follow the
+process below exactly and end with a structured result: task, SUCCESS or
+FAILURE, what was done, and any warnings.
 
 ## Process
 

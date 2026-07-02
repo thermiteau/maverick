@@ -8,13 +8,21 @@ are blocked or need clarification.
 
 ## Preflight (mandatory)
 
-Run this **first**, before reading any other phase. If it exits non-zero,
-halt and report the stderr output verbatim to the user. Do not proceed,
-do not work around missing prerequisites.
+Preflight output, captured when this skill was invoked (dynamic-content
+pilot — the command ran before you read this):
 
-```bash
-uv run maverick preflight do-issue-solo
-```
+!`uv run maverick preflight do-issue-solo 2>&1 && echo PREFLIGHT_OK`
+
+- Ends with `PREFLIGHT_OK` → prerequisites are met; proceed.
+- Shows an error → halt and report the output verbatim to the user. Do
+  not proceed, do not work around missing prerequisites.
+- Empty, or shows the literal command text (dynamic skill content is
+  disabled via `disableSkillShellExecution`) → run it manually first and
+  apply the same rules:
+
+  ```bash
+  uv run maverick preflight do-issue-solo
+  ```
 
 The check verifies: the project is initialised, the Maverick GitHub
 App is configured (`maverick gh-app status` reports `configured: true`),

@@ -3,15 +3,21 @@ name: do-init
 description: Initialise a project for use with Maverick — verifies the GitHub App, installs the CLI if needed, writes the project config with integration tracking, scaffolds docs, generates project skills, runs an initial cybersecurity audit, then commits the changes and opens a PR.
 user-invocable: true
 disable-model-invocation: true
+context: fork
 ---
 
 # Init Maverick Project
 
 Set up the current repository for Maverick — install the CLI if needed, validate the Maverick GitHub App, write the project-level config, scaffold docs and project skills, run the cybersecurity audit, then commit everything and open a pull request for the user to approve.
 
-## Dispatch
+## Execution Context
 
-Dispatch the **agent-maverick** agent with task `init` and any user-provided arguments. The agent will follow the process below and return a structured result.
+This skill runs in its own forked context (`context: fork`) — you are
+executing it directly; there is no separate agent to dispatch. Follow the
+process below exactly and end with the structured result in the Return
+section. Do not modify the user's project source code, perform git
+operations beyond what the process prescribes, or provision
+infrastructure.
 
 ## Process
 

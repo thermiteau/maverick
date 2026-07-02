@@ -4,6 +4,7 @@ description: Scan a project for missing best-practice areas and implement the to
 argument-hint: topic to adopt (optional — processes all topics if omitted)
 user-invocable: true
 disable-model-invocation: false
+context: fork
 ---
 
 # Adopt Best-Practice Technologies
