@@ -403,6 +403,82 @@ def heartbeat_loop(
         signal.signal(signal.SIGTERM, prev_term)
 
 
+def heartbeat_pidfile(repo: str, issue: int) -> Path:
+    """Pidfile for a daemonized heartbeat loop."""
+    safe_repo = repo.replace("/", "__")
+    return Path(f"~/.maverick/heartbeats/{safe_repo}--{issue}.pid").expanduser()
+
+
+def heartbeat_pid(repo: str, issue: int) -> int | None:
+    """Return the pid of a live daemonized heartbeat loop, or None."""
+    path = heartbeat_pidfile(repo, issue)
+    try:
+        pid = int(path.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)  # signal 0: existence check only
+    except (ProcessLookupError, PermissionError):
+        return None
+    return pid
+
+
+def daemonize_heartbeat_loop(
+    repo: str,
+    issue: int,
+    interval_seconds: int = HEARTBEAT_INTERVAL_MINUTES * 60,
+) -> int:
+    """Start heartbeat_loop as a detached daemon. Returns the daemon pid.
+
+    Replaces the old skill instruction to background the foreground loop
+    with `>/dev/null 2>&1 &` — a process backgrounded from a sandboxed
+    tool shell either dies with the shell or leaks unobservably. The
+    daemon double-forks, writes a pidfile, and removes it on exit, so
+    `coord heartbeat-status` can always answer "is my lease being
+    refreshed?". Idempotent: a live daemon for the same claim is reused.
+    """
+    existing = heartbeat_pid(repo, issue)
+    if existing is not None:
+        return existing
+
+    pidfile = heartbeat_pidfile(repo, issue)
+    pidfile.parent.mkdir(parents=True, exist_ok=True)
+
+    read_fd, write_fd = os.pipe()  # child reports its final pid to the caller
+    if os.fork():  # original process: wait for the grandchild pid
+        os.close(write_fd)
+        with os.fdopen(read_fd) as r:
+            pid = int(r.read().strip() or "0")
+        os.wait()  # reap the intermediate child
+        return pid
+
+    # Intermediate child: new session, second fork so the daemon can never
+    # reacquire a controlling terminal.
+    os.close(read_fd)
+    os.setsid()
+    if os.fork():
+        os._exit(0)
+
+    # Daemon (grandchild)
+    pid = os.getpid()
+    try:
+        pidfile.write_text(f"{pid}\n")
+        with os.fdopen(write_fd, "w") as w:
+            w.write(f"{pid}\n")
+        devnull = os.open(os.devnull, os.O_RDWR)
+        for fd in (0, 1, 2):
+            os.dup2(devnull, fd)
+        code = heartbeat_loop(repo, issue, interval_seconds=interval_seconds)
+    except Exception:
+        code = 1
+    finally:
+        try:
+            pidfile.unlink()
+        except OSError:
+            pass
+    os._exit(code)
+
+
 def release(
     repo: str,
     issue: int,
@@ -518,6 +594,15 @@ def authorize(
     auth["granted_at"] = _now_iso()
     SESSION_AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
     SESSION_AUTH_PATH.write_text(json.dumps(auth, indent=2) + "\n")
+    # Mirror to the durable task-progress marker so a resuming instance can
+    # re-derive the local auth file from GitHub. Best-effort: the local
+    # grant (verified above) is the enforcement input either way.
+    try:
+        from maverick.gh_state import patch_task_progress
+
+        patch_task_progress(repo, issue, {"authorized": auth["scopes"]}, env=env)
+    except Exception:
+        pass
     return auth
 
 

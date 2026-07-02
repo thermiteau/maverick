@@ -17,6 +17,10 @@ Run this **first**. If it exits non-zero, halt and report the stderr output to t
 uv run maverick preflight do-pullrequest-review
 ```
 
+Skip the preflight when invoked from inside a `do-issue-*` or
+`do-epic` phase — the orchestrator already ran a stricter one this
+session. Run it only when this skill is invoked standalone.
+
 The check verifies the project is initialised and `gh`/`uv` are on PATH.
 
 ## The Response Pattern

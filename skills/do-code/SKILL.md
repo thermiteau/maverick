@@ -43,6 +43,10 @@ output to the user verbatim. Do not proceed.
 uv run maverick preflight do-code
 ```
 
+Skip the preflight when invoked from inside a `do-issue-*` or
+`do-epic` phase — the orchestrator already ran a stricter one this
+session. Run it only when this skill is invoked standalone.
+
 The check verifies the project is initialised and `uv` is on PATH.
 
 ## Standards to apply

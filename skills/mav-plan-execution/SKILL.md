@@ -7,65 +7,22 @@ disable-model-invocation: true
 
 # Plan Execution
 
-Execute an implementation plan step-by-step. Each step is implemented, verified, and committed before moving to the next. Progress is tracked persistently so it survives session loss.
+Execute an implementation plan step-by-step. Each step is implemented, verified, and committed before moving to the next. Progress is tracked durably on GitHub so it survives session loss.
 
 ## Execution Mode
-
-This skill adapts its behaviour based on how it was invoked:
 
 - **Solo mode** (called from do-issue-solo): work autonomously. Only pause when genuinely blocked or when the issue is ambiguous. Press through recoverable problems.
 - **Guided mode** (called from do-issue-guided): provide checkpoints to the user. Pause when uncertain, report progress at natural break points.
 
-```dot
-digraph mode {
-    "Called from do-issue-solo?" [shape=diamond];
-    "Solo mode" [shape=box];
-    "Guided mode" [shape=box];
+## Retry Budget (canonical)
 
-    "Called from do-issue-solo?" -> "Solo mode" [label="yes"];
-    "Called from do-issue-solo?" -> "Guided mode" [label="no"];
-}
-```
+**Two fix attempts, then mav-systematic-debugging, then
+escalate per mode.** This is the single retry budget for implementation
+work — other skills reference this rule rather than defining their own.
+If the same fix fails twice, the diagnosis is wrong: step back and think
+differently, never retry the same change a third time.
 
 ## Execution Loop
-
-```dot
-digraph execute {
-    "Load plan" [shape=box];
-    "Check for prior progress" [shape=box];
-    "Pick next uncompleted step" [shape=box];
-    "Mark step in-progress" [shape=box];
-    "Implement the change" [shape=box];
-    "Run verification" [shape=box];
-    "Verification passes?" [shape=diamond];
-    "Diagnose and fix" [shape=box];
-    "Fix attempt count" [shape=diamond];
-    "Commit" [shape=box];
-    "Mark step complete" [shape=box];
-    "Update progress on issue" [shape=box];
-    "More steps?" [shape=diamond];
-    "Run full verification suite" [shape=box];
-    "Acceptance criteria check" [shape=box];
-
-    "Load plan" -> "Check for prior progress";
-    "Check for prior progress" -> "Pick next uncompleted step";
-    "Pick next uncompleted step" -> "Mark step in-progress";
-    "Mark step in-progress" -> "Implement the change";
-    "Implement the change" -> "Run verification";
-    "Run verification" -> "Verification passes?";
-    "Verification passes?" -> "Commit" [label="yes"];
-    "Verification passes?" -> "Diagnose and fix" [label="no"];
-    "Diagnose and fix" -> "Fix attempt count";
-    "Fix attempt count" -> "Run verification" [label="<= 2 attempts"];
-    "Fix attempt count" -> "Escalate (see Failure Handling)" [label="> 2 attempts"];
-    "Commit" -> "Mark step complete";
-    "Mark step complete" -> "Update progress on issue";
-    "Update progress on issue" -> "More steps?";
-    "More steps?" -> "Pick next uncompleted step" [label="yes"];
-    "More steps?" -> "Run full verification suite" [label="no"];
-    "Run full verification suite" -> "Acceptance criteria check";
-}
-```
 
 ### 1. Load the Tasks
 
@@ -73,19 +30,18 @@ Read the task list from one of:
 - The tasks comment on the GitHub issue (if working from do-issue)
 - The task list directly (if invoked standalone)
 
+```bash
+# The tasks comment id lives in the task-progress marker
+uv run maverick task-progress read <repo> <issue>   # -> .comments.tasks
+gh api "repos/<repo>/issues/comments/<id>" --jq '.body'
+```
+
 ### 2. Check for Prior Progress
 
-If resuming after a crash or new session, determine where to pick up:
-- Read the tasks comment and parse checkboxes (`- [x]` = done, `- [ ]` = pending)
-- Cross-reference with `git log` — if commits exist for tasks that aren't checked off, the comment update was lost. Check them off now.
+If resuming after a crash or new session:
+- Parse the checkboxes in the tasks comment (`- [x]` = done, `- [ ]` = pending)
+- Cross-reference with `git log` — if commits exist for tasks that aren't checked off, the comment update was lost. Check them off now (step 3.6).
 - Resume from the first genuinely unchecked task.
-
-```bash
-# Read tasks comment (issue mode)
-REPO=$(jq -r '.repo' .claude/issue-state.json)
-COMMENT_ID=$(jq -r '.comments.tasks' .claude/issue-state.json)
-gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq '.body'
-```
 
 ### 3. Execute Each Task
 
@@ -94,71 +50,34 @@ For each task in the list:
 1. **Mark in-progress** — note which task you are working on
 2. **Implement** — make the change described in the task
 3. **Verify** — run verification (lint, typecheck, tests) per the mav-local-verification skill
-4. **Fix if needed** — if verification fails, diagnose and fix (see Failure Handling)
+4. **Fix if needed** — apply the retry budget above
 5. **Commit** — descriptive message referencing the issue number, using conventional commits
-6. **Mark complete** — update the tasks comment to check off the task
+6. **Mark complete** — check the task off durably:
+   ```bash
+   uv run maverick tasks check <repo> <issue> <n>
+   ```
+   The command is idempotent, edits exactly one checkbox, and goes
+   through the App identity when configured. Never PATCH the comment
+   body by hand.
 
 Never batch multiple tasks into one commit unless they are trivially related (e.g. a one-line change and its import).
 
-### 4. Update Progress
-
-After completing each task, update the tasks comment to check off the task:
-
-```bash
-REPO=$(jq -r '.repo' .claude/issue-state.json)
-COMMENT_ID=$(jq -r '.comments.tasks' .claude/issue-state.json)
-
-CURRENT_BODY=$(gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq '.body')
-# Update the checkbox for the completed task — write goes through the App
-# identity so the comment's edit history matches its original author (see
-# mav-github-issue-workflow for the full identity rule).
-uv run maverick gh-app gh -- api "repos/$REPO/issues/comments/$COMMENT_ID" \
-  -X PATCH \
-  -f body="$UPDATED_BODY"
-```
-
-This ensures progress survives session failures, VM loss, or subagent crashes.
-
-### 5. Run Full Verification Suite
+### 4. Run Full Verification Suite
 
 After all steps are complete, run the project's full verification suite:
-- Lint
-- Type checking
-- All tests
-
-Fix any issues found. Do not proceed to acceptance criteria with failing checks.
+lint, type checking, all tests. Fix any issues found. Do not proceed to
+acceptance criteria with failing checks.
 
 ## Failure Handling
 
-```dot
-digraph failure {
-    "Verification fails" [shape=box];
-    "Diagnose the failure" [shape=box];
-    "Fix and re-verify" [shape=box];
-    "Passes now?" [shape=diamond];
-    "Attempt count" [shape=diamond];
-    "Apply mav-systematic-debugging skill" [shape=box];
-    "Still stuck?" [shape=diamond];
-    "Continue" [shape=box];
-
-    "Verification fails" -> "Diagnose the failure";
-    "Diagnose the failure" -> "Fix and re-verify";
-    "Fix and re-verify" -> "Passes now?";
-    "Passes now?" -> "Continue" [label="yes"];
-    "Passes now?" -> "Attempt count" [label="no"];
-    "Attempt count" -> "Fix and re-verify" [label="<= 2"];
-    "Attempt count" -> "Apply mav-systematic-debugging skill" [label="> 2"];
-    "Apply mav-systematic-debugging skill" -> "Still stuck?";
-    "Still stuck?" -> "Fix and re-verify" [label="no — found the issue"];
-    "Still stuck?" -> "Escalate per mode" [label="yes"];
-}
-```
+Apply the retry budget: diagnose → fix → re-verify, at most twice; then
+mav-systematic-debugging; then escalate per mode.
 
 ### Escalation by Mode
 
 | Situation | Solo | Guided |
 |---|---|---|
-| Step fails after 2 fix attempts | Apply mav-systematic-debugging skill. If still stuck, ask user for help. | Ask user for help immediately. |
+| Step fails after the retry budget | Apply mav-systematic-debugging. If still stuck, ask user for help. | Ask user for help immediately after 2 attempts. |
 | Design assumption proves wrong | Reassess against the design. Adjust approach if confident. Only ask user if the change is fundamental. | Pause and discuss with user before adjusting. |
 | External blocker (API down, missing dependency) | Document the blocker and ask user. | Document the blocker and ask user. |
 | Unsure about implementation approach | Try the most likely approach. If it doesn't work, try the alternative. Ask user only as last resort. | Ask user which approach to take. |
@@ -167,8 +86,8 @@ digraph failure {
 
 - **Do not skip a failing verification.** Fix it first.
 - **Do not move to the next step with a broken codebase.** Each commit must leave the codebase working.
-- **Do not silently change the design.** If the plan needs to change, update the plan comment and (in guided mode) inform the user.
-- **Do not retry the same fix repeatedly.** If the same fix fails twice, the diagnosis is wrong. Step back and think differently.
+- **Do not silently change the design.** If the plan needs to change, update the plan comment (`uv run maverick issue comment update --kind plan`) and (in guided mode) inform the user.
+- **Do not retry the same fix repeatedly.** The budget exists because a repeated identical fix means the diagnosis is wrong.
 
 ## Guided Mode Checkpoints
 
@@ -193,6 +112,5 @@ After all steps are complete and the full verification suite passes:
 4. Run the full verification suite again after any additions
 
 Do not proceed to code review until every acceptance criterion is met and all checks pass.
-
 
 <!-- maverick-plugin-version: 3.3.10-dev -->

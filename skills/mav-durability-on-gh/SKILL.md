@@ -93,11 +93,15 @@ digraph hydrate {
 Treat the local files below as **hints** — always reconcile against GitHub
 before acting on them:
 
-- `.claude/issue-state.json` — single-issue working state (WP single-issue cache)
 - `.claude/epic-state.json` — epic-state cache (mirror of `maverick-state`)
 - `.maverick/worktrees/<branch>/` — worktree checkouts
+- `.maverick/session-auth.json` — authorization cache (re-derivable via
+  `uv run maverick coord authorize`)
 
-If any of these disagrees with GitHub, GitHub wins. Overwrite the local copy.
+Single-issue state has **no local file at all**: the `maverick-task-progress`
+marker is the only surface (read it with `uv run maverick task-progress read`,
+resume with `uv run maverick coord resume-point`). If any local cache
+disagrees with GitHub, GitHub wins. Overwrite the local copy.
 
 ## Marker write protocol
 

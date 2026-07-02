@@ -21,7 +21,7 @@ You will be given:
 
 ## Process
 
-1. **Initialise state** — Create or read `.claude/issue-state.json` per the mav-github-issue-workflow skill. If the state file already exists and the phase is `design` or later, skip to returning the existing design.
+1. **Read state** — `uv run maverick task-progress read <repo> $ISSUE_NUMBER`. If the recorded phase is already `design` or later and `comments.design` is set, skip to returning the existing design.
 
 2. **Read the issue:**
 
@@ -35,13 +35,17 @@ You will be given:
    - **Solo mode** — if the issue is ambiguous but you can make a reasonable assumption, state the assumption and continue. Only stop if you truly cannot proceed.
    - **Guided mode** — if the issue is ambiguous or missing critical information, include the questions in your return output so the caller can ask the user.
 
-5. **Update phase** to `understand` in the state file.
+5. **Checkpoint** — `uv run maverick task-progress set <repo> $ISSUE_NUMBER claimed` (records that understanding has begun; the design checkpoint follows in step 8).
 
 6. **Explore the codebase** — Follow the mav-create-solution-design skill: read requirements, explore with Glob/Grep/Read and subagents, identify affected areas, draft the design, and validate against the issue's acceptance criteria.
 
-7. **Post the design** as a comment on the issue per the mav-github-issue-workflow skill (post design comment pattern). Capture the comment ID.
+7. **Post the design** durably (writes the comment, returns its id, and records `comments.design` in the task-progress marker in one step):
 
-8. **Update state** — set `phase` to `design` and `comments.design` to the comment ID.
+   ```bash
+   uv run maverick issue comment post <repo> $ISSUE_NUMBER --kind design --body-file /tmp/design.md
+   ```
+
+8. **Checkpoint** — `uv run maverick task-progress set <repo> $ISSUE_NUMBER design`.
 
 ## What You Return
 

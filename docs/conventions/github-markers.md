@@ -63,6 +63,7 @@ General shape:
 | `maverick-claim` | Each claimed issue | One per active claim | Identifies the claiming instance |
 | `maverick-lease` | Each claimed issue | One rolling | Heartbeat timestamp |
 | `maverick-bprop` | Epic issue | One (transient) | Block-propagation in-flight; absent when propagation is complete |
+| `maverick-task-progress` | Each story issue | One rolling | The single issue-state surface: phase checkpoint, branch, artefact comment ids, authorized scopes |
 
 "One rolling" means the single latest comment of that kind is authoritative; older ones are historical noise. Use the upsert pattern (update-in-place if the kind exists; otherwise post) — see `mav-durability-on-gh`.
 
@@ -132,6 +133,27 @@ refresh every ~2 minutes.
 ```
 
 Once every descendant appears in `labelled`, delete the comment.
+`uv run maverick bprop run` owns the full write-walk-clear protocol.
+
+**`maverick-task-progress`**
+
+```json
+{
+  "phase": "claimed|design|tasks|branch|implement|docs|security|pr_open|ci_green|review|merged|complete|ejected",
+  "instance_id": "abc123def0",
+  "updated_at": "2026-07-02T10:20:00Z",
+  "branch": "feat/42-add-export",
+  "comments": {"design": 123, "plan": 124, "tasks": 125, "completion": 126},
+  "has_sub_issues": true,
+  "authorized": ["infra"]
+}
+```
+
+Only `phase`, `instance_id`, and `updated_at` are always present; the
+rest accrete as the workflow reaches them. Writers must merge, never
+replace — `maverick task-progress set` and `maverick issue comment post`
+are the sanctioned write paths, and `maverick coord resume-point` is the
+sanctioned way to turn this payload into a resume decision.
 
 ## Parser contract
 

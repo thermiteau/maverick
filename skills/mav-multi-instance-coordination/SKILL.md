@@ -74,21 +74,12 @@ instances reading the marker can see exactly what you own.
 
 ## Atomic claim
 
-The `claim` primitive does four things, in order:
-
-1. Adds the `claude-in-progress` label (idempotent — repeating is safe).
-2. Posts a `maverick-claim` marker with this instance's id, host, scope,
-   and `claimed_at` timestamp.
-3. Writes an initial `maverick-lease` marker with `expires_at` set to
-   10 minutes from now.
-4. **Re-reads** the claim markers to detect simultaneous claims.
-
-GitHub's API is not strongly ordered, so step 1 alone is insufficient —
-two instances can both see "no label" and then both write the label. Step
-4 is the race-detection check: if the re-read shows more than one
-`maverick-claim` marker with an active instance, the instance with the
-**lower id (lexicographic)** wins, and every other instance runs
-`release` and aborts.
+Run `uv run maverick coord claim <repo> <issue>`. The behavioural
+contract is all you need: **exit 0 means you own the claim; non-zero
+means you do not — abort cleanly without modifying the issue.** Race
+detection, tie-breaking, and label/marker/lease mechanics live inside the
+CLI (see `docs/conventions/github-markers.md` for internals); never
+re-implement or second-guess them.
 
 ## Heartbeat
 

@@ -5,73 +5,32 @@
 
 Reusable patterns for GitHub issue interactions. Workflow skills (e.g., do-issue-guided, do-issue-solo) reference this skill for consistent GitHub operations.
 
-## Issue State File
+## Issue State
 
-Maintain a local state file at `.claude/issue-state.json` to track progress across sessions and subagents. This file MUST be gitignored.
+The **`maverick-task-progress` marker on the GitHub issue is the single
+state surface** for issue-driven work. It records the current phase, the
+working branch, and the artefact comment ids — durable on GitHub, shared
+across instances, written only through the CLI. There is no local state
+file; anything local is a derivable cache.
 
-### Structure
-
-```json
-{
-  "issue": 42,
-  "repo": "owner/repo",
-  "branch": "feat/42-short-description",
-  "phase": "understand|design|plan|branch|implement|complete",
-  "comments": {
-    "design": null,
-    "plan": null,
-    "completion": null
-  }
-}
-```
-
-### Initialise State
-
-Create the state file at the start of work. Infer the repo from the current git remote.
+Read it:
 
 ```bash
-REPO=$(gh repo view --json nameWithOwner -q '.nameWithOwner')
-mkdir -p .claude
-cat > .claude/issue-state.json << EOF
-{
-  "issue": $ISSUE_NUMBER,
-  "repo": "$REPO",
-  "branch": null,
-  "phase": "understand",
-  "comments": {
-    "design": null,
-    "plan": null,
-    "completion": null
-  }
-}
-EOF
+uv run maverick task-progress read <repo> <issue>
 ```
 
-### Read State
+Write phase checkpoints (merge semantics — accreted fields like the
+branch and comment ids survive):
 
 ```bash
-cat .claude/issue-state.json
+uv run maverick task-progress set <repo> <issue> <phase>
+uv run maverick task-progress set <repo> <issue> branch --branch feat/42-add-export
+uv run maverick task-progress set <repo> <issue> tasks --has-sub-issues
 ```
 
-### Update State Field
-
-Use `jq` (or equivalent) to update individual fields:
-
-```bash
-# Update phase
-jq '.phase = "design"' .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
-
-# Update branch
-jq '.branch = "feat/42-add-export"' .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
-```
-
-### Ensure Gitignore
-
-Before creating the state file, ensure it is gitignored:
-
-```bash
-grep -q 'issue-state.json' .gitignore 2>/dev/null || echo '.claude/issue-state.json' >> .gitignore
-```
+Never compose or edit the marker comment by hand — the CLI owns the
+schema. For marker kinds without a dedicated verb, use
+`uv run maverick gh-state write`.
 
 ## Reading an Issue
 
@@ -89,55 +48,44 @@ gh issue view $ISSUE_NUMBER --json body -q '.body'
 
 # Labels as comma-separated list
 gh issue view $ISSUE_NUMBER --json labels -q '[.labels[].name] | join(", ")'
-
-# Comment count
-gh issue view $ISSUE_NUMBER --json comments -q '.comments | length'
 ```
 
-## Posting Comments
+## Posting Artefact Comments
 
-Use one comment per artifact (design, plan, completion). Capture the comment ID so it can be updated later.
+One comment per artefact — design, plan, tasks, completion. Post and
+update them **only** through the CLI, which returns the comment id from
+the API response (never scraped from output that may carry warnings) and
+records it in the task-progress marker automatically:
+
+```bash
+# Post (body from a file, or '-' for stdin)
+uv run maverick issue comment post <repo> <issue> --kind design --body-file /tmp/design.md
+
+# Revise later — updates the same comment, keeping one artefact per kind
+uv run maverick issue comment update <repo> <issue> --kind design --body-file /tmp/design-v2.md
+```
 
 ### Identity
 
-Maverick-generated comments — design, plan, tasks, completion, PR-review verdicts, and updates to any of those — are posted **as the Maverick GitHub App** so they are visually distinct from the human user's edits. Use `uv run maverick gh-app gh -- <args>` for any write that produces a comment. Plain `gh` is fine for **read** operations (`gh issue view`, `gh api ... --jq '.body'`).
+The CLI posts as the **Maverick GitHub App** when configured, so
+Maverick-generated comments are visually distinct from the human user's.
+Plain `gh` is fine for read operations.
 
-**Failure modes — do not silently switch identity mid-workflow:**
+**Failure modes:**
 
-- *App not configured* — `uv run maverick gh-app gh ...` exits with code `4` and a `GitHub App not configured` message. For solo / ad-hoc single-machine use this is acceptable; fall back to plain `gh issue comment ...` (the comment will be authored by the human user). The fallback only applies to the entire session, not per-call: if the App is configured, every comment goes through it.
-- *App configured but missing `issues:write` or `pull_requests:write`* — the underlying `gh` call fails with HTTP 403. This is a **setup error**, not a runtime fallback. Stop the workflow and tell the user to grant the permission via the GitHub App settings, then re-run. Do not retry as the human user.
+- *App not configured* — the CLI falls back to the user's `gh`
+  credentials automatically. Acceptable for solo / ad-hoc use; the
+  fallback applies to the whole session, never per-call.
+- *App configured but missing `issues:write` or `pull_requests:write`* —
+  the call fails with HTTP 403. This is a **setup error**: stop and tell
+  the user to grant the permission via the GitHub App settings, then
+  re-run. Do not retry as the human user.
 
-### Post and Capture ID
+### Artefact templates
 
-```bash
-COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<'EOF'
-## Section Title
+**Design** (`--kind design`):
 
-Content here
-
----
-*Posted by Claude Code*
-EOF
-)" 2>&1)
-```
-
-Extract the comment ID from the URL for later updates:
-
-```bash
-# gh issue comment prints the URL to stdout, extract the numeric ID
-COMMENT_ID=$(echo "$COMMENT_URL" | grep -o '[0-9]*$')
-```
-
-Then save to state:
-
-```bash
-jq ".comments.design = $COMMENT_ID" .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
-```
-
-### Post Design Comment
-
-```bash
-COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<'DESIGN_EOF'
+```markdown
 ## Solution Design
 
 ### Approach
@@ -154,95 +102,22 @@ COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$
 
 ---
 *Posted by Claude Code*
-DESIGN_EOF
-)" 2>&1)
-
-COMMENT_ID=$(echo "$COMMENT_URL" | grep -o '[0-9]*$')
-jq ".comments.design = $COMMENT_ID | .phase = \"design\"" .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
 ```
 
-### Post Plan Comment
+**Plan** (`--kind plan`): numbered steps, each with Files / Change /
+Verify lines.
 
-```bash
-COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<'PLAN_EOF'
-## Implementation Plan
-
-1. **Step name**
-   - Files: `path/to/file.ts`
-   - Change: <what the change does>
-   - Verify: <test command or check>
-
-2. **Step name**
-   - Files: `path/to/file.ts`
-   - Change: <what the change does>
-   - Verify: <test command or check>
-
----
-*Posted by Claude Code*
-PLAN_EOF
-)" 2>&1)
-
-COMMENT_ID=$(echo "$COMMENT_URL" | grep -o '[0-9]*$')
-jq ".comments.plan = $COMMENT_ID | .phase = \"plan\"" .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
-```
-
-### Post Completion Comment
-
-```bash
-BRANCH=$(jq -r '.branch' .claude/issue-state.json)
-
-COMMENT_URL=$(uv run maverick gh-app gh -- issue comment $ISSUE_NUMBER --body "$(cat <<DONE_EOF
-## Implementation Complete
-
-**Branch:** \`$BRANCH\`
-
-### Changes Made
-- <summary of changes>
-
-### Verification
-- [ ] Linting passes
-- [ ] Tests pass
-
----
-*Posted by Claude Code*
-DONE_EOF
-)" 2>&1)
-
-COMMENT_ID=$(echo "$COMMENT_URL" | grep -o '[0-9]*$')
-jq ".comments.completion = $COMMENT_ID | .phase = \"complete\"" .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
-```
-
-## Updating Comments
-
-When a design or plan is revised, update the existing comment instead of posting a new one. Read the comment ID from the state file.
-
-```bash
-REPO=$(jq -r '.repo' .claude/issue-state.json)
-COMMENT_ID=$(jq -r '.comments.design' .claude/issue-state.json)
-
-uv run maverick gh-app gh -- api "repos/$REPO/issues/comments/$COMMENT_ID" \
-  -X PATCH \
-  -f body="$(cat <<'EOF'
-## Solution Design (Revised)
-
-<updated content>
-
----
-*Posted by Claude Code*
-EOF
-)"
-```
-
-The update goes through the same App identity as the original post, so the comment author stays consistent across edits.
+**Completion** (`--kind completion`): branch name, summary of changes,
+verification status.
 
 ## Branching
 
-Follow the {{ SKILLS.MAV_GIT_WORKFLOW }} skill for branch naming conventions, base branch identification, and branch creation.
-
-After creating the branch, save to state:
+Follow the {{ SKILLS.MAV_GIT_WORKFLOW }} skill for branch naming
+conventions, base branch identification, and branch creation. After
+creating the branch, record it:
 
 ```bash
-jq ".branch = \"$BRANCH_NAME\" | .phase = \"branch\"" .claude/issue-state.json > .claude/issue-state.tmp && mv .claude/issue-state.tmp .claude/issue-state.json
+uv run maverick task-progress set <repo> <issue> branch --branch "$BRANCH_NAME"
 ```
 
 ## Pull Requests
@@ -250,10 +125,7 @@ jq ".branch = \"$BRANCH_NAME\" | .phase = \"branch\"" .claude/issue-state.json >
 ### Create PR Referencing the Issue
 
 ```bash
-ISSUE_NUMBER=$(jq -r '.issue' .claude/issue-state.json)
-BRANCH=$(jq -r '.branch' .claude/issue-state.json)
 PR_TARGET=$(uv run maverick git-workflow pr-target)
-
 git push -u origin $BRANCH
 
 gh pr create --base "$PR_TARGET" --title "<concise title>" --body "$(cat <<PR_EOF
@@ -271,41 +143,21 @@ PR_EOF
 )"
 ```
 
-Using `Closes #N` in the PR body automatically closes the issue when the PR is merged.
+`Closes #N` must appear in the PR body **and survive into the squash
+commit body** — in squash-merge repos GitHub scans the commit that lands
+on the default branch, not the PR description at click-time (#56).
+`do-issue-solo` re-verifies the line immediately before merging.
 
 ## Resuming Work
 
-When resuming work on an issue (new session, after crash, subagent picking up):
-
-```dot
-digraph resume {
-    "State file exists?" [shape=diamond];
-    "Read state file" [shape=box];
-    "Read phase" [shape=box];
-    "Continue from current phase" [shape=box];
-    "Ask user for issue number" [shape=box];
-    "Initialise state" [shape=box];
-
-    "State file exists?" -> "Read state file" [label="yes"];
-    "State file exists?" -> "Ask user for issue number" [label="no"];
-    "Read state file" -> "Read phase";
-    "Read phase" -> "Continue from current phase";
-    "Ask user for issue number" -> "Initialise state";
-    "Initialise state" -> "Continue from current phase";
-}
-```
-
-1. Check if `.claude/issue-state.json` exists
-2. If yes — read it, resume from the recorded phase
-3. If no — this is a fresh start, initialise the state file
-4. If comment IDs are present, verify they still exist on the issue before updating
-
-## Cleanup
-
-After the PR is created and the workflow is complete:
+When resuming work on an issue (new session, after crash, subagent
+picking up), do not reconstruct state by hand — ask the CLI:
 
 ```bash
-rm .claude/issue-state.json
+uv run maverick coord resume-point <repo> <issue>
 ```
 
-Do not delete the state file until the PR is successfully created, as it is needed for crash recovery.
+It reads the task-progress marker, finds the PR via the recorded branch,
+inspects CI and the review verdict, and returns `{next, instruction,
+evidence}`. Follow the instruction. If the evidence contradicts what you
+observe locally, GitHub wins — local files are a cache.

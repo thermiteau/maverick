@@ -474,6 +474,9 @@ class TestTaskProgressCli:
             return 1
 
         monkeypatch.setattr(gh_state, "upsert_marker", fake_upsert)
+        # `set` now merges into the existing payload via patch_task_progress;
+        # simulate a fresh issue with no prior marker.
+        monkeypatch.setattr(gh_state, "latest_marker", lambda *a, **k: None)
         # Redirect the timeline append to a captured list so the test
         # doesn't litter the working tree's .maverick/reports/. The new
         # append_event signature takes a single typed event dict.
@@ -525,6 +528,7 @@ class TestTaskProgressCli:
         # rather than coincidentally matching the baked-in default.
         monkeypatch.setenv("MAVERICK_LLM", "test-sentinel-llm")
         monkeypatch.setattr(gh_state, "upsert_marker", lambda *a, **k: 1)
+        monkeypatch.setattr(gh_state, "latest_marker", lambda *a, **k: None)
 
         timeline_events: list[dict] = []
         monkeypatch.setattr(

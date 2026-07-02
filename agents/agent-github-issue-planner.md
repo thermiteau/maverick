@@ -17,24 +17,22 @@ You will be given:
 
 - **Issue number** — the GitHub issue
 - **Repo** — `owner/repo` (or infer from the current git remote)
-- **Design comment ID** — the GitHub comment containing the approved design (from `.maverick/issue-state.json`)
+- **Design comment ID** — the GitHub comment containing the approved design (from the task-progress marker's `comments.design`)
 
 ## Process
 
-1. **Read state** — Read `.maverick/issue-state.json` per the mav-github-issue-workflow skill. Verify that `phase` is `design` and `comments.design` is set. If the phase is already `tasks` or later, skip to returning the existing tasks.
+1. **Read state** — `uv run maverick task-progress read $REPO $ISSUE_NUMBER`. Verify `comments.design` is set. If the recorded phase is already `tasks` or later, skip to returning the existing tasks.
 
 2. **Read the design** from the GitHub comment:
 
    ```bash
-   REPO=$(jq -r '.repo' .maverick/issue-state.json)
-   COMMENT_ID=$(jq -r '.comments.design' .maverick/issue-state.json)
+   COMMENT_ID=<comments.design from the marker>
    gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq '.body'
    ```
 
 3. **Read the issue** for full context (acceptance criteria, constraints):
 
    ```bash
-   ISSUE_NUMBER=$(jq -r '.issue' .maverick/issue-state.json)
    gh issue view $ISSUE_NUMBER --json title,body,labels
    ```
 
@@ -42,14 +40,18 @@ You will be given:
 
 5. **Persist the tasks:**
 
-   **If < 5 tasks:** Post a checklist comment on the issue per the mav-github-issue-workflow skill. Capture the comment ID.
+   **If < 5 tasks:** Post the checklist comment durably (writes the
+   comment and records `comments.tasks` in the task-progress marker):
 
-   **If >= 5 tasks:** Create sub-issues linked to the parent issue per the mav-create-tasks skill. Post a summary comment on the parent issue listing all sub-issues with execution order. Capture the comment ID.
+   ```bash
+   uv run maverick issue comment post $REPO $ISSUE_NUMBER --kind tasks --body-file /tmp/tasks.md
+   ```
 
-6. **Update state:**
-   - Set `phase` to `tasks`
-   - If checklist: set `comments.tasks` to the comment ID
-   - If sub-issues: set `has_sub_issues` to `true` and `comments.tasks` to the summary comment ID
+   **If >= 5 tasks:** Create sub-issues linked to the parent issue per the mav-create-tasks skill, then post the summary comment listing all sub-issues with execution order via the same `issue comment post --kind tasks` command.
+
+6. **Checkpoint:**
+   `uv run maverick task-progress set $REPO $ISSUE_NUMBER tasks` — append
+   `--has-sub-issues` when the sub-issues path was taken.
 
 ## What You Return
 

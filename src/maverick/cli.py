@@ -280,6 +280,9 @@ def main():
         "task-progress",
         "issue",
         "pr",
+        "tasks",
+        "bprop",
+        "docs",
         "git-workflow",
         "report",
     ):
