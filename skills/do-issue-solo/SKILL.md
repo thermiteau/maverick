@@ -64,6 +64,13 @@ Before any other phase.
    ```bash
    uv run maverick report run-start do-issue-solo --issue $ARGUMENTS --phase claimed
    ```
+   From here, **agent-dispatch intervals are recorded automatically** by
+   the plugin's Subagent hooks (open on dispatch, closed on return), and
+   invoking a tracked inner skill auto-opens its `skill-dispatch`
+   interval. Your only bookkeeping obligation is the one-line
+   `report end --auto --outcome <…>` after each inner *skill* returns —
+   everything else is hooks. Anything left open is flushed as
+   `outcome=unknown` by `report generate`.
 4. Start the heartbeat daemon. It refreshes the lease every
    `HEARTBEAT_INTERVAL_MINUTES` minutes for as long as you hold the
    claim and exits on its own when the claim is released:
@@ -133,43 +140,40 @@ implementation.
    If either form refuses a non-fast-forward, halt and report to the
    user — there are local commits on `$STORY_BASE` that have not been
    pushed, which violates trunk-based discipline.
-2. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue $ARGUMENTS --phase design --agent agent-issue-analyst --skill-name mav-create-solution-design`.
-3. Dispatch the **agent-issue-analyst** agent with:
+2. Dispatch the **agent-issue-analyst** agent with:
    - Issue number: `$ARGUMENTS`
    - Mode: `solo`
-4. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue $ARGUMENTS --phase design --agent agent-issue-analyst --skill-name mav-create-solution-design --outcome success`.
-   (Use `--outcome failure` if the agent returned an error rather than a design.)
-5. When the agent returns, verify the design landed durably —
+   (The dispatch interval is recorded by the Subagent hooks — no
+   `report` calls needed.)
+3. When the agent returns, verify the design landed durably —
    `uv run maverick task-progress read <repo> $ARGUMENTS` shows
    `comments.design` set to a comment ID (the analyst posts it via
    `uv run maverick issue comment post --kind design`).
-6. If the agent flagged ambiguities it could not resolve:
-   - Open the question interval: `uv run maverick report begin question --issue $ARGUMENTS --phase design --topic ambiguity-resolution`.
+4. If the agent flagged ambiguities it could not resolve:
+   - `uv run maverick report begin question --issue $ARGUMENTS --topic ambiguity-resolution`
    - Ask the user.
-   - Close it: `uv run maverick report end question --issue $ARGUMENTS --phase design --topic ambiguity-resolution --outcome success`.
+   - `uv run maverick report end --auto --issue $ARGUMENTS --outcome success`
 
    Otherwise continue.
-7. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS design`.
+5. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS design`.
 
 ## Phase 3: Create Tasks (subagent)
 
 Run Phase 3 as a subagent.
 
-1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue $ARGUMENTS --phase tasks --agent agent-github-issue-planner --skill-name mav-create-tasks`.
-2. Dispatch the **agent-github-issue-planner** agent with:
+1. Dispatch the **agent-github-issue-planner** agent with:
    - Issue number: `$ARGUMENTS`
    - Design comment ID from the task-progress marker (`comments.design`)
-3. Close it: `uv run maverick report end agent-dispatch --issue $ARGUMENTS --phase tasks --agent agent-github-issue-planner --skill-name mav-create-tasks --outcome success`.
-4. When the agent returns, verify the tasks landed durably —
+2. When the agent returns, verify the tasks landed durably —
    `uv run maverick task-progress read <repo> $ARGUMENTS` shows:
    - If < 5 tasks: `comments.tasks` set to a comment ID (posted via
      `uv run maverick issue comment post --kind tasks`)
    - If >= 5 tasks: sub-issues exist on the issue
-5. If the agent flagged scope concerns:
-   - Open the question interval: `uv run maverick report begin question --issue $ARGUMENTS --phase tasks --topic scope-concerns`.
+3. If the agent flagged scope concerns:
+   - `uv run maverick report begin question --issue $ARGUMENTS --topic scope-concerns`
    - Ask the user.
-   - Close it: `uv run maverick report end question --issue $ARGUMENTS --phase tasks --topic scope-concerns --outcome success`.
-6. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS tasks`
+   - `uv run maverick report end --auto --issue $ARGUMENTS --outcome success`
+4. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS tasks`
    (append `--has-sub-issues` when the >= 5 tasks path was taken).
 
 ## Phase 4: Create Worktree + Branch
@@ -201,49 +205,35 @@ checkout.
 **For each task (sub-issue or checklist item), in order:**
 
 Each step below is its own obligation. After `/do-code` returns
-in step 2, **do not stop** — continue with step 3. The inner skill's
+in step 1, **do not stop** — continue with step 2. The inner skill's
 return is a hand-back, not a task-complete signal (#106).
 
-1. **Open the `skill-dispatch` interval for `do-code`.** This
-   pins the project's coding standards before any edit and gives the
-   workflow report a `skill-dispatch` row for the task:
-   ```bash
-   uv run maverick report begin skill-dispatch --issue $ARGUMENTS \
-       --phase implement --skill-name do-code
-   ```
-2. **Invoke `/do-code <one-line task description>`.** The
+1. **Invoke `/do-code <one-line task description>`.** The
    skill reads before writing, makes the smallest diff that satisfies
    the task, verifies per `mav-local-verification`, and
-   refuses to return on red. When it returns, proceed to step 3 — do
-   not summarise and stop.
-3. **Close the `skill-dispatch` interval** with the outcome:
+   refuses to return on red. (Invoking it auto-opens the
+   `skill-dispatch` interval via the plugin's Skill hook.)
+2. **Record the outcome** — the single bookkeeping obligation per task:
    ```bash
-   uv run maverick report end skill-dispatch --issue $ARGUMENTS \
-       --phase implement --skill-name do-code \
-       --outcome <success|failure>
+   uv run maverick report end --auto --issue $ARGUMENTS --outcome <success|failure>
    ```
    On `failure`, halt the per-task loop and diagnose per
    `mav-systematic-debugging` — do not proceed to the
    commit step with a failing build or red tests.
-4. **(Optional) Sibling-dispatch `/do-test`** if the change
+3. **(Optional) Sibling-dispatch `/do-test`** if the change
    needs new or updated tests that `do-code` did not
-   already cover. Same three-step shape as above:
+   already cover — then record its outcome the same way:
    ```bash
-   uv run maverick report begin skill-dispatch --issue $ARGUMENTS \
-       --phase implement --skill-name do-test
-   # Invoke /do-test <unit|integration>
-   uv run maverick report end skill-dispatch --issue $ARGUMENTS \
-       --phase implement --skill-name do-test \
-       --outcome <success|failure>
+   uv run maverick report end --auto --issue $ARGUMENTS --outcome <success|failure>
    ```
-   When `/do-test` returns, proceed to step 5.
-5. **Create a conventional commit** referencing the issue number.
-6. **Push immediately.**
+   When `/do-test` returns, proceed to step 4.
+4. **Create a conventional commit** referencing the issue number.
+5. **Push immediately.**
    - If this is the first push on the branch, set upstream:
      `git push -u origin <branch>`.
    - If on a stacked branch, run the retarget check per
      `mav-stacked-prs` **before every push**.
-7. **Log the commit** to the workflow report. SHA and subject come from
+6. **Log the commit** to the workflow report. SHA and subject come from
    git; the timestamp is wall-clock at the moment of this CLI call:
    ```bash
    SHA=$(git rev-parse HEAD)
@@ -251,9 +241,9 @@ return is a hand-back, not a task-complete signal (#106).
    uv run maverick report commit --issue $ARGUMENTS \
        --phase implement --sha "$SHA" --subject "$SUBJECT"
    ```
-8. **Check the task off durably** — `uv run maverick tasks check <repo> $ARGUMENTS <n>`
+7. **Check the task off durably** — `uv run maverick tasks check <repo> $ARGUMENTS <n>`
    (or close the sub-issue). Never PATCH the comment body by hand.
-9. **Verify the heartbeat daemon is alive:**
+8. **Verify the heartbeat daemon is alive:**
    `uv run maverick coord heartbeat-status <repo> $ARGUMENTS` — if it
    reports not running, treat it as claim-lost: stop pushing, re-run the
    Phase 0 entry check before continuing.
@@ -287,8 +277,8 @@ PR body as a follow-up note rather than being silently rewritten.
    `/tmp/doc-shortlist.txt` (terms derived from changed paths and
    identifiers in the diff, matched across every `docs/` tree). The
    shortlist may legitimately be empty — that is a valid input to step 2.
-2. Open the agent-dispatch interval. The agent operates under `do-docs` — pass it as `--skill-name` so the Maverick Skill column in the report names the inner skill: `uv run maverick report begin agent-dispatch --issue $ARGUMENTS --phase docs --agent agent-tech-docs-writer --skill-name do-docs`.
-3. Dispatch **agent-tech-docs-writer** with:
+2. Dispatch **agent-tech-docs-writer** with (interval
+   recorded automatically by the Subagent hooks):
    - **Mode:** `update` (per `do-docs`)
    - **Diff:** `/tmp/diff.patch`
    - **Candidate docs:** the contents of `/tmp/doc-shortlist.txt`. If
@@ -307,15 +297,14 @@ PR body as a follow-up note rather than being silently rewritten.
        human reviewer.
      - Returning "no doc changes required" is a valid outcome and must
        be reported explicitly (not silently inferred).
-4. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue $ARGUMENTS --phase docs --agent agent-tech-docs-writer --skill-name do-docs --outcome success`.
-5. **Record the outcome** in the PR body or as a one-line PR comment so
+3. **Record the outcome** in the PR body or as a one-line PR comment so
    the gate is auditable:
    - If docs were updated or created: list the files changed.
    - If the agent flagged out-of-shortlist docs: append a
      `Docs follow-up: <paths>` line to the PR body so the reviewer
      sees them.
    - If no changes were required: post `Docs review: no changes required.`
-6. Commit any doc changes with a `docs:` conventional commit and push
+4. Commit any doc changes with a `docs:` conventional commit and push
    per the push-per-task rule. If a commit was made, log it so the
    docs phase row gets its own sub-row in the report:
    ```bash
@@ -324,9 +313,9 @@ PR body as a follow-up note rather than being silently rewritten.
    uv run maverick report commit --issue $ARGUMENTS \
        --phase docs --sha "$SHA" --subject "$SUBJECT"
    ```
-7. The PR cannot proceed to Phase 7 until this phase has produced
+5. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
-8. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS docs`.
+6. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS docs`.
 
 ## Phase 7: Pre-push Cybersecurity Review (mandatory)
 
@@ -336,13 +325,12 @@ changes (callers, importers, dependents) must be reviewed by
 `do-cybersecurity-review` before the PR can be opened.
 
 Each step below is its own obligation. After `/do-cybersecurity-review`
-returns in step 3, **do not stop** — continue with step 4. The inner
+returns in step 2, **do not stop** — continue with step 3. The inner
 skill's return is a hand-back, not a phase-complete signal (#106).
 
 1. **Compute the full diff:** `git diff origin/<base>...HEAD`.
-2. **Open the `skill-dispatch` interval** for the review:
-   `uv run maverick report begin skill-dispatch --issue $ARGUMENTS --phase security --skill-name do-cybersecurity-review`.
-3. **Dispatch `/do-cybersecurity-review`** with:
+2. **Dispatch `/do-cybersecurity-review`** with (invoking it
+   auto-opens the `skill-dispatch` interval via the Skill hook):
    - **Mode:** `update`
    - **Diff:** the output of step 1, passed via stdin or as a file path
    - **Instructions:** review the changed code AND the impact set
@@ -350,11 +338,11 @@ skill's return is a hand-back, not a phase-complete signal (#106).
      Return the structured outcome (verdict + findings) defined in the
      skill's Update Mode contract.
 
-   When the skill returns, proceed to step 4 — do not summarise and
+   When the skill returns, proceed to step 3 — do not summarise and
    stop.
-4. **Close the `skill-dispatch` interval** with the outcome:
-   `uv run maverick report end skill-dispatch --issue $ARGUMENTS --phase security --skill-name do-cybersecurity-review --outcome <success|failure|blocked>` (use `blocked` if the verdict was BLOCKING).
-5. **Act on the verdict:**
+3. **Record the outcome:**
+   `uv run maverick report end --auto --issue $ARGUMENTS --outcome <success|failure|blocked>` (use `blocked` if the verdict was BLOCKING).
+4. **Act on the verdict:**
    - **BLOCKING** — halt. Surface the findings to the user verbatim.
      Do not open the PR. The user resolves the BLOCKING items by
      returning to Phase 5 (implement, test, commit, push). Re-run
@@ -365,10 +353,10 @@ skill's return is a hand-back, not a phase-complete signal (#106).
      visible to the human reviewer and to agent-code-reviewer.
    - **PASS** — record `Security review: no concerns.` in the PR body
      draft so the gate is auditable.
-6. The PR cannot proceed to Phase 8 until this phase has returned a
+5. The PR cannot proceed to Phase 8 until this phase has returned a
    non-BLOCKING verdict and the outcome has been folded into the PR
    body draft.
-7. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS security`.
+6. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS security`.
 
 ## Phase 8: Open PR + Monitor CI
 
@@ -429,12 +417,11 @@ The local **agent-code-reviewer** subagent's verdict is the
 review gate the auto-merge path trusts. This is a binary verdict against
 the open PR, not a local-diff advisory loop.
 
-1. Open the agent-dispatch interval: `uv run maverick report begin agent-dispatch --issue $ARGUMENTS --phase review --agent agent-code-reviewer --skill-name mav-bp-code-review`.
-2. Dispatch **agent-code-reviewer** with:
+1. Dispatch **agent-code-reviewer** with (interval
+   recorded automatically by the Subagent hooks):
    - The PR URL
    - The issue body, design comment, and tasks list (so it has the spec)
-3. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue $ARGUMENTS --phase review --agent agent-code-reviewer --skill-name mav-bp-code-review --outcome <success|failure>` (use `failure` on FAIL verdict).
-4. **Parse the verdict from the marker line only.** The agent's reply
+2. **Parse the verdict from the marker line only.** The agent's reply
    must end with exactly one `MAVERICK_VERDICT: PASS` or
    `MAVERICK_VERDICT: FAIL` line — that line is the verdict; do not
    infer it from the prose above it.
@@ -445,7 +432,7 @@ the open PR, not a local-diff advisory loop.
      conflicting values** — treat as FAIL and eject. Do not re-dispatch
      the reviewer to "get a cleaner answer", and never substitute your
      own reading of the review body for a missing marker.
-5. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS review`.
+3. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS review`.
 
 There is no fix-and-re-review loop. If the reviewer FAILs the PR, the
 next step is eject-to-human, not iterate.
