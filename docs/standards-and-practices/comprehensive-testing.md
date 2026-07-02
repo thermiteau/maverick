@@ -4,10 +4,13 @@ scope: Why rigorous testing is the primary quality gate for LLM-generated code a
 relates-to:
   - code-review.md
   - cicd.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Comprehensive Testing
+
+> **Skill note:** unit and integration testing standards are enforced by the single `mav-bp-testing` skill. This document covers the full testing strategy.
+
 
 Testing verifies that software behaves as intended. In LLM-driven development, testing is not just a quality practice - it is the primary mechanism that determines whether generated code actually works. An LLM cannot mentally execute the code it produces. Tests close this gap by providing concrete, automated evidence of correctness.
 

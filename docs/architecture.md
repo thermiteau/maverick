@@ -2,7 +2,7 @@
 title: Maverick Architecture
 scope: Best practice workflows
 relates-to:
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Architecture
@@ -38,10 +38,12 @@ flowchart TD
     STUB --> OUT
 ```
 
-- Scans the codebase for each topic defined in `skills/do-upskill/topics.json`
+- Scans the codebase per topic — all topics from `skills/do-upskill/topics.json`, or exactly one when invoked with a topic argument (`/do-upskill logging`)
 - If an implementation exists (e.g., Pino logger configured), documents exactly what's there
 - If no implementation exists but a best-practice skill is available, generates a **recommended** implementation tailored to the project's stack
 - Project skills are version-controlled and editable - the team can review and adjust recommendations
+- Each generated skill also writes a thin `.claude/rules/maverick-<topic>.md` pointer so any session — with or without Maverick loaded — finds the project facts
+- `do-adopt` implements the top recommendation for a gap (or, with `recommend`, stops after writing the recommendation as a `status: recommended` project skill)
 
 Default topics scanned: logging, alerting, observability, unit-testing, integration-testing, linting, error-handling, application-security, code-review, api-design, accessibility, database-management, dependency-management, environment-management, infrastructure-as-code, CI/CD. (Topics map to the merged best-practice skills — e.g. logging/alerting/observability all draw on mav-bp-operability.)
 

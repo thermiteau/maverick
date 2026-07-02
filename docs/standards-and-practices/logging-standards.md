@@ -5,10 +5,13 @@ relates-to:
   - alerting-standards.md
   - comprehensive-testing.md
   - code-review.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Logging Standards
+
+> **Skill note:** logging, alerting, and observability standards are enforced by the single `mav-bp-operability` skill — one operational discipline, one skill. This document covers the logging facet in depth.
+
 
 Logging records events during program execution to support debugging, monitoring, and auditing. In LLM-driven development, logging takes on heightened importance: code generated at speed without human oversight must produce operational telemetry that allows teams to diagnose failures after the fact. Without enforced logging standards, LLM-generated code is functionally a black box in production.
 

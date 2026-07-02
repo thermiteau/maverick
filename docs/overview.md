@@ -13,7 +13,7 @@ relates-to:
   - scope-boundaries.md
   - llm-containment.md
   - claude-code-error-handling-and-recovery.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 ## Overview
@@ -119,21 +119,23 @@ Every practice area follows the same enforcement pattern:
 
 Each link in this chain catches different classes of issues:
 
+- **Scope-guard hook** - mechanically gates destructive git operations, protected-branch commits, infrastructure edits, and production patterns at the tool-call boundary — before any other layer sees the action
 - **Best-practice skill** - prevents the LLM from using anti-patterns (e.g., console.log instead of structured logger)
 - **Project skill** - ensures the LLM uses the project's specific technology (e.g., Pino with CloudWatch transport)
 - **Local verification** - catches syntax errors, lint failures, and test failures before push
 - **CI pipeline** - catches environment-specific issues, dependency problems, cross-platform failures
 - **Pre-push security review** - `do-cybersecurity-review` runs in update mode against the diff and impact set; BLOCKING findings halt the push, FINDINGS are folded into the PR body
-- **Agent code review** - catches spec violations, missing tests, scope drift, maintainability problems (security is handled by the pre-push gate above, not here)
+- **Agent code review** - a read-only reviewer returns a machine-parsed binary verdict (`MAVERICK_VERDICT: PASS|FAIL`); a missing or ambiguous verdict fails safe. Catches spec violations, missing tests, scope drift, maintainability problems (security is handled by the pre-push gate above, not here)
+- **Auth-path merge gate** - `maverick pr auth-scan` blocks auto-merging PRs that touch authentication surfaces or CI workflow definitions, regardless of the review verdict
 - **Human review** - final gate for production-bound code
 
 ## Project Structure
 
 ```
 maverick/
-├── skills/                     # Machine-readable guidance (54 skills, build output)
-│   ├── mav-bp-*/               # Universal best-practice standards (21 skills)
-│   ├── mav-bp-cicd-*/          # Platform-specific CI/CD skills
+├── skills/                     # Machine-readable guidance (41 skills, build output)
+│   ├── mav-bp-*/               # Best-practice standards (14 skills): Maverick's
+│   │                           #   decisions + code-review anti-pattern tables
 │   ├── do-issue-*/             # GitHub issue workflow entry points
 │   ├── do-epic/                # Epic-driven parallel workflow
 │   ├── do-upskill/             # Project skill generation

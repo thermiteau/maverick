@@ -26,25 +26,44 @@ It provides skills, agents, and hooks that constrain and guide LLM behaviour - m
 
 ## The Problem Maverick Solves
 
-LLMs generate code fast but dont come with any concept of quality, best practice or constraint. Claude Code will happily agree to build the worlds worst idea, with a smile, because without guardrails:
+LLMs generate code fast but don't come with any concept of quality, best practice or constraint. Claude Code will happily agree to build the world's worst idea, with a smile, because without guardrails:
 
 - **No operational awareness** - LLMs don't add structured logging, alerting, or monitoring unless explicitly told to. Production code becomes undiagnosable.
-- **No security reasoning** - LLMs reproduce vulnerable patterns from training data. SQL injection, XSS, and secrets exposure go unnoticed. It wont make any effort to ensure cybersecurity is maintined.
-- **No testing discipline** - LLMs write working code and you can think youve got a product. Until it runs anywhere except on your machine because its filled with bugs you cant see. Without tests, those bugs ship.
-- **No workflow discipline** - LLMs commit to main, skip CI, ignore conventions, and produce untraceable changes. If you ask an LLM to create a large ammount of changes ina single attempt it will try and you'll regret it.
+- **No security reasoning** - LLMs reproduce vulnerable patterns from training data. SQL injection, XSS, and secrets exposure go unnoticed. It won't make any effort to ensure cybersecurity is maintained.
+- **No testing discipline** - LLMs write working code and you can think you've got a product. Until it runs anywhere except on your machine, because it's filled with bugs you can't see. Without tests, those bugs ship.
+- **No workflow discipline** - LLMs commit to main, skip CI, ignore conventions, and produce untraceable changes. If you ask an LLM to create a large amount of changes in a single attempt it will try, and you'll regret it.
 - **No self-review** - LLMs don't question their own output. Code that looks correct may miss requirements or violate project conventions.
 
-These risks multiply enourmously in unattended development when no human is watching the LLM work. There is no developer catching issues in real-time, no reviewer glancing at the diff, no operator noticing silent failures. Every quality gap becomes a production risk.
+These risks multiply enormously in unattended development when no human is watching the LLM work. There is no developer catching issues in real-time, no reviewer glancing at the diff, no operator noticing silent failures. Every quality gap becomes a production risk.
 
 ## How Maverick Solves It
 
-Maverick is comprised of three parts:
+Maverick is comprised of four parts:
 
 ### Claude Code Plugin: Best practice
 
 Maverick comes with Claude Code skills that defines how to write quality code. These are not detailed technical skills, they are the why and how of software development practices. These skills are part of the plugin and get loaded into Claude Code.
 
 There are also a few technical skills that are so common, they have been predefined in the plugin.
+
+### Claude Code Plugin: Mechanical enforcement
+
+Safety rules are not prose the model can forget — the plugin ships hooks
+that enforce them at the tool-call boundary:
+
+- A **scope-guard hook** gates destructive git operations, commits and
+  pushes on protected branches, infrastructure edits, and
+  production-pattern commands. In interactive sessions rule hits ask you;
+  in autonomous runs they are denied outright. Production patterns are
+  denied in every mode.
+- Infrastructure changes in autonomous runs require **verified
+  issue-level authorization** (`maverick coord authorize`) — an agent
+  cannot self-grant a scope the issue never approved.
+- A **pre-merge auth scan** blocks auto-merging any PR that touches
+  authentication surfaces or CI workflow definitions, regardless of the
+  review verdict.
+- A **SessionEnd hook** releases coordination claims on every exit path,
+  and lease expiry covers machine death.
 
 ### Claude Code Plugin: Skills creation
 
@@ -62,14 +81,28 @@ It falls down when you need to complete multiple features or bug fixes at the sa
 
 Maverick solves this by deploying Claude Code workers to remote Claude platforms such as Amazon Web Services. Those workers are triggered by creating tickets (issues) in GitHub. The worker will autonomously complete the requirements and keep you up to date with notes in the Github Issue.
 
-This is more complicated than cassual users may need and its not required to use Maverick. You can just use the plugin on your local machine and either ask Claude to complete a task solo or with assistance.
+For most teams there is a simpler on-ramp first: a ready-made GitHub
+Actions workflow (`templates/github/claude-maverick.yml`) runs Maverick
+on GitHub-hosted runners — respond to `@claude` mentions, or label an
+issue `claude-do` and `do-issue-solo` works it end-to-end. See the
+remote-execution decision matrix in
+[docs/claude-code-workers.md](docs/claude-code-workers.md) for choosing
+between the GitHub Action, Claude cloud routines, and the self-hosted
+EC2 pipeline. None of this is required — the plugin works on your local
+machine and you can ask Claude to complete tasks solo or with
+assistance.
 
 ## NOTE: This project is still in Alpha and under rapid change
 
 I use this repo to build my own software and I aim to improve it every day. That means the change rate is pretty high until I get it to v1 release.
 
-- The Claude plugin skills and agents are solid and work well.
-- The CLI tools and Cloud infra deploy are still brittle and need a lot of work. Thats my next issue to fix/build.
+- The plugin skills, agents, and hooks are solid, and the full
+  `do-issue-solo` pipeline is exercised end-to-end against real
+  repositories.
+- The `maverick` CLI carries the workflow's deterministic core
+  (coordination, state, gates, reporting) with an extensive unit-test
+  suite; the AWS worker pipeline is in maintenance mode in favour of the
+  GitHub Action on-ramp for most use cases.
 
 ## Install
 
@@ -104,7 +137,7 @@ uv tool install -e .
 
 ### Initialising an existing project (repo)
 
-run `/maverick:init` within Claude CLI
+run `/maverick:do-init` within Claude Code
 
 ### Work on GitHub issues
 
@@ -117,9 +150,21 @@ With the plugin loaded, use skills directly in Claude Code:
 /maverick:do-issue-guided 42
 # Guided mode — Claude pauses for approval at design and plan phases
 
-/maverick:codebase-audit
+/maverick:do-maverick-alignment
 # Audit a codebase against Maverick standards
+
+/maverick:do-adopt recommend
+# Recommend (or, without 'recommend', implement) missing best practices
+
+/maverick:do-upskill logging
+# Generate a project-specific implementation skill for one topic
 ```
+
+Or skip the terminal entirely: copy
+`templates/github/claude-maverick.yml` into `.github/workflows/`, then
+label any issue `claude-do` and Maverick completes it on a GitHub-hosted
+runner — design, tasks, implementation, docs and security gates, PR,
+review, and merge.
 
 ## Development
 
@@ -128,7 +173,7 @@ With the plugin loaded, use skills directly in Claude Code:
 uv sync --extra test && uv run pytest tests/unit/ -v
 ```
 
-CI runs automatically on push to `develop` via GitHub Actions.
+CI runs automatically on pushes and PRs to `main` via GitHub Actions.
 
 ## License
 

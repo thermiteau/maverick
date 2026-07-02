@@ -23,6 +23,7 @@ Maverick coordinates multi-instance workflows through labels and machine-readabl
 | `needs-human`        | issue + PR | Code reviewer ejected this for human handling | Claude Code instance (on eject)              |
 | `blocked-by:#N`      | issue      | Depends transitively on ejected issue `#N`    | Claude Code instance (via block propagation) |
 | `merged-to-<branch>` | issue      | The issue's PR was merged to `<branch>`       | Claude Code instance (on merge)              |
+| `maverick-authorize-<scope>` | issue | Human grants a guarded scope (e.g. `infra`) for this issue | Human (verified by `maverick coord authorize`) |
 
 Labels must be created once per repo. Maverick's `do-init` can create them automatically when present.
 
@@ -154,6 +155,20 @@ rest accrete as the workflow reaches them. Writers must merge, never
 replace — `maverick task-progress set` and `maverick issue comment post`
 are the sanctioned write paths, and `maverick coord resume-point` is the
 sanctioned way to turn this payload into a resume decision.
+
+## PR review verdict marker
+
+The code-review gate communicates through a marker line rather than
+prose: the reviewer's reply (and, in the CI re-run, the posted PR
+review) must end with exactly one line
+
+```text
+MAVERICK_VERDICT: PASS
+```
+
+or `MAVERICK_VERDICT: FAIL`. Orchestrators parse only this line; absent
+or ambiguous markers are treated as FAIL. `maverick coord resume-point`
+reads the same marker off the PR when computing where to resume.
 
 ## Parser contract
 

@@ -4,10 +4,13 @@ scope: Why operational alerting is essential for LLM-generated code and how Mave
 relates-to:
   - logging-standards.md
   - scope-boundaries.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Alerting Standards
+
+> **Skill note:** logging, alerting, and observability standards are enforced by the single `mav-bp-operability` skill — one operational discipline, one skill. This document covers the alerting facet in depth.
+
 
 Alerting notifies operations teams when systems fail or degrade beyond acceptable thresholds. In LLM-driven development, alerting is a critical safety net: code generated without human oversight must be instrumented to signal when it misbehaves in production. Without enforced alerting standards, failures in LLM-generated code go undetected until users report them.
 

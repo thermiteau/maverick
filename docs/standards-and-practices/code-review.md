@@ -5,7 +5,7 @@ relates-to:
   - comprehensive-testing.md
   - security-review.md
   - cicd.md
-last-verified: 2026-07-02
+last-verified: 2026-07-03
 ---
 
 # Code Review
@@ -134,6 +134,25 @@ Maverick's `agent-code-reviewer` runs before a PR is created, not after. This or
 - The LLM can fix problems while it still has full context from the development session
 
 ### Human review as the final gate
+
+### The reviewer is a gate, not a fixer
+
+The `agent-code-reviewer` is deliberately constrained so its verdict can
+be trusted:
+
+- **Read-only.** It has no file-editing tools and its `gh`/`git` usage is
+  read-only — a reviewer that can change what it reviews stops being a
+  gate. The caller acts on the verdict.
+- **Machine-parsed verdict.** The reply must end with exactly one
+  `MAVERICK_VERDICT: PASS` or `MAVERICK_VERDICT: FAIL` marker line. The
+  orchestrator parses only that line; a missing, ambiguous, or
+  conflicting marker is treated as FAIL — the gate fails safe, and the
+  orchestrator never substitutes its own reading of the review prose.
+- **Pinned to a strong model.** The merge gate does not inherit whatever
+  model the calling session happens to run, so a cost-conscious session
+  cannot silently weaken the highest-stakes judgment in the system.
+- **Binary, with no fix-and-re-review loop** in autonomous mode: PASS
+  auto-merges (subject to the auth-path scan), FAIL ejects to a human.
 
 Autonomous review does not replace human review. It augments it. The `agent-code-reviewer` catches mechanical issues (missing tests, convention violations, error handling gaps) so that human reviewers can focus on higher-order concerns:
 
