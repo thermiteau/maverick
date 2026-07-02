@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.3.9] - 2026-07-02
+
 ## [3.3.8] - 2026-07-01
 
 ## [3.3.7] - 2026-06-07
@@ -204,7 +206,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v3.3.8...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v3.3.9...HEAD
+[3.3.9]: https://github.com/thermiteau/maverick/compare/v3.3.8...v3.3.9
 [3.3.8]: https://github.com/thermiteau/maverick/compare/v3.3.7...v3.3.8
 [3.3.7]: https://github.com/thermiteau/maverick/compare/v3.3.6...v3.3.7
 [3.3.6]: https://github.com/thermiteau/maverick/compare/v3.3.5...v3.3.6
