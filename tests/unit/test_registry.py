@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
+from jinja2.exceptions import UndefinedError
 
 from maverick.models import AgentConfig, GlobalConfig, SkillConfig
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
@@ -17,10 +19,21 @@ from maverick.registry import (
     _clean_agents_output,
     _clean_skills_output,
     _get_version,
+    discover_agents,
+    discover_skills,
     render_agent,
     render_all_hooks,
     render_skill,
 )
+
+
+def _parse_frontmatter(text: str) -> dict:
+    """Extract and YAML-parse the frontmatter block from rendered output."""
+    assert text.startswith("---\n"), "output must start with a frontmatter fence"
+    block = text[len("---\n") :].split("\n---", 1)[0]
+    parsed = yaml.safe_load(block)
+    assert isinstance(parsed, dict)
+    return parsed
 
 
 class TestBuildNamesDict:
@@ -52,10 +65,13 @@ class TestBuildSkillFrontmatter:
         fm = _build_skill_frontmatter(skill)
         assert fm.startswith("---")
         assert fm.endswith("---")
-        assert "name: test-skill" in fm
-        # Defaults should not appear
-        assert "user-invocable" not in fm
-        assert "disable-model-invocation" not in fm  # True is default, omitted
+        parsed = _parse_frontmatter(fm + "\n")
+        assert parsed["name"] == "test-skill"
+        # The invocation flags are always emitted explicitly: Claude Code's
+        # runtime defaults are the OPPOSITE of the config schema's defaults,
+        # so omitting them silently inverted the declared intent.
+        assert parsed["user-invocable"] is False
+        assert parsed["disable-model-invocation"] is True
 
     def test_full_skill(self):
         skill = SkillConfig(
@@ -68,21 +84,35 @@ class TestBuildSkillFrontmatter:
             model="sonnet",
             context="fork",
             agent="agent-x",
+            hooks={"PreToolUse": [{"matcher": "Bash"}]},
         )
-        fm = _build_skill_frontmatter(skill)
-        assert "description: A cool skill" in fm
-        assert "argument-hint: <url>" in fm
-        assert "user-invocable: true" in fm
-        assert "disable-model-invocation: false" in fm
-        assert "allowed-tools: Bash, Read" in fm
-        assert "model: sonnet" in fm
-        assert "context: fork" in fm
-        assert "agent: agent-x" in fm
+        parsed = _parse_frontmatter(_build_skill_frontmatter(skill) + "\n")
+        assert parsed["description"] == "A cool skill"
+        assert parsed["argument-hint"] == "<url>"
+        assert parsed["user-invocable"] is True
+        assert parsed["disable-model-invocation"] is False
+        assert parsed["allowed-tools"] == "Bash, Read"
+        assert parsed["model"] == "sonnet"
+        assert parsed["context"] == "fork"
+        assert parsed["agent"] == "agent-x"
+        assert parsed["hooks"] == {"PreToolUse": [{"matcher": "Bash"}]}
 
     def test_no_description(self):
         skill = SkillConfig(name="no-desc")
         fm = _build_skill_frontmatter(skill)
         assert "description:" not in fm
+
+    def test_yaml_significant_characters_survive(self):
+        """Values with YAML metacharacters must round-trip, not truncate."""
+        skill = SkillConfig(
+            name="tricky-skill",
+            description="Reviews code: two-stage #1 process [fast]",
+            argument_hint="{issue: number}",
+            user_invocable=True,
+        )
+        parsed = _parse_frontmatter(_build_skill_frontmatter(skill) + "\n")
+        assert parsed["description"] == "Reviews code: two-stage #1 process [fast]"
+        assert parsed["argument-hint"] == "{issue: number}"
 
 
 class TestBuildAgentFrontmatter:
@@ -108,20 +138,24 @@ class TestBuildAgentFrontmatter:
             tools=["Read", "Write", "Bash"],
             disallowed_tools=["Agent"],
             skills=["do-issue-solo", "mav-bp-logging"],
+            mcp_servers={"github": {"type": "http"}},
+            hooks={"Stop": []},
         )
-        fm = _build_agent_frontmatter(agent)
-        assert "model: opus" in fm
-        assert "color: #FF0000" in fm
-        assert "permissionMode: dontAsk" in fm
-        assert "maxTurns: 25" in fm
-        assert "background: true" in fm
-        assert "isolation: worktree" in fm
-        assert "memory: project" in fm
-        assert "tools: Read, Write, Bash" in fm
-        assert "disallowedTools: Agent" in fm
-        assert "skills:" in fm
-        assert "  - do-issue-solo" in fm
-        assert "  - mav-bp-logging" in fm
+        parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
+        assert parsed["model"] == "opus"
+        # '#FF0000' must be quoted by the serializer — unquoted, YAML reads
+        # `color: #FF0000` as a comment and the value silently becomes null.
+        assert parsed["color"] == "#FF0000"
+        assert parsed["permissionMode"] == "dontAsk"
+        assert parsed["maxTurns"] == 25
+        assert parsed["background"] is True
+        assert parsed["isolation"] == "worktree"
+        assert parsed["memory"] == "project"
+        assert parsed["tools"] == "Read, Write, Bash"
+        assert parsed["disallowedTools"] == "Agent"
+        assert parsed["skills"] == ["do-issue-solo", "mav-bp-logging"]
+        assert parsed["mcpServers"] == {"github": {"type": "http"}}
+        assert parsed["hooks"] == {"Stop": []}
 
 
 class TestGetVersion:
@@ -219,6 +253,51 @@ class TestRenderSkill:
         with pytest.raises(FileNotFoundError, match="does-not-exist.sh"):
             render_skill(skill, GlobalConfig(), templates_dir, output_dir)
 
+    def test_arguments_renders_as_runtime_placeholder(self, tmp_path: Path):
+        """{{ ARGUMENTS }} must emit the literal $ARGUMENTS runtime token.
+
+        It previously rendered as "" (Jinja default Undefined), stripping the
+        issue number out of every argument-bearing command in build output.
+        """
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "args-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text(
+            "Run `uv run maverick coord read <repo> {{ ARGUMENTS }}` now."
+        )
+
+        output_dir = tmp_path / "output"
+        skill = SkillConfig(name="args-skill")
+        result = render_skill(skill, GlobalConfig(), templates_dir, output_dir)
+
+        assert "coord read <repo> $ARGUMENTS" in result.read_text()
+
+    def test_undefined_template_variable_fails_build(self, tmp_path: Path):
+        """Unknown template variables must raise, not render as empty string."""
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "typo-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text("See {{ SKILLS.MAV_BP_LOGING }}.")
+
+        output_dir = tmp_path / "output"
+        skill = SkillConfig(name="typo-skill")
+        with pytest.raises(UndefinedError):
+            render_skill(skill, GlobalConfig(), templates_dir, output_dir)
+
+    def test_frontmatter_yaml_parses(self, tmp_path: Path):
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "parse-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text("Body")
+
+        output_dir = tmp_path / "output"
+        skill = SkillConfig(name="parse-skill", description="Does things: safely")
+        result = render_skill(skill, GlobalConfig(), templates_dir, output_dir)
+
+        parsed = _parse_frontmatter(result.read_text())
+        assert parsed["name"] == "parse-skill"
+        assert parsed["description"] == "Does things: safely"
+
 
 class TestRenderAgent:
     def test_render_simple_agent(self, tmp_path: Path):
@@ -264,6 +343,81 @@ class TestRenderAgent:
         content = result.read_text()
         assert "mav-bp-logging" in content
         assert "agent-code-reviewer" in content
+
+    def test_newline_after_frontmatter_fence(self, tmp_path: Path):
+        """A body starting with text must not merge into the closing fence.
+
+        `frontmatter + body` produced `---You are...`, which strict
+        frontmatter parsers fail to terminate.
+        """
+        templates_dir = tmp_path / "templates"
+        agent_dir = templates_dir / "agent-nl"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "body.md.j2").write_text("You are an agent. No leading blank line.")
+
+        output_dir = tmp_path / "output"
+        agent = AgentConfig(name="agent-nl", description="Newline test")
+        content = render_agent(agent, templates_dir, output_dir).read_text()
+
+        assert "\n---\nYou are an agent." in content
+        parsed = _parse_frontmatter(content)
+        assert parsed["name"] == "agent-nl"
+
+
+class TestConfigValidation:
+    def _write_config(self, dir_path: Path, name: str) -> None:
+        dir_path.mkdir(parents=True)
+        (dir_path / "config.py").write_text(
+            "from maverick.models import SkillConfig\n"
+            f"CONFIG = SkillConfig(name={name!r})\n"
+        )
+
+    def test_name_directory_mismatch_raises(self, tmp_path: Path):
+        self._write_config(tmp_path / "some-dir", "other-name")
+        with pytest.raises(ValueError, match="does not match its"):
+            discover_skills(tmp_path)
+
+    def test_unregistered_name_raises(self, tmp_path: Path):
+        self._write_config(tmp_path / "not-a-real-skill", "not-a-real-skill")
+        with pytest.raises(ValueError, match="not registered in maverick.names"):
+            discover_skills(tmp_path)
+
+
+class TestRealSourceTree:
+    """Invariants over the actual shipped configs and templates."""
+
+    def test_all_skill_configs_discover_and_validate(self):
+        skills = discover_skills()
+        assert len(skills) == len(ALL_SKILL_NAMES)
+
+    def test_all_agent_configs_discover_and_validate(self):
+        agents = discover_agents()
+        assert len(agents) == len(ALL_AGENT_NAMES)
+
+    def test_every_skill_frontmatter_round_trips(self):
+        for skill in discover_skills():
+            parsed = _parse_frontmatter(_build_skill_frontmatter(skill) + "\n")
+            assert parsed["name"] == skill.name
+            assert parsed["user-invocable"] is skill.user_invocable
+            assert parsed["disable-model-invocation"] is skill.disable_model_invocation
+            if skill.description:
+                assert parsed["description"] == skill.description
+
+    def test_every_agent_frontmatter_round_trips(self):
+        for agent in discover_agents():
+            parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
+            assert parsed["name"] == agent.name
+            assert parsed["description"] == agent.description
+            if agent.skills:
+                assert parsed["skills"] == agent.skills
+
+    def test_reference_skills_are_non_invocable_in_output(self):
+        """The bp reference tier must actually ship non-invocable."""
+        by_name = {s.name: s for s in discover_skills()}
+        logging_skill = by_name["mav-bp-logging"]
+        parsed = _parse_frontmatter(_build_skill_frontmatter(logging_skill) + "\n")
+        assert parsed["disable-model-invocation"] is True
+        assert parsed["user-invocable"] is False
 
 
 class TestCleanOutput:
