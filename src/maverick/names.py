@@ -15,7 +15,6 @@ DO_ISSUE_GUIDED = "do-issue-guided"
 DO_ISSUE_SOLO = "do-issue-solo"
 DO_MAVERICK_ALIGNMENT = "do-maverick-alignment"
 DO_PULLREQUEST_REVIEW = "do-pullrequest-review"
-DO_RECOMMEND = "do-recommend"
 DO_TECH_DOCS = "do-tech-docs"
 DO_TEST = "do-test"
 DO_UPSKILL = "do-upskill"
@@ -59,7 +58,6 @@ ALL_SKILL_NAMES = {
     DO_ISSUE_SOLO,
     DO_MAVERICK_ALIGNMENT,
     DO_PULLREQUEST_REVIEW,
-    DO_RECOMMEND,
     DO_TECH_DOCS,
     DO_TEST,
     DO_UPSKILL,

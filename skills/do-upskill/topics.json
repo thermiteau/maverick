@@ -2,76 +2,354 @@
   {
     "topic": "logging",
     "prompt": "Identify how logging is implemented in this codebase. Look for logger configuration, log levels, structured logging patterns, and where logs are sent. Use the logging best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-operability/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-operability/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "pino",
+        "winston",
+        "bunyan",
+        "log4js",
+        "morgan",
+        "structlog",
+        "loguru",
+        "slog",
+        "tracing",
+        "log4j",
+        "slf4j"
+      ],
+      "grep": "createLogger|getLogger|logger\\.|console\\.error|LOG_LEVEL|logging\\.basicConfig",
+      "files": [
+        "**/logger.*",
+        "**/logging.*"
+      ]
+    }
   },
   {
     "topic": "alerting",
     "prompt": "Identify how alerting is implemented in this codebase. Look for alert mechanisms, notification services, severity levels, and alert routing. Use the alerting best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-operability/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-operability/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "@aws-sdk/client-sns",
+        "@pagerduty",
+        "@opsgenie",
+        "nodemailer",
+        "sentry",
+        "datadog"
+      ],
+      "grep": "sendAlert|publish|PagerDuty|Opsgenie|alertService|notify|Sentry\\.capture",
+      "files": [
+        "**/alert*.*",
+        "**/notify*.*"
+      ]
+    }
   },
   {
     "topic": "unit-testing",
     "prompt": "Identify how unit testing is implemented in this codebase. Look for unit test frameworks, test runners, test coverage tools, and test data generation. Use the best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-testing/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-testing/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "vitest",
+        "jest",
+        "mocha",
+        "pytest",
+        "unittest",
+        "junit",
+        "rspec"
+      ],
+      "grep": "describe\\(|it\\(|test\\(|expect\\(|assert|@Test|func Test",
+      "files": [
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/test_*.*"
+      ]
+    }
   },
   {
     "topic": "integration-testing",
     "prompt": "Identify how integration testing is implemented in this codebase. Look for integration test frameworks, test runners, test coverage tools, and test data generation.",
-    "bestPracticeSkill": "skills/mav-bp-testing/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-testing/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "vitest",
+        "jest",
+        "mocha",
+        "pytest",
+        "unittest",
+        "junit",
+        "rspec"
+      ],
+      "grep": "describe\\(|it\\(|test\\(|expect\\(|assert|@Test|func Test",
+      "files": [
+        "**/*.test.*",
+        "**/*.spec.*",
+        "**/test_*.*"
+      ]
+    }
   },
   {
     "topic": "linting",
     "prompt": "Identify how linting and code formatting is configured in this codebase. Look for linter configs, formatter configs, pre-commit hooks, CI lint steps, and editor settings. Use the linting best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-linting/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-linting/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "eslint",
+        "prettier",
+        "ruff",
+        "clippy",
+        "golangci-lint",
+        "rubocop",
+        "stylelint",
+        "lint-staged",
+        "husky"
+      ],
+      "grep": "eslint|prettier|ruff|lint-staged|formatOnSave|\\\"lint\\\":|\\\"format\\\":",
+      "files": [
+        "eslint.config.*",
+        ".eslintrc*",
+        ".prettierrc*",
+        "prettier.config.*",
+        "ruff.toml",
+        ".golangci.yml",
+        ".stylelintrc*"
+      ]
+    }
   },
   {
     "topic": "cicd",
     "prompt": "Identify which CI/CD platform this codebase uses. Check for GitHub Actions (.github/workflows/), GitLab CI (.gitlab-ci.yml), Azure DevOps (azure-pipelines.yml), and any other CI/CD configuration. Document the pipeline stages, quality gates, and deployment strategy. If the platform is detected, create a detailed project skill describing the specific platform's configuration, commands for monitoring pipeline status, common failure patterns, and platform boundaries. Use the CI/CD best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-cicd/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-cicd/SKILL.md",
+    "scanHints": {
+      "dependencies": [],
+      "grep": "workflow_dispatch|on:\\s+push|pipeline|stage|job|trigger:|pool:|vmImage:",
+      "files": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml",
+        ".gitlab-ci.yml",
+        "azure-pipelines.yml",
+        "Jenkinsfile",
+        ".circleci/config.yml",
+        "buildkite.yml",
+        ".buildkite/**/*.yml",
+        "bitbucket-pipelines.yml",
+        ".travis.yml",
+        "cloudbuild.yaml",
+        "appveyor.yml"
+      ]
+    }
   },
   {
     "topic": "application-security",
     "prompt": "Identify how application security is handled in this codebase. Look for input validation patterns, authentication/authorisation middleware, security headers, CSP configuration, secrets management, SAST/DAST tooling in CI, and dependency vulnerability scanning. Use the application security best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-application-security/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-application-security/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "helmet",
+        "cors",
+        "csurf",
+        "express-rate-limit",
+        "jsonwebtoken",
+        "passport",
+        "bcrypt",
+        "argon2",
+        "@auth0",
+        "oidc-client",
+        "snyk",
+        "trivy"
+      ],
+      "grep": "helmet|csp|Content-Security-Policy|sanitize|escape|parameterized|prepared|xss|csrf|cors|rateLimit|authenticate|authorize",
+      "files": [
+        "**/security.*",
+        "**/auth*.*",
+        "**/middleware/auth*",
+        "**/.snyk",
+        "**/trivy*"
+      ]
+    }
   },
   {
     "topic": "dependency-management",
     "prompt": "Identify how dependencies are managed in this codebase. Look for lock files, version pinning strategy, automated update tools (Dependabot, Renovate), vulnerability scanning in CI, and license compliance checks. Use the dependency management best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-dependency-management/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-dependency-management/SKILL.md",
+    "scanHints": {
+      "dependencies": [],
+      "grep": "dependabot|renovate|npm audit|pip-audit|safety check|license-checker|snyk test",
+      "files": [
+        ".github/dependabot.yml",
+        "renovate.json",
+        ".renovaterc*",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "uv.lock",
+        "Cargo.lock",
+        "go.sum",
+        "Pipfile.lock",
+        "poetry.lock"
+      ]
+    }
   },
   {
     "topic": "observability",
     "prompt": "Identify how observability is implemented in this codebase. Look for metrics collection, distributed tracing, health check endpoints, OpenTelemetry configuration, dashboard definitions, and SLI/SLO definitions. Use the observability best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-operability/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-operability/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "@opentelemetry",
+        "opentelemetry-sdk",
+        "prometheus-client",
+        "prom-client",
+        "datadog",
+        "newrelic",
+        "elastic-apm-node",
+        "dd-trace"
+      ],
+      "grep": "trace|span|metric|histogram|counter|gauge|healthCheck|health_check|readiness|liveness|opentelemetry|prometheus",
+      "files": [
+        "**/tracing.*",
+        "**/metrics.*",
+        "**/health*.*",
+        "**/telemetry.*",
+        "**/instrumentation.*"
+      ]
+    }
   },
   {
     "topic": "api-design",
     "prompt": "Identify how APIs are designed in this codebase. Look for route definitions, API versioning patterns, error response formats, pagination implementations, OpenAPI/Swagger specs, and input validation middleware. Use the API design best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-api-design/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-api-design/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "swagger-ui-express",
+        "@nestjs/swagger",
+        "fastify-swagger",
+        "drf-spectacular",
+        "openapi",
+        "tsoa"
+      ],
+      "grep": "@Api|@swagger|openapi|ApiResponse|ApiOperation|@route|@controller|router\\.|app\\.get|app\\.post",
+      "files": [
+        "**/openapi.*",
+        "**/swagger.*",
+        "**/api-docs*",
+        "**/routes/**",
+        "**/controllers/**"
+      ]
+    }
   },
   {
     "topic": "database",
     "prompt": "Identify how databases are managed in this codebase. Look for migration files, ORM configuration, connection pooling setup, seed data, backup scripts, and schema definitions. Use the database management best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-database-management/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-database-management/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "prisma",
+        "drizzle",
+        "knex",
+        "sequelize",
+        "typeorm",
+        "sqlalchemy",
+        "diesel",
+        "gorm"
+      ],
+      "grep": "createConnection|getRepository|prisma\\.|db\\.|migrate|schema",
+      "files": [
+        "**/schema.*",
+        "**/migration*",
+        "**/database.*",
+        "**/db.*"
+      ]
+    }
   },
   {
     "topic": "error-handling",
     "prompt": "Identify how errors are handled in this codebase. Look for error classes, global error handlers, retry logic, circuit breaker patterns, error boundaries, and error response formatting. Use the error handling best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-error-handling/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-error-handling/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "http-errors",
+        "boom",
+        "@hapi/boom",
+        "express-async-errors",
+        "neverthrow"
+      ],
+      "grep": "ErrorBoundary|error_handler|errorHandler|globalExceptionFilter|circuit.?breaker|retry|backoff|AppError|HttpException|ApiError",
+      "files": [
+        "**/error*.*",
+        "**/exception*.*",
+        "**/middleware/error*"
+      ]
+    }
   },
   {
     "topic": "infrastructure-as-code",
     "prompt": "Identify how infrastructure is managed in this codebase. Look for Terraform files, CloudFormation templates, Pulumi programs, Ansible playbooks, Docker Compose files, Kubernetes manifests, and any IaC configuration. If no IaC is found, check for runbook documentation. Use the IaC best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-infrastructure-as-code/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-infrastructure-as-code/SKILL.md",
+    "scanHints": {
+      "dependencies": [],
+      "grep": "resource\\s|provider\\s|terraform|pulumi|cloudformation|ansible|helm",
+      "files": [
+        "*.tf",
+        "*.tfvars",
+        "Pulumi.yaml",
+        "template.yaml",
+        "template.json",
+        "**/ansible/**",
+        "**/helm/**",
+        "docker-compose*.yml",
+        "**/k8s/**",
+        "**/kubernetes/**"
+      ]
+    }
   },
   {
     "topic": "accessibility",
     "prompt": "Identify how accessibility is handled in this codebase. Look for ARIA attributes, semantic HTML patterns, a11y testing tools in CI (axe-core, pa11y, Lighthouse), keyboard navigation handling, and focus management. Use the accessibility best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-accessibility/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-accessibility/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "axe-core",
+        "@axe-core/react",
+        "pa11y",
+        "lighthouse",
+        "jest-axe",
+        "@testing-library/jest-dom",
+        "eslint-plugin-jsx-a11y"
+      ],
+      "grep": "aria-|role=|alt=|tabIndex|focusTrap|skipNav|screen\\.getByRole|toBeAccessible|axe",
+      "files": [
+        "**/a11y*.*",
+        "**/accessibility*.*",
+        ".pa11yci*",
+        "lighthouserc*"
+      ]
+    }
   },
   {
     "topic": "environment-management",
     "prompt": "Identify how development environments are managed in this codebase. Look for devcontainer configuration, Docker Compose for local development, .env.example files, setup scripts, and onboarding documentation. Use the environment management best practice skill to guide the implementation.",
-    "bestPracticeSkill": "skills/mav-bp-environment-management/SKILL.md"
+    "bestPracticeSkill": "skills/mav-bp-environment-management/SKILL.md",
+    "scanHints": {
+      "dependencies": [
+        "dotenv",
+        "python-dotenv",
+        "django-environ",
+        "envalid",
+        "joi"
+      ],
+      "grep": "dotenv|process\\.env|os\\.environ|docker-compose|devcontainer|CONTRIBUTING",
+      "files": [
+        ".env.example",
+        ".env.sample",
+        ".env.template",
+        ".devcontainer/**",
+        "docker-compose*.yml",
+        "Vagrantfile",
+        "flake.nix",
+        "shell.nix",
+        "CONTRIBUTING.md"
+      ]
+    }
   }
 ]

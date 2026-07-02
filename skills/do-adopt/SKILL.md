@@ -1,7 +1,7 @@
 ---
 name: do-adopt
-description: Scan a project for missing best-practice areas and implement the top recommendation for each gap. Currently covers linting and unit testing. Installs tools, writes configs, and adds CI steps.
-argument-hint: topic to adopt (optional — processes all topics if omitted)
+description: Scan a project for missing best-practice areas and implement the top recommendation for each gap (linting, unit testing) — installs tools, writes configs, verifies, and commits. Pass 'recommend' to stop after writing recommendations without implementing (replaces the old do-recommend skill).
+argument-hint: '[recommend] [topic] (optional — omit for all topics; ''recommend'' skips implementation)'
 user-invocable: true
 disable-model-invocation: false
 context: fork
@@ -9,18 +9,31 @@ context: fork
 
 # Adopt Best-Practice Technologies
 
-Scan the current project for missing best-practice areas and **implement the top recommendation** for each gap. This is the action counterpart to `do-recommend` — instead of listing options, it installs and configures the best-fit tool directly.
+Scan the current project for missing best-practice areas and **implement the top recommendation** for each gap — or, in recommend mode, stop after producing recommendations without installing anything.
+
+## Modes and Invocation
+
+`$ARGUMENTS` may contain a topic name, the word `recommend`, or both:
+
+- *(empty)* — adopt every gap topic in the table below.
+- `<topic>` — adopt that one topic only.
+- `recommend [<topic>]` — **recommend-only mode**: perform the same
+  detection and analysis, write the recommendation as a
+  `status: recommended` project skill (see step 5R), and implement
+  nothing. This replaces the old standalone `do-recommend` skill.
+
+Do not prompt the user for which topics to process.
 
 ## Topics
 
-| Topic | Best-Practice Skill | What to detect |
-| ----- | ------------------- | -------------- |
-| linting | mav-bp-linting | Linter configs, formatter configs, lint scripts, pre-commit hooks |
-| unit-testing | mav-bp-testing | Test frameworks, test runners, coverage tools, test files |
+| Topic | Best-Practice Skill |
+| ----- | ------------------- |
+| linting | mav-bp-linting |
+| unit-testing | mav-bp-testing |
 
-## Invocation
-
-When invoked, process **all topics** in the table above unless `$ARGUMENTS` names a specific topic — in that case process only that topic. Do not prompt the user for which topics to process.
+Detection hints for each topic come from the shared registry —
+`${CLAUDE_PLUGIN_ROOT}/skills/do-upskill/topics.json` (`scanHints` per
+topic). Do not maintain a separate detection list here.
 
 ## Process
 
@@ -28,20 +41,10 @@ For each topic:
 
 ### 1. Check Whether the Practice Already Exists
 
-Use the same detection logic as do-recommend:
-
-**Linting:**
-- Config files: `eslint.config.*`, `.eslintrc*`, `.prettierrc*`, `prettier.config.*`, `ruff.toml`, `pyproject.toml [tool.ruff]`, `.golangci.yml`, `.stylelintrc*`
-- Package dependencies containing `eslint`, `prettier`, `ruff`, `clippy`, `golangci-lint`, `rubocop`, `stylelint`
-- CI steps that run lint or format checks
-
-**Unit testing:**
-- Config files: `jest.config.*`, `vitest.config.*`, `pytest.ini`, `pyproject.toml [tool.pytest]`, `setup.cfg [tool:pytest]`
-- Package dependencies containing `vitest`, `jest`, `mocha`, `pytest`, `unittest`, `junit`, `rspec`
-- Test files: `**/*.test.*`, `**/*.spec.*`, `**/test_*.*`
-- CI steps that run tests
-
-If the practice is **already implemented**, skip the topic. Print: `<topic>: already implemented, skipping.`
+Apply the topic's `scanHints` (dependencies, grep patterns, file globs)
+plus a check for CI steps that run the tool. If the practice is
+**already implemented** (configs exist, dependencies present, actively
+used), skip the topic. Print: `<topic>: already implemented, skipping.`
 
 ### 2. Identify the Project's Tech Stack
 
@@ -55,13 +58,29 @@ Determine the primary language(s) and framework(s) by reading:
 
 ### 3. Read the Best-Practice Skill
 
-Read the corresponding best-practice skill (e.g., `skills/mav-bp-linting/SKILL.md`) to understand the recommended tools and configuration standards for the detected stack.
+Read the corresponding best-practice skill
+(`${CLAUDE_PLUGIN_ROOT}/skills/<skill-name>/SKILL.md`) to understand the
+recommended tools and configuration standards for the detected stack.
 
-### 4. Check for Existing Recommendation
+### 4. Check for an Existing Recommendation
 
-If `docs/maverick/recommendations/<topic>.md` exists and has `status: pending`, read it and use the top recommendation (the one marked "Recommended"). This avoids re-analysing the stack when `do-recommend` was already run.
+If `docs/maverick/skills/<topic>/SKILL.md` exists with
+`status: recommended` frontmatter (written by `do-upskill`
+or a prior recommend-mode run), read it and use its recommended stack —
+do not re-analyse. There is exactly **one** recommendation artifact
+format: the project-skill file. Never write a separate
+`docs/maverick/recommendations/` document.
 
-If no recommendation file exists, determine the top recommendation directly from the best-practice skill's language-specific defaults table.
+### 5R. Recommend-Only Mode — Write the Recommendation and Stop
+
+Pick the best-fit tool for the stack (1 option when there is a clear
+winner — e.g. Ruff for Python, ESLint for TypeScript; name up to 2
+genuinely competitive alternatives and their trade-offs in the Patterns
+section). Write it as a `status: recommended` project skill at
+`docs/maverick/skills/<topic>/SKILL.md`, using
+`do-upskill`'s mandatory output structure (Stack /
+Configuration / Patterns / File Locations, prose only, under 100 lines).
+Then stop — no installation, no commits.
 
 ### 5. Implement the Top Recommendation
 
@@ -84,9 +103,12 @@ Install and configure the recommended tool. Follow the best-practice skill's sta
 4. **Add package scripts** — add a `test` script (and `test:coverage` if the framework supports it)
 5. **Verify** — run the test suite and confirm the sample test passes
 
-### 6. Update the Recommendation File
+### 6. Update the Project Skill
 
-If a recommendation file exists at `docs/maverick/recommendations/<topic>.md`, update its `status` from `pending` to `adopted`. If no recommendation file exists, create one with `status: adopted` using the same structure as do-recommend but with only the implemented option.
+Rewrite `docs/maverick/skills/<topic>/SKILL.md` as a **factual** project
+skill describing what is now implemented (drop the
+`status: recommended` field), per `do-upskill`'s output
+structure. This keeps the single artifact current.
 
 ### 7. Commit the Changes
 
@@ -107,5 +129,6 @@ Follow the mav-git-workflow skill for commit conventions. Do not push — the us
 - **Skip covered topics** — if the practice already exists, do not overwrite or reconfigure it
 - **No branch creation** — commit directly to the current branch. The user is expected to be on an appropriate branch.
 - **One commit per topic** — separate commits make it easy to review or revert individual adoptions
+- **One recommendation format** — the `status: recommended` project skill; never a parallel recommendations document
 
 <!-- maverick-plugin-version: 3.3.10-dev -->

@@ -5,7 +5,7 @@ This page lists every skill shipped with the Maverick plugin, generated from the
 
 ## do-adopt
 
-Scan a project for missing best-practice areas and implement the top recommendation for each gap. Currently covers linting and unit testing. Installs tools, writes configs, and adds CI steps.
+Scan a project for missing best-practice areas and implement the top recommendation for each gap (linting, unit testing) — installs tools, writes configs, verifies, and commits. Pass 'recommend' to stop after writing recommendations without implementing (replaces the old do-recommend skill).
 
 
 ## do-code
@@ -58,11 +58,6 @@ Analyze a project's codebase against Maverick standard practices and write a fin
 How to process code review feedback — verify before implementing, push back when wrong, clarify before acting on partial understanding. Applied when receiving review from the agent-code-reviewer or human reviewers.
 
 
-## do-recommend
-
-Scan a project for missing best-practice areas and recommend 1-3 technology options for each gap. Currently covers linting and unit testing. Writes recommendations to docs/maverick/recommendations/<topic>.md.
-
-
 ## do-tech-docs
 
 Technical documentation standards — document structure, writing style, file organisation, mermaid diagrams, and validation. Referenced by do-docs and tech-docs-writer.
@@ -75,7 +70,7 @@ Write or update tests for a code change. Operates in two modes: `unit` (module-s
 
 ## do-upskill
 
-Use when a best-practice skill needs project-specific implementation details and no project skill exists at docs/maverick/skills/<topic>/SKILL.md. Scans the codebase and generates a project-specific skill file.
+Generate project-specific implementation skills at docs/maverick/skills/<topic>/SKILL.md by scanning the codebase. Pass a topic name to generate one topic; omit arguments to process every topic.
 
 
 ## mav-block-propagation

@@ -22,7 +22,7 @@ The check verifies the project is initialised and `uv` is on PATH.
 
 ## When to Run
 
-- User invokes `/maverick:codebase-audit`
+- User invokes `/maverick:do-maverick-alignment`
 - May also be triggered automatically by the Maverick plugin when no `.maverick/` directory exists in the project root (first session in an uninitialised project)
 
 ## Process
@@ -68,6 +68,18 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 
 ---
 
+## Audit Coverage
+
+The categories below are the **audit-backed** practice areas — each maps
+to a best-practice skill whose hard requirements this audit checks.
+The remaining bp skills are **advisory** (applied during implementation
+and review, not audited here): mav-bp-operability (beyond
+category 11's error-handling check), mav-bp-api-design,
+mav-bp-accessibility,
+mav-bp-environment-management, and
+mav-bp-infrastructure-as-code. Do not report on advisory
+areas — absence of an audit category is deliberate, not an oversight.
+
 ## Audit Categories
 
 ### 1. Linting
@@ -104,8 +116,8 @@ Record the evidence (file paths, dependency names, snippets) for each finding.
 
 | Status | Criteria                                                                       |
 | ------ | ------------------------------------------------------------------------------ |
-| PASS   | Test files exist (3+) AND test runner is configured AND test script is defined |
-| WARN   | Test files exist but no runner configured, or fewer than 3 test files          |
+| PASS   | Test files exist (3+) AND test runner is configured AND test script is defined AND a coverage threshold is enforced (runner config or CI gate) — the mav-bp-testing 60% unit gate |
+| WARN   | Tests exist and run but no coverage gate is enforced, or fewer than 3 test files |
 | FAIL   | No test files found                                                            |
 
 **Additional detail:** Count the number of test files found and note their location pattern (co-located with source, or in a separate `tests/` directory).
@@ -383,7 +395,7 @@ Each recommendation should be specific: what to create/change, where, and why.>
 
 After writing the report, print a brief summary:
 
-- The score (e.g. "3/5 passing")
+- The score (e.g. "8/10 passing")
 - Which categories are WARN or FAIL
 - The path to the full report
 
