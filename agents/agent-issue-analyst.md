@@ -2,6 +2,7 @@
 name: agent-issue-analyst
 description: Reads a GitHub issue, explores the codebase, and produces a solution design. Dispatched by do-issue-solo and do-issue-guided as a subagent so that codebase exploration does not consume the caller's context window.
 color: cyan
+disallowedTools: Edit, Write, NotebookEdit
 skills:
 - mav-github-issue-workflow
 - mav-create-solution-design

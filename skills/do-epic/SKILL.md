@@ -200,7 +200,9 @@ For each story being worked on (whether as subagent or serially):
    — if the story now carries `blocked-by:#N`, abort without pushing.
 2. Run the story through `do-issue-solo`'s per-story phases
    (Phase 4 onward — branch is already created).
-3. **On FAIL from agent-code-reviewer (eject)**:
+3. **On FAIL from agent-code-reviewer (eject)** — FAIL means the
+   `MAVERICK_VERDICT: FAIL` marker parsed in `do-issue-solo`
+   Phase 9; a missing or ambiguous marker counts as FAIL:
    - Mark story `ejected` in epic state:
      `uv run maverick state set <repo> $ARGUMENTS <story> ejected`.
    - Run block propagation per `mav-block-propagation`:

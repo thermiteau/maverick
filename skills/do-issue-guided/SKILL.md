@@ -102,7 +102,7 @@ Follow the mav-plan-execution skill for the execution loop, verification discipl
 ## Phase 6: Code Review
 
 1. Dispatch the agent-code-reviewer agent with the issue requirements and the diff (`git diff $(uv run maverick git-workflow story-base)...HEAD`).
-2. The reviewer performs two-stage review: spec compliance first, then code quality.
+2. The reviewer performs two-stage review: spec compliance first, then code quality. Its reply ends with a `MAVERICK_VERDICT: PASS|FAIL` marker line — that line is the verdict. If the marker is missing or ambiguous, treat the review as FAIL; do not infer a verdict from the prose.
 3. If spec compliance fails, stop — fix the gaps before requesting re-review.
 4. Process code quality feedback per the do-pullrequest-review skill:
    - Read all items before acting.

@@ -7,6 +7,8 @@ CONFIG = AgentConfig(
         "Reviews Claude Code session activity and git diffs to identify "
         "missed opportunities, duplicated code, and quality issues."
     ),
-    model="sonnet",
+    # Transcript/diff analysis — a haiku-class task; pure analysis, read-only.
+    model="haiku",
     color="magenta",
+    disallowed_tools=["Edit", "Write", "NotebookEdit"],
 )

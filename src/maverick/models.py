@@ -47,7 +47,10 @@ class AgentConfig:
     description: str
     tools: list[str] = field(default_factory=list)
     disallowed_tools: list[str] = field(default_factory=list)
-    model: Literal["sonnet", "opus", "haiku", "inherit"] | None = None
+    # Model alias (e.g. "sonnet", "opus", "haiku", "inherit") or a full model
+    # ID. Deliberately a plain str: a Literal froze the schema to a model list
+    # that goes stale as new families ship.
+    model: str | None = None
     permission_mode: (
         Literal["default", "acceptEdits", "dontAsk", "bypassPermissions", "plan"] | None
     ) = None

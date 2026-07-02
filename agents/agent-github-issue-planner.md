@@ -1,8 +1,9 @@
 ---
 name: agent-github-issue-planner
 description: Takes a solution design and produces an ordered task list. Dispatched by do-issue-solo and do-issue-guided as a subagent so that planning does not consume the caller's context window.
-model: sonnet
+model: haiku
 color: green
+disallowedTools: Edit, Write, NotebookEdit
 skills:
 - mav-github-issue-workflow
 - mav-create-tasks

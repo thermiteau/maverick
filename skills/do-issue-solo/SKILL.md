@@ -463,9 +463,17 @@ the open PR, not a local-diff advisory loop.
    - The PR URL
    - The issue body, design comment, and tasks list (so it has the spec)
 3. Close the agent-dispatch interval: `uv run maverick report end agent-dispatch --issue $ARGUMENTS --phase review --agent agent-code-reviewer --skill-name mav-bp-code-review --outcome <success|failure>` (use `failure` on FAIL verdict).
-4. The agent returns exactly one of two verdicts:
-   - **PASS** — proceed to Phase 10 (merge).
-   - **FAIL** — proceed to Phase 11 (eject). Do not attempt to auto-fix.
+4. **Parse the verdict from the marker line only.** The agent's reply
+   must end with exactly one `MAVERICK_VERDICT: PASS` or
+   `MAVERICK_VERDICT: FAIL` line — that line is the verdict; do not
+   infer it from the prose above it.
+   - `MAVERICK_VERDICT: PASS` — proceed to Phase 10 (merge).
+   - `MAVERICK_VERDICT: FAIL` — proceed to Phase 11 (eject). Do not
+     attempt to auto-fix.
+   - Marker **missing, ambiguous, or present more than once with
+     conflicting values** — treat as FAIL and eject. Do not re-dispatch
+     the reviewer to "get a cleaner answer", and never substitute your
+     own reading of the review body for a missing marker.
 5. Update phase to `review` in the state file.
 6. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS review`.
 

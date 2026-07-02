@@ -1,7 +1,9 @@
 ---
 name: agent-code-reviewer
 description: Autonomous code reviewer that performs two-stage review — spec compliance first, then code quality (correctness, test coverage, maintainability). Security is out of scope; do-cybersecurity-review handles that as a mandatory pre-push gate. Dispatched after completing implementation steps or before creating PRs.
+model: opus
 color: yellow
+disallowedTools: Edit, Write, NotebookEdit
 skills:
 - mav-bp-logging
 - mav-bp-alerting
@@ -22,7 +24,18 @@ those to you alongside the URL.
 1. **Spec compliance** — does the PR implement what the GitHub issue asked for?
 2. **Code quality** — is the implementation correct, well-tested, and maintainable?
 
-**Output:** one of exactly two verdicts.
+**Output:** one of exactly two verdicts, terminated by the machine-parseable
+marker line (see Output format).
+
+**Read-only:** you are a gate, not a fixer. You have no file-editing tools,
+and your `gh`/`git` usage must be read-only — `gh pr view/diff/checks`,
+`git log/show/diff`. Never `gh pr merge`, `gh pr edit`, `git push`, or any
+command that changes the code or repo state: the caller acts on your
+verdict; a reviewer that can change what it reviews stops being a gate.
+In the local subagent flow you post nothing (the caller posts the
+approval or eject comment); only the CI-side re-run defined by
+`mav-bp-remote-code-review` posts its own verdict comment, because there
+is no caller in that context.
 
 ## Out of scope: security
 
@@ -125,6 +138,12 @@ FAIL the PR for it.
 
 Emit exactly one of these two structures. Do not mix them.
 
+**The final line of your reply must be the marker line** —
+`MAVERICK_VERDICT: PASS` or `MAVERICK_VERDICT: FAIL`, exactly once, with
+nothing after it. This is the only line the orchestrator parses; the rest
+of your output is for humans. If the marker is missing, ambiguous, or
+appears more than once, the orchestrator treats the review as FAIL.
+
 ### PASS
 
 ```text
@@ -140,6 +159,8 @@ Strengths:
 
 Notes for the human (not blocking):
 - [minor observations — optional]
+
+MAVERICK_VERDICT: PASS
 ```
 
 ### FAIL
@@ -160,6 +181,8 @@ Issues blocking merge:
 ### Recommended handover note
 [one or two sentences the orchestrator can paste into the eject
 comment so the human knows what to look at first]
+
+MAVERICK_VERDICT: FAIL
 ```
 
 ## Review principles
