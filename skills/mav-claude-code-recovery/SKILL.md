@@ -105,4 +105,4 @@ When a subagent fails or returns incomplete results:
 - **Reduce scope on repeated failure** — if a subagent fails twice on the same task, split the task into smaller pieces.
 - **Never silently swallow failures** — if a subagent fails and you cannot recover, report the failure clearly to the user.
 
-<!-- maverick-plugin-version: 4.0.1-dev -->
+<!-- maverick-plugin-version: 4.0.1 -->
