@@ -128,22 +128,47 @@ def _load_project_guards(cwd: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _instance_id(env: dict[str, str]) -> str | None:
-    """Mirror coordinator.instance_id()'s env-based derivation (read-only)."""
+def _instance_id_path() -> Path:
+    """Where coordinator.instance_id() persists the per-user id."""
+    return Path("~/.maverick/instance_id").expanduser()
+
+
+def _instance_id(env: dict[str, str], id_path: Path | None = None) -> str | None:
+    """Mirror coordinator.instance_id()'s derivation (read-only, never writes).
+
+    The rungs must match ``coordinator.instance_id()`` exactly, or the hook
+    and the coordinator can land on different ids and disagree about whether
+    a claim belongs to this instance. In particular the file fallback is
+    essential: hooks run in a separately-spawned subprocess that in some
+    Claude Code versions does not receive the session-id env, so without it
+    the hook would fall straight to ``None`` while the coordinator resolved a
+    real id via the session hash (or the file). Read-only: the hook must
+    never generate or persist an id — that is the coordinator's job.
+    """
     explicit = env.get("MAVERICK_INSTANCE_ID")
     if explicit:
         return explicit
     session = env.get("CLAUDE_CODE_SESSION_ID") or env.get("CLAUDE_SESSION_ID")
     if session:
         return hashlib.sha256(session.encode("utf-8")).hexdigest()[:10]
+    try:
+        cached = (id_path or _instance_id_path()).read_text().strip()
+        if cached:
+            return cached
+    except OSError:
+        pass
     return None
 
 
-def is_autonomous(env: dict[str, str], claims_path: Path | None = None) -> bool:
+def is_autonomous(
+    env: dict[str, str],
+    claims_path: Path | None = None,
+    id_path: Path | None = None,
+) -> bool:
     """Autonomous = explicit env flag, or this instance holds a local claim."""
     if env.get("MAVERICK_AUTONOMOUS") == "1":
         return True
-    instance = _instance_id(env)
+    instance = _instance_id(env, id_path)
     if not instance:
         return False
     path = claims_path or Path("~/.maverick/active-claims.json").expanduser()
@@ -381,7 +406,8 @@ def decide(payload: dict) -> Verdict:
 
 
 def resolve(verdict: Verdict, payload: dict, env: dict[str, str],
-            claims_path: Path | None = None) -> Verdict:
+            claims_path: Path | None = None,
+            id_path: Path | None = None) -> Verdict:
     """Apply the interactive-vs-autonomous policy to a rule hit."""
     if verdict.decision == ALLOW:
         return verdict
@@ -389,10 +415,14 @@ def resolve(verdict: Verdict, payload: dict, env: dict[str, str],
         return Verdict(DENY, verdict.reason, always_deny=True)
 
     cwd = Path(payload.get("cwd") or ".")
-    if is_autonomous(env, claims_path):
-        # Autonomous: infra edits are allowed only with recorded authorization.
-        if "infrastructure" in verdict.reason and "infra" in _session_auth_scopes(cwd):
-            return _ALLOW
+    # A recorded `infra` grant authorizes infrastructure edits in *any* mode.
+    # `maverick coord authorize` only writes it after verifying issue-level
+    # authorization, so an explicit grant should suppress the prompt whether
+    # the run is classified interactive or autonomous — a misclassification
+    # must not defeat an authorization the user has already recorded.
+    if "infrastructure" in verdict.reason and "infra" in _session_auth_scopes(cwd):
+        return _ALLOW
+    if is_autonomous(env, claims_path, id_path):
         return Verdict(
             DENY,
             verdict.reason

@@ -112,6 +112,29 @@ def _instance_id_path() -> Path:
     return Path("~/.maverick/instance_id").expanduser()
 
 
+def _mirror_instance_id(value: str) -> None:
+    """Best-effort: persist *value* to the instance-id file.
+
+    Keeps the file cache in sync with the live session-derived id so an
+    env-less sibling process (the scope-guard hook) resolves the same id via
+    its file fallback. Writes only when the file is missing or differs, to
+    avoid needless churn, and self-heals a file that holds a stale id from an
+    earlier env-less ``coord`` run. Failures are swallowed — the file cache
+    is an optimisation, never a correctness requirement here.
+    """
+    path = _instance_id_path()
+    try:
+        if path.read_text().strip() == value:
+            return
+    except OSError:
+        pass
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    except OSError:
+        pass
+
+
 def _claims_registry_path() -> Path:
     """Local registry of claims held by instances on this machine.
 
@@ -199,6 +222,13 @@ def instance_id() -> str:
     if session:
         value = hashlib.sha256(session.encode("utf-8")).hexdigest()[:10]
         os.environ["MAVERICK_INSTANCE_ID"] = value
+        # Mirror the session-derived id to the file cache so a separately
+        # spawned process that lacks the session env — notably the
+        # scope-guard PreToolUse hook — resolves the *same* id via its
+        # read-only file fallback instead of landing on a stale random id.
+        # Without this the two derivation ladders can fork and the hook
+        # misclassifies an autonomous run as interactive (issue #130).
+        _mirror_instance_id(value)
         return value
     path = _instance_id_path()
     try:
