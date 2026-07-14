@@ -277,6 +277,35 @@ class TestResolve:
         assert guard.is_autonomous(env, claims_path=claims)
         assert not guard.is_autonomous({"MAVERICK_INSTANCE_ID": "other"}, claims_path=claims)
 
+    def test_autonomous_via_instance_id_file_without_session_env(self, guard, tmp_path):
+        """Issue #130 Test C: a claim recorded under the file id must classify
+        as autonomous even when the hook subprocess receives no session env."""
+        id_file = tmp_path / "instance_id"
+        id_file.write_text("847a039d01\n")
+        claims = tmp_path / "active-claims.json"
+        claims.write_text(
+            json.dumps(
+                {"claims": [{"repo": "o/r", "issue": 1, "instance_id": "847a039d01"}]}
+            )
+        )
+        # No MAVERICK_INSTANCE_ID / session env at all — only the file bridges.
+        assert guard.is_autonomous({}, claims_path=claims, id_path=id_file)
+
+    def test_instance_id_file_fallback_read_only(self, guard, tmp_path):
+        id_file = tmp_path / "instance_id"
+        id_file.write_text("f90bfff5dc")
+        assert guard._instance_id({}, id_path=id_file) == "f90bfff5dc"
+        # Session env still wins over the file.
+        assert (
+            guard._instance_id(
+                {"CLAUDE_CODE_SESSION_ID": "sess"}, id_path=id_file
+            )
+            != "f90bfff5dc"
+        )
+
+    def test_instance_id_missing_file_is_none(self, guard, tmp_path):
+        assert guard._instance_id({}, id_path=tmp_path / "nonexistent") is None
+
     def test_autonomous_infra_allowed_with_session_auth(self, guard, tmp_path):
         (tmp_path / ".maverick").mkdir()
         (tmp_path / ".maverick" / "session-auth.json").write_text(
@@ -289,6 +318,20 @@ class TestResolve:
             _edit(".github/workflows/ci.yml", cwd=str(tmp_path)),
             env={"MAVERICK_AUTONOMOUS": "1"},
         )
+        assert resolved.decision == guard.ALLOW
+
+    def test_interactive_infra_allowed_with_session_auth(self, guard, tmp_path):
+        """A recorded `infra` grant suppresses the prompt regardless of how the
+        run is classified — an interactive (mis)classification must not defeat
+        an authorization the user already recorded (issue #130 secondary)."""
+        (tmp_path / ".maverick").mkdir()
+        (tmp_path / ".maverick" / "session-auth.json").write_text(
+            json.dumps({"repo": "o/r", "issue": 1, "scopes": ["infra"]})
+        )
+        payload = _edit(".github/workflows/ci.yml", cwd=str(tmp_path))
+        hit = guard.decide(payload)
+        # env has no autonomous signal → classified interactive.
+        resolved = guard.resolve(hit, payload, env={})
         assert resolved.decision == guard.ALLOW
 
     def test_autonomous_infra_denied_without_session_auth(self, guard, tmp_path):

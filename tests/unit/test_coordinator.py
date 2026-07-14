@@ -108,7 +108,11 @@ class TestInstanceId:
 
         assert first == second
         assert len(first) == 10
-        assert not path.exists()
+        # The id is now *mirrored* to the file so the env-less scope-guard
+        # hook resolves the same value (#130). Derivation still never *reads*
+        # the file, so the #40 first-call race is not reintroduced — the
+        # mirror is deterministic, so a concurrent writer writes the same id.
+        assert path.read_text().strip() == first
 
     def test_derives_from_legacy_session_id(self, monkeypatch, tmp_path):
         """Falls back to the legacy CLAUDE_SESSION_ID name when the current
@@ -125,7 +129,7 @@ class TestInstanceId:
 
         assert first == second
         assert len(first) == 10
-        assert not path.exists()
+        assert path.read_text().strip() == first  # mirrored for the hook (#130)
 
     def test_current_session_id_wins_over_legacy(self, monkeypatch, tmp_path):
         """When both names are present the current CLAUDE_CODE_SESSION_ID is
@@ -171,6 +175,36 @@ class TestInstanceId:
         monkeypatch.setenv("MAVERICK_INSTANCE_ID", "explicit")
         monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "ignored")
         assert coordinator.instance_id() == "explicit"
+
+    def test_session_id_self_heals_stale_file(self, monkeypatch, tmp_path):
+        """#130: a stale random id in the file (written by an earlier env-less
+        `coord` run) is overwritten with the live session-derived id, so the
+        env-less scope-guard hook stops disagreeing with the coordinator."""
+        path = tmp_path / "instance_id"
+        path.write_text("847a039d01")  # stale random id from a prior run
+        monkeypatch.setattr(coordinator, "_instance_id_path", lambda: path)
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-xyz")
+
+        derived = coordinator.instance_id()
+
+        assert derived != "847a039d01"
+        assert path.read_text().strip() == derived
+
+    def test_mirror_failure_does_not_break_derivation(self, monkeypatch, tmp_path):
+        """A read-only file cache must not stop the session id from resolving —
+        the mirror is best-effort."""
+        unwritable = tmp_path / "no-such-dir" / "instance_id"
+        # Force the parent to be a file so mkdir(parents=True) fails.
+        (tmp_path / "no-such-dir").write_text("blocking file")
+        monkeypatch.setattr(coordinator, "_instance_id_path", lambda: unwritable)
+        monkeypatch.delenv("MAVERICK_INSTANCE_ID", raising=False)
+        monkeypatch.delenv("CLAUDE_SESSION_ID", raising=False)
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "session-xyz")
+
+        assert len(coordinator.instance_id()) == 10
+        assert not unwritable.exists()
 
 
 class TestBlockLabel:
