@@ -131,4 +131,4 @@ Follow the mav-git-workflow skill for commit conventions. Do not push — the us
 - **One commit per topic** — separate commits make it easy to review or revert individual adoptions
 - **One recommendation format** — the `status: recommended` project skill; never a parallel recommendations document
 
-<!-- maverick-plugin-version: 4.0.1-dev -->
+<!-- maverick-plugin-version: 4.0.1 -->

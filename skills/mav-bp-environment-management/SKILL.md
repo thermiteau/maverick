@@ -49,4 +49,4 @@ Check for `docs/maverick/skills/environment-management/SKILL.md`. If present, re
 
 This skill covers local/dev environments only (devcontainers, Docker Compose for local services, `.env`, version pinning, onboarding). Deployed environments — Terraform, CloudFormation, Kubernetes, cloud provisioning — belong to `mav-bp-infrastructure-as-code`. When an artifact serves both (e.g., Compose used in local dev and CI), follow both.
 
-<!-- maverick-plugin-version: 4.0.1-dev -->
+<!-- maverick-plugin-version: 4.0.1 -->

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-07-14
+
+### Fixed
+
+- **Scope guard no longer misclassifies autonomous runs as interactive**
+  (#130). The `PreToolUse` scope-guard hook and `coordinator.instance_id()`
+  derived the instance id via two non-identical ladders; when the hook
+  subprocess lacked the session-id env, they could resolve different ids and
+  `is_autonomous()` wrongly returned `False`. That turned the intended
+  autonomous `deny` on an unauthorized infra-path edit into an interactive
+  `ask` — spurious permission prompts during `do-issue-solo`, and a silent
+  safety downgrade in headless/CI runs. The hook now shares the coordinator's
+  read-only `~/.maverick/instance_id` file fallback, the coordinator mirrors
+  its session-derived id to that file (self-healing a stale one), and
+  `resolve()` honours a recorded `infra` grant in both the interactive and
+  autonomous branches.
+
 ## [4.0.0] - 2026-07-03
 
 A ground-up modernization of the plugin and CLI. Safety rules are now
@@ -318,7 +335,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v4.0.1...HEAD
+[4.0.1]: https://github.com/thermiteau/maverick/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/thermiteau/maverick/compare/v3.3.8...v4.0.0
 [3.3.9]: https://github.com/thermiteau/maverick/compare/v3.3.8...v3.3.9
 [3.3.8]: https://github.com/thermiteau/maverick/compare/v3.3.7...v3.3.8
