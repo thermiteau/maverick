@@ -401,4 +401,4 @@ single source of truth shared with `topics.json`:
 - **grep**: `dotenv|process\.env|os\.environ|docker-compose|devcontainer|CONTRIBUTING`
 - **files**: `.env.example`, `.env.sample`, `.env.template`, `.devcontainer/**`, `docker-compose*.yml`, `Vagrantfile`, `flake.nix`, `shell.nix`, `CONTRIBUTING.md`
 
-<!-- maverick-plugin-version: 4.0.1 -->
+<!-- maverick-plugin-version: 4.0.2-dev -->
