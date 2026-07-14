@@ -37,4 +37,4 @@ Check for `docs/maverick/skills/linting/SKILL.md`. If present, read it and follo
 | No pre-commit formatting | Style inconsistency across commits | Add lint-staged or equivalent |
 | Linter running on generated/vendor code | False positives, slow runs | Update ignore patterns |
 
-<!-- maverick-plugin-version: 4.0.1 -->
+<!-- maverick-plugin-version: 4.0.2-dev -->
