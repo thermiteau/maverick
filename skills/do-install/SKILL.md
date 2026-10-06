@@ -38,4 +38,4 @@ FAILURE, what was done, and any warnings.
 
 4. **Report.** Return a structured result: what was installed (source path or PyPI release), whether the settings file was modified or already had the permission entry, and any PATH warnings.
 
-<!-- maverick-plugin-version: 5.1.1-dev -->
+<!-- maverick-plugin-version: 5.1.1 -->
