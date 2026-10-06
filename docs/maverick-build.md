@@ -68,6 +68,9 @@ make generate
 
 # Render one runtime target's complete plugin (skills, agents, hooks) into a directory
 cd src && python -m maverick.registry --target claude --out /tmp/maverick-claude
+
+# Render the Kiro bundle (skills and agents; users get it via `maverick kiro install`)
+cd src && python -m maverick.registry --target kiro --out /tmp/maverick-kiro
 ```
 
 ## Releasing

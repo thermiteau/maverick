@@ -130,6 +130,9 @@ def claude_agent_frontmatter(agent: AgentConfig, description: str) -> dict[str, 
 CLAUDE = Target(
     name="claude",
     runtime={
+        # Stable target id, for the rare template passage that must branch
+        # ({% if RUNTIME.ID == "kiro" %}). Prefer the wording keys below.
+        "ID": "claude",
         # The product, as in "the orchestrating Claude Code session".
         "NAME": "Claude Code",
         # The model acting as the agent, as in "Claude's call was wrong".
@@ -154,5 +157,73 @@ CLAUDE = Target(
     ),
 )
 
-TARGETS: dict[str, Target] = {CLAUDE.name: CLAUDE}
+# ---------------------------------------------------------------------------
+# Kiro
+# ---------------------------------------------------------------------------
+
+#: Where `maverick kiro install` puts the bundle by default. Skills and agents
+#: are plain folders in Kiro (Powers cannot carry agents), so the CLI installs
+#: them, tracked by a manifest under KIRO_MANIFEST.
+KIRO_HOME = "~/.kiro"
+KIRO_MANIFEST = "maverick/manifest.json"
+
+
+def kiro_skill_frontmatter(skill: SkillConfig, description: str | None) -> dict[str, Any]:
+    """Agent Skills frontmatter (https://agentskills.io/specification).
+
+    Kiro reads only name/description (plus optional license, compatibility,
+    metadata); it has no equivalent of Claude Code's invocation flags, so
+    every Maverick skill is both model-activatable and a `/name` command.
+    """
+    data: dict[str, Any] = {"name": skill.name, "description": description or skill.name}
+    data["license"] = "Apache-2.0"
+    return data
+
+
+def kiro_agent_frontmatter(agent: AgentConfig, description: str) -> dict[str, Any]:
+    """Kiro custom agent (V3 Markdown format: frontmatter + body as prompt).
+
+    - Skills are attached as ``skill://`` resources; custom agents load no
+      skills unless listed.
+    - ``read_only`` drops the write tools and denies ``fs_write``, so the
+      agent can still read and run commands (git diff, tests) but not edit.
+    - Claude-only options (model aliases, colours) are not rendered: Kiro
+      model ids differ, and an unknown model only produces a warning.
+    """
+    tools = ["read", "shell", "web"] if agent.read_only else ["read", "write", "shell", "web"]
+    data: dict[str, Any] = {"name": agent.name, "description": description, "tools": tools}
+    if agent.read_only:
+        data["permissions"] = {
+            "rules": [{"capability": "fs_write", "effect": "deny"}]
+        }
+    if agent.skills:
+        data["resources"] = [
+            f"skill://{KIRO_HOME}/skills/{name}/SKILL.md" for name in agent.skills
+        ]
+    return data
+
+
+KIRO = Target(
+    name="kiro",
+    runtime={
+        "ID": "kiro",
+        "NAME": "Kiro",
+        # Kiro runs whichever model the user picked; refer to the agent.
+        "AGENT": "the agent",
+        # Skills are installed under ~/.kiro/skills/<name>/, the same layout
+        # the plugin root has, so plugin-relative paths keep working.
+        "PLUGIN_ROOT": KIRO_HOME,
+        # Kiro skills are invoked as /<name>, without a plugin namespace.
+        "SKILL_PREFIX": "/",
+        # Written by `maverick kiro install`; carries the bundle version.
+        "PLUGIN_MANIFEST": KIRO_MANIFEST,
+    },
+    arguments_token="$ARGUMENTS",
+    skill_frontmatter=kiro_skill_frontmatter,
+    agent_frontmatter=kiro_agent_frontmatter,
+    # The scope guard is per project in Kiro: `maverick init --runtime kiro`.
+    hooks_source=None,
+)
+
+TARGETS: dict[str, Target] = {CLAUDE.name: CLAUDE, KIRO.name: KIRO}
 DEFAULT_TARGET = CLAUDE

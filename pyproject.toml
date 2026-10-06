@@ -37,6 +37,17 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "maverick.cloud_init" = ["**/*.yaml"]
+# Skill/agent sources, so an installed CLI can render runtime bundles itself
+# (`maverick kiro install`). They are templates + config.py files loaded by
+# path, not importable packages.
+maverick = [
+    "skills/*/config.py",
+    "skills/*/body.md.j2",
+    "skills/*/*.yml",
+    "agents/*/config.py",
+    "agents/*/body.md.j2",
+    "docs-skills/body.md.j2",
+]
 
 [tool.uv.workspace]
 members = [

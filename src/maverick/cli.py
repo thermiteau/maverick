@@ -96,6 +96,26 @@ def main():
         help="Also remove project-level maverick artifacts (with uninstall)",
     )
 
+    # maverick kiro <action>
+    kiro_parser = subparsers.add_parser(
+        "kiro", help="Install Maverick's skills and agents for Kiro (~/.kiro)"
+    )
+    kiro_parser.add_argument(
+        "kiro_action",
+        choices=["install", "uninstall", "status"],
+        help="install/update the bundle, remove it, or report its version",
+    )
+    kiro_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Replace same-named skills/agents that Maverick did not install",
+    )
+    kiro_parser.add_argument(
+        "--home",
+        metavar="DIR",
+        help="Kiro config directory (default: ~/.kiro)",
+    )
+
     # maverick clean
     clean_parser = subparsers.add_parser(
         "clean", help="Remove maverick artifacts from the current project"
@@ -244,6 +264,13 @@ def main():
         from maverick.plugin import main as plugin_main
 
         plugin_main(args.action, dev=args.dev, clean=args.clean)
+
+    elif args.command == "kiro":
+        import sys as _sys
+
+        from maverick.kiro_cli import main as kiro_main
+
+        _sys.exit(kiro_main(args))
 
     elif args.command == "clean":
         from maverick.init import clean as clean_main
