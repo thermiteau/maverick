@@ -62,6 +62,22 @@ def claude_session_id() -> str | None:
     return None
 
 
+#: Env var carrying the current Kiro session id. Kiro exports it to hook
+#: commands and to the agent's shell tool alike.
+_KIRO_SESSION_ID_ENV_VAR = "KIRO_SESSION_ID"
+
+
+def runtime_session_id() -> str | None:
+    """Return the session id of the agent runtime running Maverick, or ``None``.
+
+    Kiro is checked first: a Kiro session launched from inside a Claude Code
+    session inherits Claude's env, and the innermost runtime is the one whose
+    hooks and shell tool run Maverick. Keep this order in sync with
+    ``runtime_hooks.claims.instance_id``.
+    """
+    return os.environ.get(_KIRO_SESSION_ID_ENV_VAR) or claude_session_id()
+
+
 class ClaimLost(RuntimeError):
     """Raised when a claim is detected as lost to another instance mid-run."""
 
@@ -197,7 +213,7 @@ def _registry_remove(repo: str, issue: int) -> None:
 def instance_id() -> str:
     """Short, unique id for this Maverick instance.
 
-    Stable across all CLI invocations within a single Claude Code session,
+    Stable across all CLI invocations within a single agent session,
     and across separate invocations on the same machine outside one.
     Without stability, harnesses that exec the CLI per call (Claude Code's
     Bash tool, CI step runners, etc.) see a fresh id every invocation,
@@ -206,10 +222,11 @@ def instance_id() -> str:
 
     Resolution order:
     1. ``MAVERICK_INSTANCE_ID`` env var — explicit override, wins.
-    2. ``CLAUDE_CODE_SESSION_ID`` env var (legacy ``CLAUDE_SESSION_ID``) —
-       derive a deterministic 10-char id from a hash of the session id.
-       Two different CC sessions get
-       distinct ids; every subagent and subprocess inside one CC session
+    2. The runtime session id (``KIRO_SESSION_ID``, else
+       ``CLAUDE_CODE_SESSION_ID`` / legacy ``CLAUDE_SESSION_ID``; see
+       :func:`runtime_session_id`) — derive a deterministic 10-char id from
+       a hash of the session id. Two different sessions get
+       distinct ids; every subagent and subprocess inside one session
        converges on the same id without needing a file write, which
        sidesteps the first-call race in the file-cache path (#40).
     3. Cached file at ``~/.maverick/instance_id`` — created on first call.
@@ -218,7 +235,7 @@ def instance_id() -> str:
     cached = os.environ.get("MAVERICK_INSTANCE_ID")
     if cached:
         return cached
-    session = claude_session_id()
+    session = runtime_session_id()
     if session:
         value = hashlib.sha256(session.encode("utf-8")).hexdigest()[:10]
         os.environ["MAVERICK_INSTANCE_ID"] = value

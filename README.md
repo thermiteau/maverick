@@ -65,6 +65,9 @@ that enforce them at the tool-call boundary:
 - A **SessionEnd hook** releases coordination claims on every exit path,
   and lease expiry covers machine death.
 
+The same scope guard also runs in **Kiro**: `maverick init --runtime kiro`
+writes it into the project's `.kiro/hooks/`. See [docs/kiro.md](docs/kiro.md).
+
 ### Claude Code Plugin: Skills creation
 
 Because every codebase is unique, there is no way to ship defined skills that are needed to enable Claude Code. So Maverick builds them when it is initialised in a project.

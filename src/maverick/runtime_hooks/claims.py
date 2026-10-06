@@ -34,7 +34,12 @@ def instance_id(env: dict[str, str], id_path: Path | None = None) -> str | None:
     explicit = env.get("MAVERICK_INSTANCE_ID")
     if explicit:
         return explicit
-    session = env.get("CLAUDE_CODE_SESSION_ID") or env.get("CLAUDE_SESSION_ID")
+    # Same order as coordinator.runtime_session_id(): innermost runtime first.
+    session = (
+        env.get("KIRO_SESSION_ID")
+        or env.get("CLAUDE_CODE_SESSION_ID")
+        or env.get("CLAUDE_SESSION_ID")
+    )
     if session:
         return hashlib.sha256(session.encode("utf-8")).hexdigest()[:10]
     try:

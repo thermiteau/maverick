@@ -7,6 +7,12 @@ import pytest
 from maverick.session_review.parser import SessionData, ToolCall
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_kiro_session(monkeypatch):
+    """Tests control session ids explicitly; never inherit a live Kiro session."""
+    monkeypatch.delenv("KIRO_SESSION_ID", raising=False)
+
+
 @pytest.fixture
 def empty_session() -> SessionData:
     """A minimal SessionData with no activity."""

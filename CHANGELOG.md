@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Kiro support for the scope guard.** `maverick init --runtime kiro`
+  writes `.kiro/hooks/maverick.json`, which runs `maverick hook scope-guard
+  --runtime kiro` before every tool call and releases claims at session
+  end. Kiro hooks cannot ask, so rule hits that ask under Claude Code block
+  under Kiro with guidance. See `docs/kiro.md`.
+- `maverick hook --runtime kiro` (Kiro adapter, V3 engine first, V2 payloads
+  accepted). It signals a block with exit code 42; the generated hook
+  command maps only that to Kiro's block code, so a missing or older CLI
+  fails open instead of blocking every tool call.
+
+### Changed
+
+- The instance id now prefers `KIRO_SESSION_ID` over Claude Code's session
+  id, in both the coordinator and the hooks, so a Kiro session started
+  from inside Claude Code is not mistaken for the Claude session.
+- `maverick hook` fails open on unrecognised arguments (a hook config newer
+  than the CLI).
+
 ## [5.0.0] - 2026-10-06
 
 Groundwork for splitting Maverick into a core repo plus generated
