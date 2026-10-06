@@ -19,7 +19,9 @@ from the install steps in `do-install` and `do-init`.
   `maverick` uv tool before installing, so both cannot claim the same
   executable. A plugin without source installs the matching
   `maverick-harness==<version>` from PyPI; a source checkout still installs
-  from itself.
+  from itself. Releases publish `maverick-harness` to PyPI via trusted
+  publishing (`publish-pypi` job in `release-finalize.yml`, environment
+  `pypi`).
 - **Hook logic now runs in the CLI** as `maverick hook <handler> --runtime
   <name>`. The plugin ships `hooks.json` and a stdlib shim that fails open on
   any CLI error, so a CLI that predates `maverick hook` skips the hooks with a

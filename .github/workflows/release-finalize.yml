@@ -2,7 +2,8 @@ name: Release Finalize
 
 # Runs after a release/* PR is squash-merged into main.
 # Tags the merge commit, creates a GitHub Release, and opens a
-# follow-up PR that bumps main to the next -dev version.
+# follow-up PR that bumps main to the next -dev version. Once the tag
+# exists, the publish-pypi job publishes the CLI (maverick-harness).
 
 on:
   pull_request:
@@ -19,6 +20,11 @@ jobs:
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      # Set only once the tag is pushed; gates publish-pypi.
+      tagged: ${{ steps.tag.outputs.tagged }}
 
     steps:
       - uses: actions/checkout@v6
@@ -64,11 +70,13 @@ jobs:
           echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Tag the merge commit on main
+        id: tag
         run: |
           git checkout main
           git pull origin main
           git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
+          echo "tagged=true" >> "$GITHUB_OUTPUT"
 
       - name: Extract release notes from changelog
         id: notes
@@ -193,3 +201,45 @@ jobs:
           gh api -X PATCH \
             "repos/${REPO}/git/refs/heads/stable" \
             -f sha="$COMMIT_SHA"
+
+  # Publish the CLI to PyPI as maverick-harness via trusted publishing
+  # (OIDC — no API token). Separate job so that id-token: write and the
+  # `pypi` environment's protection rules apply only to publishing.
+  # Runs once the tag exists even if a later finalize step failed (the
+  # stable fast-forward has failed before): the tag is the release.
+  # PyPI side: pending publisher for project maverick-harness, owner
+  # thermiteau, repo maverick, workflow release-finalize.yml,
+  # environment pypi.
+  publish-pypi:
+    needs: finalize
+    if: ${{ !cancelled() && needs.finalize.outputs.tagged == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/maverick-harness/${{ needs.finalize.outputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.finalize.outputs.tag }}
+
+      - uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Build distributions
+        env:
+          VERSION: ${{ needs.finalize.outputs.version }}
+        run: |
+          # The tag must carry the release version, never a -dev one.
+          PROJECT_VERSION=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
+          if [[ "$PROJECT_VERSION" != "$VERSION" ]]; then
+            echo "pyproject.toml version ${PROJECT_VERSION} != release ${VERSION}" >&2
+            exit 1
+          fi
+          uv build --out-dir dist/
+          ls dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
