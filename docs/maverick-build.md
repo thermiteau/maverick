@@ -37,6 +37,7 @@ All templates have access to:
 | `{{ SKILLS.<CONSTANT> }}` | Any skill name by its Python constant | `{{ SKILLS.MAV_BP_OPERABILITY }}` → `mav-bp-operability` |
 | `{{ AGENTS.<CONSTANT> }}` | Any agent name by its Python constant | `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer` |
 | `{{ ARGUMENTS }}` | User-supplied arguments (skills only) | |
+| `{{ RUNTIME.<KEY> }}` | Runtime-specific wording from the render target (`src/maverick/targets.py`) | `{{ RUNTIME.NAME }}` → `Claude Code` |
 | `{{ DEPENDS_ON }}` | Comma-separated dependency list (skills only) | |
 
 Custom variables can be passed via `extra_context` on `SkillConfig`, `AgentConfig`, or `GlobalConfig`.

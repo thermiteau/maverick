@@ -104,6 +104,7 @@ Each skill lives in `src/maverick/skills/<name>/` and requires **two files**:
    - `{{ SKILLS.<CONSTANT> }}` — any skill name, where `<CONSTANT>` is the Python constant from `names.py` (e.g., `{{ SKILLS.MAV_BP_LOGGING }}` → `mav-bp-logging`)
    - `{{ AGENTS.<CONSTANT> }}` — any agent name (e.g., `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer`)
    - Any key from `extra_context` on the `SkillConfig` or `GlobalConfig`
+   - `{{ RUNTIME.<KEY> }}` — runtime-specific wording from the render target in `src/maverick/targets.py` (`NAME`, `AGENT`, `PLUGIN_ROOT`, `SKILL_PREFIX`; e.g. `{{ RUNTIME.NAME }}` → `Claude Code`). Never hardcode "Claude Code", `${CLAUDE_PLUGIN_ROOT}` or `/maverick:` in a template — a test enforces this. Descriptions in `config.py` are rendered with these variables too.
 
 When adding a new skill, also add a name constant to `src/maverick/names.py` and register it in `ALL_SKILL_NAMES`.
 
@@ -128,6 +129,7 @@ Each agent lives in `src/maverick/agents/<name>/` and requires **two files**:
    - `{{ SKILLS.<CONSTANT> }}` — any skill name (e.g., `{{ SKILLS.MAV_BP_LOGGING }}` → `mav-bp-logging`)
    - `{{ AGENTS.<CONSTANT> }}` — any agent name (e.g., `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer`)
    - Any key from `extra_context` on the `AgentConfig`
+   - `{{ RUNTIME.<KEY> }}` — runtime-specific wording from the render target in `src/maverick/targets.py` (`NAME`, `AGENT`, `PLUGIN_ROOT`, `SKILL_PREFIX`; e.g. `{{ RUNTIME.NAME }}` → `Claude Code`). Never hardcode "Claude Code", `${CLAUDE_PLUGIN_ROOT}` or `/maverick:` in a template — a test enforces this. Descriptions in `config.py` are rendered with these variables too.
 
 When adding a new agent, also add a name constant (prefixed `AGENT_`) to `src/maverick/names.py` and register it in `ALL_AGENT_NAMES`.
 

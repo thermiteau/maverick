@@ -19,12 +19,14 @@ from maverick.registry import (
     _clean_agents_output,
     _clean_skills_output,
     _get_version,
+    _render_text,
     discover_agents,
     discover_skills,
     render_agent,
     render_all_hooks,
     render_skill,
 )
+from maverick.targets import CLAUDE, Target
 
 
 def _parse_frontmatter(text: str) -> dict:
@@ -272,6 +274,35 @@ class TestRenderSkill:
 
         assert "coord read <repo> $ARGUMENTS" in result.read_text()
 
+    def test_runtime_variables_come_from_target(self, tmp_path: Path):
+        """Body, description and ARGUMENTS all render per target."""
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "rt-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text(
+            "{{ RUNTIME.NAME }} at {{ RUNTIME.PLUGIN_ROOT }}: "
+            "{{ RUNTIME.SKILL_PREFIX }}do-init {{ ARGUMENTS }}"
+        )
+        skill = SkillConfig(name="rt-skill", description="Guards {{ RUNTIME.NAME }}.")
+        other = Target(
+            name="other",
+            runtime={**CLAUDE.runtime, "NAME": "Other IDE", "PLUGIN_ROOT": "$ROOT",
+                     "SKILL_PREFIX": "#"},
+            arguments_token="{{args}}",
+        )
+
+        claude_out = render_skill(
+            skill, GlobalConfig(), templates_dir, tmp_path / "claude"
+        ).read_text()
+        other_out = render_skill(
+            skill, GlobalConfig(), templates_dir, tmp_path / "other", other
+        ).read_text()
+
+        assert "Claude Code at ${CLAUDE_PLUGIN_ROOT}: /maverick:do-init $ARGUMENTS" in claude_out
+        assert _parse_frontmatter(claude_out)["description"] == "Guards Claude Code."
+        assert "Other IDE at $ROOT: #do-init {{args}}" in other_out
+        assert _parse_frontmatter(other_out)["description"] == "Guards Other IDE."
+
     def test_undefined_template_variable_fails_build(self, tmp_path: Path):
         """Unknown template variables must raise, not render as empty string."""
         templates_dir = tmp_path / "templates"
@@ -401,13 +432,13 @@ class TestRealSourceTree:
             assert parsed["user-invocable"] is skill.user_invocable
             assert parsed["disable-model-invocation"] is skill.disable_model_invocation
             if skill.description:
-                assert parsed["description"] == skill.description
+                assert parsed["description"] == _render_text(skill.description, CLAUDE)
 
     def test_every_agent_frontmatter_round_trips(self):
         for agent in discover_agents():
             parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
             assert parsed["name"] == agent.name
-            assert parsed["description"] == agent.description
+            assert parsed["description"] == _render_text(agent.description, CLAUDE)
             if agent.skills:
                 assert parsed["skills"] == agent.skills
 
@@ -548,3 +579,33 @@ class TestRenderAllHooks:
         assert (out / "hooks.json").exists()
         assert not (out / "__pycache__").exists()
         assert not (out / "__init__.py").exists()
+
+
+class TestTemplatesAreRuntimeNeutral:
+    """Runtime-specific strings belong in maverick.targets, not templates.
+
+    Hardcoding them would leak Claude Code wording into every other
+    target's build. Skills that are *about* one runtime are allowlisted.
+    """
+
+    RUNTIME_SPECIFIC = ("Claude Code", "${CLAUDE_PLUGIN_ROOT}", "Claude's", "/maverick:")
+    ALLOWLIST = {"mav-claude-code-recovery"}
+
+    def test_no_hardcoded_runtime_strings(self):
+        src = Path(__file__).resolve().parents[2] / "src" / "maverick"
+        problems = []
+        for kind in ("skills", "agents"):
+            for path in sorted((src / kind).glob("*/*")):
+                if path.parent.name in self.ALLOWLIST:
+                    continue
+                if path.name not in ("body.md.j2", "config.py"):
+                    continue
+                text = path.read_text()
+                problems += [
+                    f"{path.relative_to(src)}: {needle!r}"
+                    for needle in self.RUNTIME_SPECIFIC
+                    if needle in text
+                ]
+        assert not problems, (
+            "Use {{ RUNTIME.* }} (maverick.targets) instead of: " + ", ".join(problems)
+        )

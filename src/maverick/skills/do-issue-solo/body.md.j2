@@ -258,7 +258,7 @@ verification discipline, failure handling, and crash recovery.
 
 This phase **always runs** before the PR is opened. There is no skip
 path — the heuristic-gated version used to let stale docs ship when
-Claude's affected-or-not call was wrong. The agent decides whether
+{{ RUNTIME.AGENT }}'s affected-or-not call was wrong. The agent decides whether
 work is needed; the workflow decides whether the agent runs.
 
 The agent is dispatched with a **pre-filtered shortlist** of docs the
@@ -402,7 +402,7 @@ skill's return is a hand-back, not a phase-complete signal (#106).
      it cannot be resolved.
    Do not proceed to Phase 9 until the wait exits 0.
 6. **Browser/UI verification is non-blocking.** If the change touches UI
-   and Claude's global instructions or a project skill ask for browser
+   and {{ RUNTIME.AGENT }}'s global instructions or a project skill ask for browser
    verification, run it with a strict timeout (e.g. 5 min total). On
    hang, timeout, or failure, post the outcome as a non-blocking PR
    comment and proceed to Phase 9 — do **not** wait indefinitely (#41).

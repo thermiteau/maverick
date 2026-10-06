@@ -12,7 +12,7 @@ FAILURE, what was done, and any warnings.
 
 ## Process
 
-1. **Locate the plugin root.** This is the directory containing `pyproject.toml`. If `${CLAUDE_PLUGIN_ROOT}` is set, use that. Otherwise resolve two levels above this `SKILL.md` (i.e. the parent of `skills/do-install/`). Fail with a clear error if `pyproject.toml` is not found at the resolved path.
+1. **Locate the plugin root.** This is the directory containing `pyproject.toml`. If `{{ RUNTIME.PLUGIN_ROOT }}` is set, use that. Otherwise resolve two levels above this `SKILL.md` (i.e. the parent of `skills/do-install/`). Fail with a clear error if `pyproject.toml` is not found at the resolved path.
 
 2. **Run the installer.** From a shell:
 
