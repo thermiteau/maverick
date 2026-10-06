@@ -13,7 +13,7 @@ from jinja2 import Environment, StrictUndefined
 
 from maverick.models import AgentConfig, GlobalConfig, SkillConfig
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
-from maverick.targets import DEFAULT_TARGET, Target
+from maverick.targets import DEFAULT_TARGET, TARGETS, Target
 
 # StrictUndefined makes any undefined template variable fail the build loudly
 # instead of silently rendering as an empty string (which shipped broken
@@ -149,34 +149,9 @@ def discover_skills(templates_dir: Path = SKILLS_TEMPLATES_DIR) -> list[SkillCon
 
 
 def _build_skill_frontmatter(skill: SkillConfig, target: Target = DEFAULT_TARGET) -> str:
-    """Build YAML frontmatter from a SkillConfig.
-
-    The two invocation flags are always emitted explicitly. Claude Code's
-    runtime defaults are ``user-invocable: true`` and
-    ``disable-model-invocation: false`` — the opposite of this config
-    schema's defaults — so omitting a flag silently inverted the declared
-    intent for every non-invocable reference skill.
-    """
-    data: dict[str, Any] = {"name": skill.name}
-
-    if skill.description:
-        data["description"] = _render_text(skill.description, target)
-    if skill.argument_hint:
-        data["argument-hint"] = skill.argument_hint
-    data["user-invocable"] = skill.user_invocable
-    data["disable-model-invocation"] = skill.disable_model_invocation
-    if skill.allowed_tools:
-        data["allowed-tools"] = ", ".join(skill.allowed_tools)
-    if skill.model:
-        data["model"] = skill.model
-    if skill.context:
-        data["context"] = skill.context
-    if skill.agent:
-        data["agent"] = skill.agent
-    if skill.hooks:
-        data["hooks"] = skill.hooks
-
-    return _dump_frontmatter(data)
+    """Build the target's YAML frontmatter for a skill."""
+    description = _render_text(skill.description, target) if skill.description else None
+    return _dump_frontmatter(target.skill_frontmatter(skill, description))
 
 
 def render_skill(
@@ -263,38 +238,9 @@ def render_all_skills(
 
 
 def _build_agent_frontmatter(agent: AgentConfig, target: Target = DEFAULT_TARGET) -> str:
-    """Build YAML frontmatter from an AgentConfig."""
-    data: dict[str, Any] = {
-        "name": agent.name,
-        "description": _render_text(agent.description, target),
-    }
-
-    if agent.model:
-        data["model"] = agent.model
-    if agent.color:
-        data["color"] = agent.color
-    if agent.permission_mode:
-        data["permissionMode"] = agent.permission_mode
-    if agent.max_turns is not None:
-        data["maxTurns"] = agent.max_turns
-    if agent.background:
-        data["background"] = True
-    if agent.isolation:
-        data["isolation"] = agent.isolation
-    if agent.memory:
-        data["memory"] = agent.memory
-    if agent.tools:
-        data["tools"] = ", ".join(agent.tools)
-    if agent.disallowed_tools:
-        data["disallowedTools"] = ", ".join(agent.disallowed_tools)
-    if agent.skills:
-        data["skills"] = list(agent.skills)
-    if agent.mcp_servers:
-        data["mcpServers"] = agent.mcp_servers
-    if agent.hooks:
-        data["hooks"] = agent.hooks
-
-    return _dump_frontmatter(data)
+    """Build the target's YAML frontmatter for an agent."""
+    description = _render_text(agent.description, target)
+    return _dump_frontmatter(target.agent_frontmatter(agent, description))
 
 
 def discover_agents(
@@ -466,13 +412,45 @@ def render_all_hooks(
     return written
 
 
-def main() -> None:
-    for output in render_all_skills():
+def render_target(target: Target, output_root: Path) -> list[Path]:
+    """Render one target's complete plugin (skills, agents, hooks) under *output_root*."""
+    from maverick.generate_topics import generate_topics_json  # imports this module
+
+    skills_dir = output_root / target.skills_dir
+    written = render_all_skills(output_dir=skills_dir, target=target)
+    # do-upskill reads topics.json at runtime; render_all_skills just cleaned it.
+    written.append(generate_topics_json(skills_dir))
+    written += render_all_agents(output_dir=output_root / target.agents_dir, target=target)
+    if target.hooks_source is not None:
+        written += render_all_hooks(target.hooks_source, output_root / target.hooks_dir)
+    return written
+
+
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m maverick.registry",
+        description="Render skills, agents and hooks for a runtime target.",
+    )
+    parser.add_argument(
+        "--target", choices=sorted(TARGETS), default=DEFAULT_TARGET.name,
+        help=f"Runtime to render for (default: {DEFAULT_TARGET.name})",
+    )
+    parser.add_argument(
+        "--out", type=Path, metavar="DIR",
+        help="Render only the target's plugin into DIR. Without it, the default "
+        "target renders into the repo root along with the docs index and "
+        "CloudFormation templates.",
+    )
+    args = parser.parse_args(argv)
+    target = TARGETS[args.target]
+
+    output_root = args.out.resolve() if args.out else PROJECT_ROOT
+    for output in render_target(target, output_root):
         print(f"Generated {output}")
-    for output in render_all_agents():
-        print(f"Generated {output}")
-    for output in render_all_hooks():
-        print(f"Generated {output}")
+    if args.out:
+        return
     print(f"Generated {render_docs_skills()}")
     for output in render_cfn_templates():
         print(f"Generated {output}")

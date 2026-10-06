@@ -7,11 +7,27 @@ from typing import Any, Literal
 
 
 @dataclass
-class SkillConfig:
-    """Declarative configuration for a single skill template.
+class ClaudeSkillOptions:
+    """Claude Code-only skill frontmatter, ignored by other render targets.
 
-    Fields map to the Claude Code skill frontmatter schema:
     https://code.claude.com/docs/en/skills#frontmatter-reference
+    """
+
+    allowed_tools: list[str] = field(default_factory=list)
+    model: str | None = None
+    context: Literal["fork"] | None = None
+    agent: str | None = None
+    hooks: dict[str, Any] | None = None
+
+
+@dataclass
+class SkillConfig:
+    """Declarative, runtime-neutral configuration for a single skill.
+
+    Core fields describe the skill in terms every runtime can honour; each
+    render target in ``maverick.targets`` maps them onto its own format.
+    Options only one runtime understands live in a per-runtime block
+    (``claude``), so they cannot leak into other targets' builds.
     """
 
     name: str
@@ -19,13 +35,7 @@ class SkillConfig:
     argument_hint: str | None = None
     disable_model_invocation: bool = True
     user_invocable: bool = False
-    allowed_tools: list[str] = field(default_factory=list)
-    model: str | None = None
-    context: Literal["fork"] | None = None
-    agent: str | None = None
-    hooks: dict[str, Any] | None = None
 
-    # Maverick-specific fields (not part of Claude Code frontmatter)
     depends_on: list[str] = field(default_factory=list)
     extra_context: dict[str, str] = field(default_factory=dict)
     # Files to ship alongside the rendered SKILL.md (paths relative to the
@@ -34,17 +44,16 @@ class SkillConfig:
     # asset fails the build rather than silently shipping a broken skill.
     assets: list[str] = field(default_factory=list)
 
+    claude: ClaudeSkillOptions = field(default_factory=ClaudeSkillOptions)
+
 
 @dataclass
-class AgentConfig:
-    """Declarative configuration for a single agent template.
+class ClaudeAgentOptions:
+    """Claude Code-only subagent frontmatter, ignored by other render targets.
 
-    Fields map to the Claude Code subagent frontmatter schema:
     https://code.claude.com/docs/en/sub-agents#supported-frontmatter-fields
     """
 
-    name: str
-    description: str
     tools: list[str] = field(default_factory=list)
     disallowed_tools: list[str] = field(default_factory=list)
     # Model alias (e.g. "sonnet", "opus", "haiku", "inherit") or a full model
@@ -55,14 +64,31 @@ class AgentConfig:
         Literal["default", "acceptEdits", "dontAsk", "bypassPermissions", "plan"] | None
     ) = None
     max_turns: int | None = None
-    skills: list[str] = field(default_factory=list)
     mcp_servers: dict[str, Any] | None = None
     hooks: dict[str, Any] | None = None
     memory: Literal["user", "project", "local"] | None = None
     background: bool = False
     isolation: Literal["worktree"] | None = None
     color: str | None = None
+
+
+@dataclass
+class AgentConfig:
+    """Declarative, runtime-neutral configuration for a single agent.
+
+    See :class:`SkillConfig` for the core/per-runtime split.
+    """
+
+    name: str
+    description: str
+    skills: list[str] = field(default_factory=list)
+    # The agent may read and run commands but never edit files. A reviewer
+    # that can fix what it reviews stops being a gate. Each target enforces
+    # this in its own terms (Claude Code: disallowed edit tools).
+    read_only: bool = False
     extra_context: dict[str, str] = field(default_factory=dict)
+
+    claude: ClaudeAgentOptions = field(default_factory=ClaudeAgentOptions)
 
 
 @dataclass

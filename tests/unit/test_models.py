@@ -1,6 +1,13 @@
 """Tests for maverick.models — dataclass defaults and structure."""
 
-from maverick.models import AgentConfig, GlobalConfig, SkillConfig, TopicConfig
+from maverick.models import (
+    AgentConfig,
+    ClaudeAgentOptions,
+    ClaudeSkillOptions,
+    GlobalConfig,
+    SkillConfig,
+    TopicConfig,
+)
 
 
 class TestSkillConfig:
@@ -11,13 +18,14 @@ class TestSkillConfig:
         assert s.argument_hint is None
         assert s.disable_model_invocation is True
         assert s.user_invocable is False
-        assert s.allowed_tools == []
-        assert s.model is None
-        assert s.context is None
-        assert s.agent is None
-        assert s.hooks is None
         assert s.depends_on == []
         assert s.extra_context == {}
+        assert s.claude == ClaudeSkillOptions()
+        assert s.claude.allowed_tools == []
+        assert s.claude.model is None
+        assert s.claude.context is None
+        assert s.claude.agent is None
+        assert s.claude.hooks is None
 
     def test_full_config(self):
         s = SkillConfig(
@@ -26,21 +34,22 @@ class TestSkillConfig:
             argument_hint="<issue-url>",
             disable_model_invocation=False,
             user_invocable=True,
-            allowed_tools=["Bash", "Read"],
-            model="sonnet",
             depends_on=["dep-a", "dep-b"],
             extra_context={"KEY": "VALUE"},
+            claude=ClaudeSkillOptions(allowed_tools=["Bash", "Read"], model="sonnet"),
         )
         assert s.user_invocable is True
         assert s.disable_model_invocation is False
-        assert s.allowed_tools == ["Bash", "Read"]
+        assert s.claude.allowed_tools == ["Bash", "Read"]
         assert s.depends_on == ["dep-a", "dep-b"]
 
     def test_mutable_defaults_are_independent(self):
         a = SkillConfig(name="a")
         b = SkillConfig(name="b")
         a.depends_on.append("x")
+        a.claude.allowed_tools.append("Bash")
         assert "x" not in b.depends_on
+        assert b.claude.allowed_tools == []
 
 
 class TestAgentConfig:
@@ -48,29 +57,34 @@ class TestAgentConfig:
         a = AgentConfig(name="agent-test", description="Test agent")
         assert a.name == "agent-test"
         assert a.description == "Test agent"
-        assert a.tools == []
-        assert a.disallowed_tools == []
-        assert a.model is None
-        assert a.max_turns is None
         assert a.skills == []
-        assert a.background is False
-        assert a.isolation is None
+        assert a.read_only is False
+        assert a.claude.tools == []
+        assert a.claude.disallowed_tools == []
+        assert a.claude.model is None
+        assert a.claude.max_turns is None
+        assert a.claude.background is False
+        assert a.claude.isolation is None
 
     def test_full_config(self):
         a = AgentConfig(
             name="agent-x",
             description="An agent",
-            tools=["Read", "Write"],
-            model="opus",
-            max_turns=10,
             skills=["do-issue-solo"],
-            background=True,
-            isolation="worktree",
+            read_only=True,
+            claude=ClaudeAgentOptions(
+                tools=["Read", "Write"],
+                model="opus",
+                max_turns=10,
+                background=True,
+                isolation="worktree",
+            ),
         )
-        assert a.model == "opus"
-        assert a.max_turns == 10
-        assert a.background is True
-        assert a.isolation == "worktree"
+        assert a.read_only is True
+        assert a.claude.model == "opus"
+        assert a.claude.max_turns == 10
+        assert a.claude.background is True
+        assert a.claude.isolation == "worktree"
 
 
 class TestTopicConfig:

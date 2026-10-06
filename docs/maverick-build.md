@@ -18,13 +18,15 @@ Each skill and agent lives under `src/maverick/` with two files:
 
 ```
 src/maverick/skills/<skill-name>/
-  ├── config.py        # SkillConfig — declarative metadata (frontmatter fields, dependencies)
+  ├── config.py        # SkillConfig — runtime-neutral metadata (description, invocability, dependencies)
   └── body.md.j2       # Jinja2 template — the skill content
 
 src/maverick/agents/<agent-name>/
-  ├── config.py        # AgentConfig — declarative metadata (frontmatter fields, skills list)
+  ├── config.py        # AgentConfig — runtime-neutral metadata (description, skills, read_only)
   └── body.md.j2       # Jinja2 template — the agent prompt
 ```
+
+Configs are runtime-neutral. Options only one runtime understands go in a per-runtime block — for Claude Code, `claude=ClaudeSkillOptions(...)` (e.g. `context="fork"`) or `claude=ClaudeAgentOptions(...)` (e.g. `model`, `color`). Each render target in `src/maverick/targets.py` maps the core fields and its own block onto its frontmatter format; other targets ignore blocks that are not theirs.
 
 Name constants for all skills and agents are centralised in `src/maverick/names.py` and registered in `ALL_SKILL_NAMES` / `ALL_AGENT_NAMES`.
 
@@ -63,6 +65,9 @@ make build
 
 # Just render skills and agents
 make generate
+
+# Render one runtime target's complete plugin (skills, agents, hooks) into a directory
+cd src && python -m maverick.registry --target claude --out /tmp/maverick-claude
 ```
 
 ## Releasing

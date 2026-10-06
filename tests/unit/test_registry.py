@@ -8,7 +8,13 @@ import pytest
 import yaml
 from jinja2.exceptions import UndefinedError
 
-from maverick.models import AgentConfig, GlobalConfig, SkillConfig
+from maverick.models import (
+    AgentConfig,
+    ClaudeAgentOptions,
+    ClaudeSkillOptions,
+    GlobalConfig,
+    SkillConfig,
+)
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
 from maverick.registry import (
     AGENTS_DICT,
@@ -25,6 +31,7 @@ from maverick.registry import (
     render_agent,
     render_all_hooks,
     render_skill,
+    render_target,
 )
 from maverick.targets import CLAUDE, Target
 
@@ -82,11 +89,13 @@ class TestBuildSkillFrontmatter:
             argument_hint="<url>",
             user_invocable=True,
             disable_model_invocation=False,
-            allowed_tools=["Bash", "Read"],
-            model="sonnet",
-            context="fork",
-            agent="agent-x",
-            hooks={"PreToolUse": [{"matcher": "Bash"}]},
+            claude=ClaudeSkillOptions(
+                allowed_tools=["Bash", "Read"],
+                model="sonnet",
+                context="fork",
+                agent="agent-x",
+                hooks={"PreToolUse": [{"matcher": "Bash"}]},
+            ),
         )
         parsed = _parse_frontmatter(_build_skill_frontmatter(skill) + "\n")
         assert parsed["description"] == "A cool skill"
@@ -130,18 +139,20 @@ class TestBuildAgentFrontmatter:
         agent = AgentConfig(
             name="agent-full",
             description="Full agent",
-            model="opus",
-            color="#FF0000",
-            permission_mode="dontAsk",
-            max_turns=25,
-            background=True,
-            isolation="worktree",
-            memory="project",
-            tools=["Read", "Write", "Bash"],
-            disallowed_tools=["Agent"],
             skills=["do-issue-solo", "mav-bp-logging"],
-            mcp_servers={"github": {"type": "http"}},
-            hooks={"Stop": []},
+            claude=ClaudeAgentOptions(
+                model="opus",
+                color="#FF0000",
+                permission_mode="dontAsk",
+                max_turns=25,
+                background=True,
+                isolation="worktree",
+                memory="project",
+                tools=["Read", "Write", "Bash"],
+                disallowed_tools=["Agent"],
+                mcp_servers={"github": {"type": "http"}},
+                hooks={"Stop": []},
+            ),
         )
         parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
         assert parsed["model"] == "opus"
@@ -158,6 +169,23 @@ class TestBuildAgentFrontmatter:
         assert parsed["skills"] == ["do-issue-solo", "mav-bp-logging"]
         assert parsed["mcpServers"] == {"github": {"type": "http"}}
         assert parsed["hooks"] == {"Stop": []}
+
+    def test_read_only_disallows_edit_tools(self):
+        agent = AgentConfig(
+            name="agent-ro",
+            description="Read-only agent",
+            read_only=True,
+            claude=ClaudeAgentOptions(disallowed_tools=["Agent", "Write"]),
+        )
+        parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
+        assert parsed["disallowedTools"] == "Edit, Write, NotebookEdit, Agent"
+
+    def test_claude_options_are_not_core_fields(self):
+        """Runtime-only options must not be settable as core fields."""
+        with pytest.raises(TypeError):
+            AgentConfig(name="a", description="d", model="opus")  # type: ignore[call-arg]
+        with pytest.raises(TypeError):
+            SkillConfig(name="s", context="fork")  # type: ignore[call-arg]
 
 
 class TestGetVersion:
@@ -286,6 +314,8 @@ class TestRenderSkill:
         skill = SkillConfig(name="rt-skill", description="Guards {{ RUNTIME.NAME }}.")
         other = Target(
             name="other",
+            skill_frontmatter=CLAUDE.skill_frontmatter,
+            agent_frontmatter=CLAUDE.agent_frontmatter,
             runtime={**CLAUDE.runtime, "NAME": "Other IDE", "PLUGIN_ROOT": "$ROOT",
                      "SKILL_PREFIX": "#"},
             arguments_token="{{args}}",
@@ -609,3 +639,17 @@ class TestTemplatesAreRuntimeNeutral:
         assert not problems, (
             "Use {{ RUNTIME.* }} (maverick.targets) instead of: " + ", ".join(problems)
         )
+
+
+class TestRenderTarget:
+    def test_renders_complete_plugin_into_output_root(self, tmp_path: Path):
+        """--out must produce everything the plugin needs, nothing from the repo."""
+        written = render_target(CLAUDE, tmp_path)
+        assert written
+        assert all(tmp_path in p.parents for p in written)
+        skill_names = {p.name for p in (tmp_path / "skills").iterdir()}
+        assert skill_names == set(ALL_SKILL_NAMES)
+        assert {p.stem for p in (tmp_path / "agents").glob("*.md")} == set(ALL_AGENT_NAMES)
+        assert (tmp_path / "skills" / "do-upskill" / "topics.json").is_file()
+        assert (tmp_path / "hooks" / "hooks.json").is_file()
+        assert (tmp_path / "hooks" / "run_hook.py").is_file()
