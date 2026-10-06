@@ -9,8 +9,8 @@ Hard limits on what Claude Code may do autonomously. These boundaries apply to a
 
 ## Mechanical Enforcement
 
-These boundaries are not prose-only. The plugin's scope-guard hook
-(`hooks/scope_guard.py`, a `PreToolUse` hook) mechanically gates
+These boundaries are not prose-only. The plugin's scope-guard hook (a
+pre-tool-use hook that runs `maverick hook scope-guard`) mechanically gates
 destructive git operations, commits/pushes on protected branches,
 infrastructure-path edits, and production-pattern commands — asking the
 user in interactive sessions and denying in autonomous mode. If the hook

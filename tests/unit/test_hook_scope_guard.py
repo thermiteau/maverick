@@ -7,37 +7,30 @@ deny everywhere. It must fail open on anything it does not understand.
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
-from pathlib import Path
 
 import pytest
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2] / "src" / "maverick" / "hooks" / "scope_guard.py"
-)
+from maverick.runtime_hooks import claims, scope_guard
+from maverick.runtime_hooks.adapters import ClaudeAdapter, ToolCall
 
 
 @pytest.fixture(scope="module")
 def guard():
-    spec = importlib.util.spec_from_file_location("scope_guard_hook", HOOK_PATH)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    # Register before exec: dataclasses resolve `from __future__ import
-    # annotations` types via sys.modules[cls.__module__].
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    yield module
-    sys.modules.pop(spec.name, None)
+    return scope_guard
 
 
-def _bash(command: str, cwd: str = ".") -> dict:
-    return {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
+def _claude(payload: dict) -> ToolCall:
+    """Normalize a Claude Code PreToolUse payload the way the hook does."""
+    return ClaudeAdapter().normalize(payload).tool or ToolCall("other")
 
 
-def _edit(path: str, cwd: str = ".") -> dict:
-    return {"tool_name": "Edit", "tool_input": {"file_path": path}, "cwd": cwd}
+def _bash(command: str, cwd: str = ".") -> ToolCall:
+    return _claude({"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd})
+
+
+def _edit(path: str, cwd: str = ".") -> ToolCall:
+    return _claude({"tool_name": "Edit", "tool_input": {"file_path": path}, "cwd": cwd})
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +211,7 @@ class TestProductionPatterns:
             "tool_input": {"url": "https://api.acme.com/users"},
             "cwd": str(tmp_path),
         }
-        verdict = guard.decide(payload)
+        verdict = guard.decide(_claude(payload))
         assert verdict.decision == guard.DENY
 
     def test_production_denies_even_interactive(self, guard):
@@ -294,17 +287,17 @@ class TestResolve:
     def test_instance_id_file_fallback_read_only(self, guard, tmp_path):
         id_file = tmp_path / "instance_id"
         id_file.write_text("f90bfff5dc")
-        assert guard._instance_id({}, id_path=id_file) == "f90bfff5dc"
+        assert claims.instance_id({}, id_path=id_file) == "f90bfff5dc"
         # Session env still wins over the file.
         assert (
-            guard._instance_id(
+            claims.instance_id(
                 {"CLAUDE_CODE_SESSION_ID": "sess"}, id_path=id_file
             )
             != "f90bfff5dc"
         )
 
     def test_instance_id_missing_file_is_none(self, guard, tmp_path):
-        assert guard._instance_id({}, id_path=tmp_path / "nonexistent") is None
+        assert claims.instance_id({}, id_path=tmp_path / "nonexistent") is None
 
     def test_autonomous_infra_allowed_with_session_auth(self, guard, tmp_path):
         (tmp_path / ".maverick").mkdir()
@@ -356,10 +349,10 @@ class TestResolve:
 class TestFailOpen:
     def test_unknown_tool_allows(self, guard):
         payload = {"tool_name": "Glob", "tool_input": {"pattern": "*"}}
-        assert guard.decide(payload).decision == guard.ALLOW
+        assert guard.decide(_claude(payload)).decision == guard.ALLOW
 
     def test_empty_payload_allows(self, guard):
-        assert guard.decide({}).decision == guard.ALLOW
+        assert guard.decide(_claude({})).decision == guard.ALLOW
 
     def test_missing_tool_input_allows(self, guard):
-        assert guard.decide({"tool_name": "Bash"}).decision == guard.ALLOW
+        assert guard.decide(_claude({"tool_name": "Bash"})).decision == guard.ALLOW

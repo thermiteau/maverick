@@ -146,10 +146,11 @@ maverick/
 │   ├── agent-github-issue-planner.md
 │   ├── agent-session-reviewer.md
 │   └── agent-tech-docs-writer.md
-├── hooks/                      # Tool-call enforcement rules (build output)
+├── hooks/                      # Hook config + shim calling `maverick hook` (build output)
 ├── docs/                       # Philosophy and rationale (this directory)
 ├── scripts/                    # Developer tooling (release, validation)
 ├── src/maverick/               # Maverick CLI + skill/agent sources (init, cloud, worker)
+│   └── runtime_hooks/          #   Hook logic: scope guard, claim release, report bookkeeping
 └── .claude-plugin/             # Plugin manifest
 ```
 
