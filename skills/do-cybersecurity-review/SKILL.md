@@ -273,4 +273,4 @@ that is the signal: scroll back to the calling workflow and resume
 from the step immediately after the
 `/do-cybersecurity-review` dispatch.
 
-<!-- maverick-plugin-version: 5.1.1 -->
+<!-- maverick-plugin-version: 5.1.2-dev -->
