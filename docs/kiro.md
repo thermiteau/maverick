@@ -27,9 +27,11 @@ To use both runtimes in a project, run `maverick init --runtime claude --runtime
 `maverick kiro install` renders Maverick's 41 skills and 5 agents for Kiro from the sources shipped in the CLI, so they always match the CLI version, and installs them globally:
 
 - **Skills** go to `~/.kiro/skills/<name>/`, in the open Agent Skills format. Invoke one as `/<name>` (for example `/do-issue-solo 42`), or let Kiro activate it from your request.
-- **Agents** go to `~/.kiro/agents/<name>.md`, in Kiro's Markdown agent format, with their skills attached as `skill://` resources. The main agent delegates to them as sub-agents (for example `agent-code-reviewer`). Read-only agents (the reviewer, planner, analyst and session reviewer) have no write tools and a `deny` rule on `fs_write`.
+- **Agents** go to `~/.kiro/agents/<name>.md`, in Kiro's Markdown agent format, with their skills attached as `skill://` resources and the project's steering (`.kiro/steering/`) as a `file://` resource. The main agent delegates to them as sub-agents (for example `agent-code-reviewer`). Read-only agents (the reviewer, planner, analyst and session reviewer) have no write tools and a `deny` rule on `fs_write`.
 
 `~/.kiro/maverick/manifest.json` records what was installed. Re-running `maverick kiro install` after upgrading the CLI updates the bundle and removes anything a newer version dropped. It never replaces a skill or agent of yours with the same name unless you pass `--force`. `maverick kiro status` reports the installed version and exits non-zero when it no longer matches the CLI; `maverick kiro uninstall` removes only Maverick's files.
+
+In a Kiro session, `/do-init` sets the project up for Kiro: it runs `maverick init --runtime kiro` (the scope guard below) and `/do-upskill` writes its convention pointers as steering files in `.kiro/steering/`. Nothing is written under `.claude/`.
 
 ## Scope guard
 

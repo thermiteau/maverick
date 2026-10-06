@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`do-init` under Kiro created Claude Code files and no scope guard.** It
+  ran a plain `maverick init`, which configures Claude Code
+  (`.claude/settings.json`). It now runs `maverick init --runtime <runtime>`,
+  so under Kiro it writes `.kiro/hooks/maverick.json`, and stages that file
+  in its commit.
+- **`do-upskill` wrote `.claude/rules/` pointers on every runtime.** Under
+  Kiro they now go to `.kiro/steering/` (always-included steering), and
+  Maverick's Kiro agents load the project's steering as a resource, since
+  Kiro's custom agents don't load it by default.
+- **The epic-state cache moved from `.claude/epic-state.json` to
+  `.maverick/epic-state.json`**, so `do-epic` doesn't create a `.claude/`
+  folder under Kiro. The old path is still read if present.
+
 ## [5.1.0] - 2026-10-06
 
 ### Added
