@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-06
+
 Groundwork for splitting Maverick into a core repo plus generated
 per-runtime plugin repos. Rendered skills and agents are unchanged apart
 from the install steps in `do-install` and `do-init`.
@@ -380,7 +382,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v4.0.1...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/thermiteau/maverick/compare/v4.0.1...v5.0.0
 [4.0.1]: https://github.com/thermiteau/maverick/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/thermiteau/maverick/compare/v3.3.8...v4.0.0
 [3.3.9]: https://github.com/thermiteau/maverick/compare/v3.3.8...v3.3.9

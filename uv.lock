@@ -310,7 +310,7 @@ wheels = [
 
 [[package]]
 name = "maverick-harness"
-version = "4.0.2.dev0"
+version = "5.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
