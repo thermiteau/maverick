@@ -1,8 +1,15 @@
 name: Release Finalize
 
 # Runs after a release/* PR is squash-merged into main.
-# Tags the merge commit, creates a GitHub Release, and opens a
-# follow-up PR that bumps main to the next -dev version.
+#
+#   finalize        tag, GitHub Release, PR bumping main to next -dev
+#   publish-pypi    the CLI to PyPI as maverick-harness
+#   publish-plugin  the rendered Claude Code plugin to
+#                   thermiteau/maverick-claude, then fast-forward stable
+#
+# Order matters: the plugin installs the CLI release matching its own
+# version, so users must never see a plugin (via stable's marketplace
+# entry or maverick-claude) whose CLI is not on PyPI yet.
 
 on:
   pull_request:
@@ -19,6 +26,11 @@ jobs:
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      # Set only once the tag is pushed; gates publish-pypi.
+      tagged: ${{ steps.tag.outputs.tagged }}
 
     steps:
       - uses: actions/checkout@v6
@@ -30,20 +42,6 @@ jobs:
         with:
           enable-cache: true
 
-      # Mint a Maverick GitHub App installation token. The default
-      # GITHUB_TOKEN authenticates as `github-actions[bot]`, which is
-      # NOT in the `Protect Stable` ruleset bypass list — so the REST
-      # PATCH that fast-forwards `stable` is rejected with HTTP 422
-      # ("Required status check 'guard-stable' is expected"). The
-      # Maverick App is in the bypass list, so a token minted for it
-      # is accepted. See releases 3.2.0, 3.2.1, 3.3.0 for prior
-      # failures of this step.
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ secrets.MAVERICK_APP_ID }}
-          private-key: ${{ secrets.MAVERICK_APP_PRIVATE_KEY }}
-
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -51,9 +49,18 @@ jobs:
 
       - name: Extract version from branch name
         id: version
+        env:
+          # Via env, not inline ${{ }}: a branch name is attacker-
+          # controllable text and must never be spliced into the script.
+          BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          BRANCH="${{ github.event.pull_request.head.ref }}"
           VERSION="${BRANCH#release/}"
+          # Branch names may contain shell metacharacters; accept only
+          # a plain X.Y.Z before the version reaches any later step.
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release branch '${BRANCH}' does not carry an X.Y.Z version" >&2
+            exit 1
+          fi
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -64,11 +71,13 @@ jobs:
           echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Tag the merge commit on main
+        id: tag
         run: |
           git checkout main
           git pull origin main
           git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
+          echo "tagged=true" >> "$GITHUB_OUTPUT"
 
       - name: Extract release notes from changelog
         id: notes
@@ -135,6 +144,122 @@ jobs:
               --title "chore: begin ${DEV_VERSION} cycle" \
               --body "Automated follow-up to the ${VERSION} release. Bumps main to the next in-development version."
 
+  # Publish the CLI to PyPI as maverick-harness via trusted publishing
+  # (OIDC — no API token). Separate job so that id-token: write and the
+  # `pypi` environment's protection rules apply only to publishing.
+  # Runs once the tag exists even if a later finalize step failed (the
+  # stable fast-forward has failed before): the tag is the release.
+  # PyPI side: pending publisher for project maverick-harness, owner
+  # thermiteau, repo maverick, workflow release-finalize.yml,
+  # environment pypi.
+  publish-pypi:
+    needs: finalize
+    if: ${{ !cancelled() && needs.finalize.outputs.tagged == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/maverick-harness/${{ needs.finalize.outputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.finalize.outputs.tag }}
+
+      - uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Build distributions
+        env:
+          VERSION: ${{ needs.finalize.outputs.version }}
+        run: |
+          # The tag must carry the release version, never a -dev one.
+          PROJECT_VERSION=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
+          if [[ "$PROJECT_VERSION" != "$VERSION" ]]; then
+            echo "pyproject.toml version ${PROJECT_VERSION} != release ${VERSION}" >&2
+            exit 1
+          fi
+          uv build --out-dir dist/
+          ls dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Publish the rendered Claude Code plugin to thermiteau/maverick-claude
+  # (its default branch always holds the latest release), then
+  # fast-forward `stable`, whose marketplace.json points users at it.
+  # Runs only after the CLI is on PyPI — see the header comment.
+  publish-plugin:
+    needs: [finalize, publish-pypi]
+    if: ${{ !cancelled() && needs.publish-pypi.result == 'success' }}
+    runs-on: ubuntu-latest
+    # Writes go through the App token; GITHUB_TOKEN only reads.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.finalize.outputs.tag }}
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v8.1.0
+        with:
+          enable-cache: true
+
+      # Mint a Maverick GitHub App installation token. The default
+      # GITHUB_TOKEN authenticates as `github-actions[bot]`, which is
+      # NOT in the `Protect Stable` ruleset bypass list — so the REST
+      # PATCH that fast-forwards `stable` is rejected with HTTP 422
+      # ("Required status check 'guard-stable' is expected"). The
+      # Maverick App is in the bypass list, so a token minted for it
+      # is accepted. See releases 3.2.0, 3.2.1, 3.3.0 for prior
+      # failures of this step.
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.MAVERICK_APP_ID }}
+          private-key: ${{ secrets.MAVERICK_APP_PRIVATE_KEY }}
+          # Scope the token to both repos: this one (stable) and the
+          # plugin repo it publishes to. The App must be installed on
+          # thermiteau/maverick-claude with contents: write.
+          owner: ${{ github.repository_owner }}
+          repositories: maverick,maverick-claude
+
+      - name: Render the Claude Code plugin
+        run: |
+          cd src && uv run python -m maverick.registry \
+            --target claude --out "$RUNNER_TEMP/plugin"
+
+      - name: Publish the plugin to thermiteau/maverick-claude
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ needs.finalize.outputs.tag }}
+        run: |
+          PLUGIN_REPO="$RUNNER_TEMP/maverick-claude"
+          gh repo clone thermiteau/maverick-claude "$PLUGIN_REPO"
+          gh auth setup-git
+          cd "$PLUGIN_REPO"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Re-runs are no-ops once this release is published.
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "${TAG} is already published to maverick-claude"
+            exit 0
+          fi
+
+          # Mirror the rendered plugin exactly: files removed upstream
+          # must disappear here too.
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "$RUNNER_TEMP/plugin/." .
+          git add -A
+          git commit -m "Release ${TAG}" \
+            -m "Generated from thermiteau/maverick@${TAG}."
+          git tag -a "$TAG" -m "Release ${TAG}"
+          git push origin HEAD:main "$TAG"
+
       - name: Fast-forward stable branch to the new release
         env:
           # Use the Maverick App installation token so the PATCH is
@@ -142,7 +267,7 @@ jobs:
           # ruleset bypass list. The default GITHUB_TOKEN is not.
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.finalize.outputs.tag }}
         run: |
           # `stable` is the branch that end users clone to install a
           # released version. It is always fast-forwarded to the most

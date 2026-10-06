@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
-"""PreToolUse scope guard — mechanical enforcement of mav-scope-boundaries.
+"""Pre-tool-use scope guard — mechanical enforcement of mav-scope-boundaries.
 
-Reads the PreToolUse hook payload from stdin and evaluates it against the
-four scope-boundary hard limits:
+Evaluates one runtime-neutral :class:`~.adapters.ToolCall` against the four
+scope-boundary hard limits:
 
 1. **Destructive git operations** — force pushes, hard resets, forced
    branch deletion, remote branch deletion, tree-wide discards, history
@@ -32,10 +31,10 @@ Decision model (open design decision #1 in the modernization plan):
   ``maverick coord authorize`` writes after verifying the authorization on
   the GitHub issue itself.
 
-Engineering contract (same standard as install_check.py): pure stdlib,
-deterministic, and it must never crash the session — any internal error
-fails open (allow) with a warning on stderr. Blocking is reserved for
-confident rule hits.
+Engineering contract: pure stdlib, deterministic, and it must never crash
+the session — any internal error fails open (allow) with a warning on
+stderr (see ``runtime_hooks.cli``). Blocking is reserved for confident rule
+hits.
 
 Escape hatch: ``MAVERICK_GUARD_DISABLE=1`` disables the guard entirely.
 Documented as unsafe for autonomous/CI use.
@@ -43,14 +42,14 @@ Documented as unsafe for autonomous/CI use.
 
 from __future__ import annotations
 
-import hashlib
 import json
-import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from maverick.runtime_hooks.adapters import ToolCall
+from maverick.runtime_hooks.claims import my_claims
 
 # ---------------------------------------------------------------------------
 # Decisions
@@ -128,38 +127,6 @@ def _load_project_guards(cwd: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _instance_id_path() -> Path:
-    """Where coordinator.instance_id() persists the per-user id."""
-    return Path("~/.maverick/instance_id").expanduser()
-
-
-def _instance_id(env: dict[str, str], id_path: Path | None = None) -> str | None:
-    """Mirror coordinator.instance_id()'s derivation (read-only, never writes).
-
-    The rungs must match ``coordinator.instance_id()`` exactly, or the hook
-    and the coordinator can land on different ids and disagree about whether
-    a claim belongs to this instance. In particular the file fallback is
-    essential: hooks run in a separately-spawned subprocess that in some
-    Claude Code versions does not receive the session-id env, so without it
-    the hook would fall straight to ``None`` while the coordinator resolved a
-    real id via the session hash (or the file). Read-only: the hook must
-    never generate or persist an id — that is the coordinator's job.
-    """
-    explicit = env.get("MAVERICK_INSTANCE_ID")
-    if explicit:
-        return explicit
-    session = env.get("CLAUDE_CODE_SESSION_ID") or env.get("CLAUDE_SESSION_ID")
-    if session:
-        return hashlib.sha256(session.encode("utf-8")).hexdigest()[:10]
-    try:
-        cached = (id_path or _instance_id_path()).read_text().strip()
-        if cached:
-            return cached
-    except OSError:
-        pass
-    return None
-
-
 def is_autonomous(
     env: dict[str, str],
     claims_path: Path | None = None,
@@ -168,17 +135,7 @@ def is_autonomous(
     """Autonomous = explicit env flag, or this instance holds a local claim."""
     if env.get("MAVERICK_AUTONOMOUS") == "1":
         return True
-    instance = _instance_id(env, id_path)
-    if not instance:
-        return False
-    path = claims_path or Path("~/.maverick/active-claims.json").expanduser()
-    try:
-        claims = json.loads(path.read_text()).get("claims", [])
-    except (OSError, json.JSONDecodeError, AttributeError):
-        return False
-    return any(
-        isinstance(c, dict) and c.get("instance_id") == instance for c in claims
-    )
+    return bool(my_claims(env, claims_path, id_path))
 
 
 def _session_auth_scopes(cwd: Path) -> set[str]:
@@ -325,19 +282,17 @@ def _production_hit(text: str, extra_patterns: list) -> str | None:
     return None
 
 
-def decide(payload: dict) -> Verdict:
-    """Evaluate one PreToolUse payload. Pure apart from git branch lookups."""
-    tool = payload.get("tool_name") or ""
-    tool_input = payload.get("tool_input") or {}
-    cwd = Path(payload.get("cwd") or ".")
+def decide(call: ToolCall) -> Verdict:
+    """Evaluate one tool call. Pure apart from git branch lookups."""
+    cwd = call.cwd
     guards = _load_project_guards(cwd)
     protected = tuple(
         guards.get("protected_branches") or DEFAULT_PROTECTED_BRANCHES
     )
     production_patterns = guards.get("production_patterns") or []
 
-    if tool == "WebFetch":
-        url = str(tool_input.get("url") or "")
+    if call.kind == "fetch":
+        url = call.url
         hit = _production_hit(url, production_patterns)
         if hit:
             return Verdict(
@@ -348,10 +303,8 @@ def decide(payload: dict) -> Verdict:
             )
         return _ALLOW
 
-    if tool in ("Edit", "Write", "NotebookEdit"):
-        path = str(
-            tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-        )
+    if call.kind == "write":
+        path = call.path
         normalized = path.replace("\\", "/")
         if normalized.endswith(SESSION_AUTH_REL):
             return Verdict(
@@ -368,8 +321,8 @@ def decide(payload: dict) -> Verdict:
             )
         return _ALLOW
 
-    if tool == "Bash":
-        command = str(tool_input.get("command") or "")
+    if call.kind == "shell":
+        command = call.command
         hit = _production_hit(command, production_patterns)
         if hit:
             return Verdict(
@@ -405,7 +358,7 @@ def decide(payload: dict) -> Verdict:
     return _ALLOW
 
 
-def resolve(verdict: Verdict, payload: dict, env: dict[str, str],
+def resolve(verdict: Verdict, call: ToolCall, env: dict[str, str],
             claims_path: Path | None = None,
             id_path: Path | None = None) -> Verdict:
     """Apply the interactive-vs-autonomous policy to a rule hit."""
@@ -414,7 +367,7 @@ def resolve(verdict: Verdict, payload: dict, env: dict[str, str],
     if verdict.always_deny:
         return Verdict(DENY, verdict.reason, always_deny=True)
 
-    cwd = Path(payload.get("cwd") or ".")
+    cwd = call.cwd
     # A recorded `infra` grant authorizes infrastructure edits in *any* mode.
     # `maverick coord authorize` only writes it after verifying issue-level
     # authorization, so an explicit grant should suppress the prompt whether
@@ -431,46 +384,3 @@ def resolve(verdict: Verdict, payload: dict, env: dict[str, str],
         )
     # Interactive: surface the decision to the user.
     return Verdict(ASK, verdict.reason)
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-
-def main() -> int:
-    if os.environ.get("MAVERICK_GUARD_DISABLE") == "1":
-        return 0
-    try:
-        payload = json.loads(sys.stdin.read() or "{}")
-    except json.JSONDecodeError:
-        return 0  # unparseable input — fail open, never break the session
-
-    try:
-        verdict = resolve(decide(payload), payload, dict(os.environ))
-    except Exception as exc:  # noqa: BLE001 — fail open by contract
-        print(f"maverick scope-guard: internal error ({exc}); allowing.", file=sys.stderr)
-        return 0
-
-    if verdict.decision == DENY:
-        print(f"maverick scope-guard: BLOCKED — {verdict.reason}", file=sys.stderr)
-        return 2
-    if verdict.decision == ASK:
-        print(
-            json.dumps(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "ask",
-                        "permissionDecisionReason": (
-                            f"maverick scope-guard: {verdict.reason}"
-                        ),
-                    }
-                }
-            )
-        )
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

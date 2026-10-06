@@ -1,4 +1,4 @@
-from maverick.models import AgentConfig
+from maverick.models import AgentConfig, ClaudeAgentOptions
 from maverick.names import AGENT_TECH_DOCS_WRITER, DO_DOCS, DO_TECH_DOCS, MAV_SCOPE_BOUNDARIES
 
 CONFIG = AgentConfig(
@@ -9,11 +9,10 @@ CONFIG = AgentConfig(
         " decisions, or technology choices. Produces professional markdown with Mermaid"
         " diagrams."
     ),
-    model="sonnet",
-    color="blue",
     skills=[
         DO_DOCS,
         DO_TECH_DOCS,
         MAV_SCOPE_BOUNDARIES,
     ],
+    claude=ClaudeAgentOptions(model="sonnet", color="blue"),
 )

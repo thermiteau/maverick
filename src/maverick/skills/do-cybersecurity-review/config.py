@@ -1,4 +1,4 @@
-from maverick.models import SkillConfig
+from maverick.models import ClaudeSkillOptions, SkillConfig
 from maverick.names import (
     DO_CYBERSECURITY_REVIEW,
     MAV_BP_APPLICATION_SECURITY,
@@ -21,7 +21,7 @@ CONFIG = SkillConfig(
     # Runs in an isolated forked context: the audit/setup work is
     # self-contained and would otherwise pollute the caller's window
     # (the #106 premature-stop class). The body is the fork's prompt.
-    context="fork",
+    claude=ClaudeSkillOptions(context="fork"),
     disable_model_invocation=False,
     depends_on=[MAV_BP_APPLICATION_SECURITY, MAV_SCOPE_BOUNDARIES],
 )

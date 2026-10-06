@@ -8,7 +8,7 @@ from maverick.names import (
 CONFIG = SkillConfig(
     name=MAV_MULTI_INSTANCE_COORDINATION,
     description=(
-        "Claim, lease, heartbeat, and release protocols for when multiple Claude Code"
+        "Claim, lease, heartbeat, and release protocols for when multiple {{ RUNTIME.NAME }}"
         " instances may act on the same issue or epic concurrently. GitHub labels and"
         " marker comments are the coordination surface; local state is a cache."
     ),

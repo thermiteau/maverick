@@ -24,7 +24,7 @@ Do not prompt the user for which topics to process.
 | unit-testing | {{ SKILLS.MAV_BP_TESTING }} |
 
 Detection hints for each topic come from the shared registry —
-`${CLAUDE_PLUGIN_ROOT}/skills/do-upskill/topics.json` (`scanHints` per
+`{{ RUNTIME.PLUGIN_ROOT }}/skills/do-upskill/topics.json` (`scanHints` per
 topic). Do not maintain a separate detection list here.
 
 ## Process
@@ -51,7 +51,7 @@ Determine the primary language(s) and framework(s) by reading:
 ### 3. Read the Best-Practice Skill
 
 Read the corresponding best-practice skill
-(`${CLAUDE_PLUGIN_ROOT}/skills/<skill-name>/SKILL.md`) to understand the
+(`{{ RUNTIME.PLUGIN_ROOT }}/skills/<skill-name>/SKILL.md`) to understand the
 recommended tools and configuration standards for the detected stack.
 
 ### 4. Check for an Existing Recommendation

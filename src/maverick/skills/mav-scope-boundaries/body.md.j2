@@ -1,7 +1,7 @@
 
 # Scope Boundaries
 
-Hard limits on what Claude Code may do autonomously. These boundaries apply to all workflows, skills, and agents regardless of context.
+Hard limits on what {{ RUNTIME.NAME }} may do autonomously. These boundaries apply to all workflows, skills, and agents regardless of context.
 
 ## Principle
 
@@ -9,8 +9,8 @@ Hard limits on what Claude Code may do autonomously. These boundaries apply to a
 
 ## Mechanical Enforcement
 
-These boundaries are not prose-only. The plugin's scope-guard hook
-(`hooks/scope_guard.py`, a `PreToolUse` hook) mechanically gates
+These boundaries are not prose-only. The plugin's scope-guard hook (a
+pre-tool-use hook that runs `maverick hook scope-guard`) mechanically gates
 destructive git operations, commits/pushes on protected branches,
 infrastructure-path edits, and production-pattern commands — asking the
 user in interactive sessions and denying in autonomous mode. If the hook
@@ -87,7 +87,7 @@ escalate, not an obstacle to engineer around.
 - `git rebase` on shared/pushed branches
 - Amending published commits
 
-**Note:** Consent in the GitHub issue is not sufficient for destructive git operations. The user must consent in the current Claude Code session because these actions affect local and remote state immediately.
+**Note:** Consent in the GitHub issue is not sufficient for destructive git operations. The user must consent in the current {{ RUNTIME.NAME }} session because these actions affect local and remote state immediately.
 
 ### 4. Production Systems
 
@@ -159,7 +159,7 @@ This issue requires a change to `<file>` that is outside the scope of autonomous
 Please approve this change or create a separate issue for it.
 
 ---
-*Posted by Claude Code*
+*Posted by {{ RUNTIME.NAME }}*
 ```
 
 ### For Security-Sensitive Changes
@@ -176,7 +176,7 @@ This PR modifies authentication/authorisation code that requires human review be
 - <impact description>
 
 ---
-*Posted by Claude Code*
+*Posted by {{ RUNTIME.NAME }}*
 ```
 
 ### For Production Access
@@ -184,11 +184,11 @@ This PR modifies authentication/authorisation code that requires human review be
 ```markdown
 ## Production Access Required
 
-This task requires interaction with a production system that Claude Code cannot perform.
+This task requires interaction with a production system that {{ RUNTIME.NAME }} cannot perform.
 
 **What's needed:** <description>
 **Suggested approach:** <staging alternative or manual steps>
 
 ---
-*Posted by Claude Code*
+*Posted by {{ RUNTIME.NAME }}*
 ```

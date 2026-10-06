@@ -7,14 +7,14 @@ dangling intervals, and the subagent_report hook's decision table.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
 from maverick import report_cli
+from maverick.runtime_hooks import subagent_report
+from maverick.runtime_hooks.adapters import ClaudeAdapter
 
 # ---------------------------------------------------------------------------
 # CLI: end --auto / phase inheritance / flush
@@ -131,24 +131,20 @@ class TestGenerateFlush:
 # Hook decision table
 # ---------------------------------------------------------------------------
 
-HOOK_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "src"
-    / "maverick"
-    / "hooks"
-    / "subagent_report.py"
-)
+class _ClaudeHook:
+    """The subagent-report handler as Claude Code drives it."""
+
+    @staticmethod
+    def handle(payload: dict, env: dict, registry: Path) -> list[str] | None:
+        event = ClaudeAdapter().normalize(payload)
+        return subagent_report.report_args(
+            event, env, registry, id_path=registry.parent / "no-instance-id"
+        )
 
 
 @pytest.fixture(scope="module")
 def hook():
-    spec = importlib.util.spec_from_file_location("subagent_report_hook", HOOK_PATH)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    yield module
-    sys.modules.pop(spec.name, None)
+    return _ClaudeHook()
 
 
 @pytest.fixture

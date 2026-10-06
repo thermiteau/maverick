@@ -35,7 +35,7 @@ Initialise a project for use with Maverick — verifies the GitHub App, installs
 
 ## do-install
 
-Install the maverick CLI tool system-wide from the plugin directory.
+Install the maverick CLI tool system-wide at the version matching this plugin.
 
 
 ## do-issue-guided

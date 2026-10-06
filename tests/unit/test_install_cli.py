@@ -12,8 +12,8 @@ from maverick import install_cli
 from maverick.install_cli import (
     InstallError,
     _check_gh_available,
-    _check_plugin_root,
     _check_uv_available,
+    install_spec,
     update_settings_permission,
 )
 
@@ -46,14 +46,73 @@ class TestCheckGhAvailable:
         assert "gh auth login" in str(excinfo.value)
 
 
-class TestCheckPluginRoot:
-    def test_valid_root(self, tmp_path: Path):
-        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n")
-        _check_plugin_root(tmp_path)  # no raise
+def _manifest(root: Path, version: str) -> None:
+    (root / ".claude-plugin").mkdir()
+    (root / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": version}))
 
-    def test_missing_pyproject(self, tmp_path: Path):
-        with pytest.raises(InstallError, match="pyproject.toml not found"):
-            _check_plugin_root(tmp_path)
+
+class TestInstallSpec:
+    def test_source_checkout_installs_from_path(self, tmp_path: Path):
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'x'\n")
+        _manifest(tmp_path, "4.1.0")
+        assert install_spec(tmp_path) == str(tmp_path)
+
+    def test_released_plugin_pins_pypi_version(self, tmp_path: Path):
+        _manifest(tmp_path, "4.1.0")
+        assert install_spec(tmp_path) == "maverick-harness==4.1.0"
+
+    def test_v_prefix_stripped(self, tmp_path: Path):
+        _manifest(tmp_path, "v4.1.0")
+        assert install_spec(tmp_path) == "maverick-harness==4.1.0"
+
+    def test_dev_plugin_without_source_refuses(self, tmp_path: Path):
+        _manifest(tmp_path, "4.1.1-dev")
+        with pytest.raises(InstallError, match="development build"):
+            install_spec(tmp_path)
+
+    def test_no_source_and_no_manifest_refuses(self, tmp_path: Path):
+        with pytest.raises(InstallError, match="complete maverick plugin"):
+            install_spec(tmp_path)
+
+
+class TestLegacyTool:
+    UV_LIST = "maverick v3.3.10-dev\n- maverick\nruff v0.8.0\n- ruff\n"
+
+    def _uv(self, stdout: str):
+        return patch.object(
+            install_cli.subprocess, "run",
+            return_value=install_cli.subprocess.CompletedProcess([], 0, stdout, ""),
+        )
+
+    def test_detects_legacy_tool(self):
+        with self._uv(self.UV_LIST):
+            assert install_cli._has_legacy_tool()
+
+    def test_new_name_is_not_legacy(self):
+        with self._uv("maverick-harness v4.1.0\n- maverick\n"):
+            assert not install_cli._has_legacy_tool()
+
+    def test_removed_before_install(self, tmp_path: Path):
+        _manifest(tmp_path, "4.1.0")
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            out = self.UV_LIST if cmd[:3] == ["uv", "tool", "list"] else ""
+            return install_cli.subprocess.CompletedProcess(cmd, 0, out, "")
+
+        with (
+            patch.object(install_cli, "_check_uv_available"),
+            patch.object(install_cli, "_check_gh_available"),
+            patch.object(install_cli, "_verify_on_path"),
+            patch.object(install_cli, "update_settings_permission"),
+            patch.object(install_cli.subprocess, "run", side_effect=fake_run),
+        ):
+            assert install_cli.install(tmp_path) == 0
+        assert calls[1:] == [
+            ["uv", "tool", "uninstall", "maverick"],
+            ["uv", "tool", "install", "--force", "maverick-harness==4.1.0"],
+        ]
 
 
 class TestUpdateSettingsPermission:

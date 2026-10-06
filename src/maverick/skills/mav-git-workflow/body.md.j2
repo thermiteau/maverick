@@ -144,7 +144,7 @@ develop (integration — carries -dev between releases)
 | `stable` (if present) | What end users install — always points at the most recent release tag | Fast-forwarded by CI only; never by humans | Yes (CI-only) |
 | Default branch (e.g. `main`) | Trunk or production branch — tagged at each release | Merge from story/release branches via PR only | Yes |
 | Story base (e.g. `develop`, or same as default) | Integration branch feature branches are created from and PR'd back to | Merge from feature/fix/release branches via PR only | Yes |
-| Feature/fix/chore branches | Active development | Claude Code and developers | No |
+| Feature/fix/chore branches | Active development | {{ RUNTIME.NAME }} and developers | No |
 | `release/<version>` | Short-lived release prep — bumps version, updates CHANGELOG | Created by release scripts | No |
 
 ### Rules

@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 import yaml
 from jinja2.exceptions import UndefinedError
 
-from maverick.models import AgentConfig, GlobalConfig, SkillConfig
+from maverick.models import (
+    AgentConfig,
+    ClaudeAgentOptions,
+    ClaudeSkillOptions,
+    GlobalConfig,
+    SkillConfig,
+)
 from maverick.names import ALL_AGENT_NAMES, ALL_SKILL_NAMES
 from maverick.registry import (
     AGENTS_DICT,
@@ -19,12 +26,15 @@ from maverick.registry import (
     _clean_agents_output,
     _clean_skills_output,
     _get_version,
+    _render_text,
     discover_agents,
     discover_skills,
     render_agent,
     render_all_hooks,
     render_skill,
+    render_target,
 )
+from maverick.targets import CLAUDE, Target
 
 
 def _parse_frontmatter(text: str) -> dict:
@@ -80,11 +90,13 @@ class TestBuildSkillFrontmatter:
             argument_hint="<url>",
             user_invocable=True,
             disable_model_invocation=False,
-            allowed_tools=["Bash", "Read"],
-            model="sonnet",
-            context="fork",
-            agent="agent-x",
-            hooks={"PreToolUse": [{"matcher": "Bash"}]},
+            claude=ClaudeSkillOptions(
+                allowed_tools=["Bash", "Read"],
+                model="sonnet",
+                context="fork",
+                agent="agent-x",
+                hooks={"PreToolUse": [{"matcher": "Bash"}]},
+            ),
         )
         parsed = _parse_frontmatter(_build_skill_frontmatter(skill) + "\n")
         assert parsed["description"] == "A cool skill"
@@ -128,18 +140,20 @@ class TestBuildAgentFrontmatter:
         agent = AgentConfig(
             name="agent-full",
             description="Full agent",
-            model="opus",
-            color="#FF0000",
-            permission_mode="dontAsk",
-            max_turns=25,
-            background=True,
-            isolation="worktree",
-            memory="project",
-            tools=["Read", "Write", "Bash"],
-            disallowed_tools=["Agent"],
             skills=["do-issue-solo", "mav-bp-logging"],
-            mcp_servers={"github": {"type": "http"}},
-            hooks={"Stop": []},
+            claude=ClaudeAgentOptions(
+                model="opus",
+                color="#FF0000",
+                permission_mode="dontAsk",
+                max_turns=25,
+                background=True,
+                isolation="worktree",
+                memory="project",
+                tools=["Read", "Write", "Bash"],
+                disallowed_tools=["Agent"],
+                mcp_servers={"github": {"type": "http"}},
+                hooks={"Stop": []},
+            ),
         )
         parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
         assert parsed["model"] == "opus"
@@ -156,6 +170,23 @@ class TestBuildAgentFrontmatter:
         assert parsed["skills"] == ["do-issue-solo", "mav-bp-logging"]
         assert parsed["mcpServers"] == {"github": {"type": "http"}}
         assert parsed["hooks"] == {"Stop": []}
+
+    def test_read_only_disallows_edit_tools(self):
+        agent = AgentConfig(
+            name="agent-ro",
+            description="Read-only agent",
+            read_only=True,
+            claude=ClaudeAgentOptions(disallowed_tools=["Agent", "Write"]),
+        )
+        parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
+        assert parsed["disallowedTools"] == "Edit, Write, NotebookEdit, Agent"
+
+    def test_claude_options_are_not_core_fields(self):
+        """Runtime-only options must not be settable as core fields."""
+        with pytest.raises(TypeError):
+            AgentConfig(name="a", description="d", model="opus")  # type: ignore[call-arg]
+        with pytest.raises(TypeError):
+            SkillConfig(name="s", context="fork")  # type: ignore[call-arg]
 
 
 class TestGetVersion:
@@ -271,6 +302,37 @@ class TestRenderSkill:
         result = render_skill(skill, GlobalConfig(), templates_dir, output_dir)
 
         assert "coord read <repo> $ARGUMENTS" in result.read_text()
+
+    def test_runtime_variables_come_from_target(self, tmp_path: Path):
+        """Body, description and ARGUMENTS all render per target."""
+        templates_dir = tmp_path / "templates"
+        skill_dir = templates_dir / "rt-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "body.md.j2").write_text(
+            "{{ RUNTIME.NAME }} at {{ RUNTIME.PLUGIN_ROOT }}: "
+            "{{ RUNTIME.SKILL_PREFIX }}do-init {{ ARGUMENTS }}"
+        )
+        skill = SkillConfig(name="rt-skill", description="Guards {{ RUNTIME.NAME }}.")
+        other = Target(
+            name="other",
+            skill_frontmatter=CLAUDE.skill_frontmatter,
+            agent_frontmatter=CLAUDE.agent_frontmatter,
+            runtime={**CLAUDE.runtime, "NAME": "Other IDE", "PLUGIN_ROOT": "$ROOT",
+                     "SKILL_PREFIX": "#"},
+            arguments_token="{{args}}",
+        )
+
+        claude_out = render_skill(
+            skill, GlobalConfig(), templates_dir, tmp_path / "claude"
+        ).read_text()
+        other_out = render_skill(
+            skill, GlobalConfig(), templates_dir, tmp_path / "other", other
+        ).read_text()
+
+        assert "Claude Code at ${CLAUDE_PLUGIN_ROOT}: /maverick:do-init $ARGUMENTS" in claude_out
+        assert _parse_frontmatter(claude_out)["description"] == "Guards Claude Code."
+        assert "Other IDE at $ROOT: #do-init {{args}}" in other_out
+        assert _parse_frontmatter(other_out)["description"] == "Guards Other IDE."
 
     def test_undefined_template_variable_fails_build(self, tmp_path: Path):
         """Unknown template variables must raise, not render as empty string."""
@@ -401,13 +463,13 @@ class TestRealSourceTree:
             assert parsed["user-invocable"] is skill.user_invocable
             assert parsed["disable-model-invocation"] is skill.disable_model_invocation
             if skill.description:
-                assert parsed["description"] == skill.description
+                assert parsed["description"] == _render_text(skill.description, CLAUDE)
 
     def test_every_agent_frontmatter_round_trips(self):
         for agent in discover_agents():
             parsed = _parse_frontmatter(_build_agent_frontmatter(agent) + "\n")
             assert parsed["name"] == agent.name
-            assert parsed["description"] == agent.description
+            assert parsed["description"] == _render_text(agent.description, CLAUDE)
             if agent.skills:
                 assert parsed["skills"] == agent.skills
 
@@ -548,3 +610,65 @@ class TestRenderAllHooks:
         assert (out / "hooks.json").exists()
         assert not (out / "__pycache__").exists()
         assert not (out / "__init__.py").exists()
+
+
+class TestTemplatesAreRuntimeNeutral:
+    """Runtime-specific strings belong in maverick.targets, not templates.
+
+    Hardcoding them would leak Claude Code wording into every other
+    target's build. Skills that are *about* one runtime are allowlisted.
+    """
+
+    RUNTIME_SPECIFIC = ("Claude Code", "${CLAUDE_PLUGIN_ROOT}", "Claude's", "/maverick:")
+    ALLOWLIST = {"mav-claude-code-recovery"}
+
+    def test_no_hardcoded_runtime_strings(self):
+        src = Path(__file__).resolve().parents[2] / "src" / "maverick"
+        problems = []
+        for kind in ("skills", "agents"):
+            for path in sorted((src / kind).glob("*/*")):
+                if path.parent.name in self.ALLOWLIST:
+                    continue
+                if path.name not in ("body.md.j2", "config.py"):
+                    continue
+                text = path.read_text()
+                problems += [
+                    f"{path.relative_to(src)}: {needle!r}"
+                    for needle in self.RUNTIME_SPECIFIC
+                    if needle in text
+                ]
+        assert not problems, (
+            "Use {{ RUNTIME.* }} (maverick.targets) instead of: " + ", ".join(problems)
+        )
+
+
+class TestRenderTarget:
+    def test_renders_complete_plugin_into_output_root(self, tmp_path: Path):
+        """--out must produce everything the plugin needs, nothing from the repo."""
+        written = render_target(CLAUDE, tmp_path)
+        assert written
+        assert all(tmp_path in p.parents for p in written)
+        skill_names = {p.name for p in (tmp_path / "skills").iterdir()}
+        assert skill_names == set(ALL_SKILL_NAMES)
+        assert {p.stem for p in (tmp_path / "agents").glob("*.md")} == set(ALL_AGENT_NAMES)
+        assert (tmp_path / "skills" / "do-upskill" / "topics.json").is_file()
+        assert (tmp_path / "hooks" / "hooks.json").is_file()
+        assert (tmp_path / "hooks" / "run_hook.py").is_file()
+        # Bootstrap modules the hooks need before the CLI exists.
+        assert (tmp_path / "hooks" / "install_cli.py").is_file()
+        assert (tmp_path / "hooks" / "version_check.py").is_file()
+        # Not standalone: no repo files (the repo root has its own).
+        assert not (tmp_path / "README.md").exists()
+
+    def test_standalone_is_a_complete_plugin_repo(self, tmp_path: Path):
+        render_target(CLAUDE, tmp_path, standalone=True)
+        manifest = json.loads((tmp_path / ".claude-plugin" / "plugin.json").read_text())
+        root_manifest = json.loads(
+            (Path(__file__).resolve().parents[2] / ".claude-plugin" / "plugin.json").read_text()
+        )
+        assert manifest == root_manifest
+        assert manifest["name"] == "maverick"
+        assert "generated" in (tmp_path / "README.md").read_text()
+        assert (tmp_path / "LICENSE").is_file()
+        # The marketplace stays in the core repo.
+        assert not (tmp_path / ".claude-plugin" / "marketplace.json").exists()

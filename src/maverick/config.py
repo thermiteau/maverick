@@ -319,7 +319,7 @@ CONFIG_DEFAULTS: MaverickConfig = {
         # or per-repo in .maverick/config.json (repo overrides user).
         "default": "claude-opus-4-7",
         # Per-agent overrides are intentionally empty: the source of
-        # truth for an agent's model is its AgentConfig.model field
+        # truth for an agent's model is its AgentConfig.claude.model field
         # (rendered into the agent's frontmatter), NOT a presumption
         # table on the consumer side (#108). The CLI reads each agent's
         # pinned model from the registry; this map only matters when a
@@ -684,7 +684,7 @@ def read_llm_config(path: Path | None = None) -> LlmConfig:
     mentioned at the earlier layer intact.
 
     For agents, the **source of truth** for which model an agent runs on
-    is the agent's own ``AgentConfig.model`` field (rendered into its
+    is the agent's own ``AgentConfig.claude.model`` field (rendered into its
     frontmatter), not this map. The map exists only so that a
     user/repo can force a different model identifier for the report
     (#108).

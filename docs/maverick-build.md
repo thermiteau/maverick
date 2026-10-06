@@ -18,13 +18,15 @@ Each skill and agent lives under `src/maverick/` with two files:
 
 ```
 src/maverick/skills/<skill-name>/
-  ├── config.py        # SkillConfig — declarative metadata (frontmatter fields, dependencies)
+  ├── config.py        # SkillConfig — runtime-neutral metadata (description, invocability, dependencies)
   └── body.md.j2       # Jinja2 template — the skill content
 
 src/maverick/agents/<agent-name>/
-  ├── config.py        # AgentConfig — declarative metadata (frontmatter fields, skills list)
+  ├── config.py        # AgentConfig — runtime-neutral metadata (description, skills, read_only)
   └── body.md.j2       # Jinja2 template — the agent prompt
 ```
+
+Configs are runtime-neutral. Options only one runtime understands go in a per-runtime block — for Claude Code, `claude=ClaudeSkillOptions(...)` (e.g. `context="fork"`) or `claude=ClaudeAgentOptions(...)` (e.g. `model`, `color`). Each render target in `src/maverick/targets.py` maps the core fields and its own block onto its frontmatter format; other targets ignore blocks that are not theirs.
 
 Name constants for all skills and agents are centralised in `src/maverick/names.py` and registered in `ALL_SKILL_NAMES` / `ALL_AGENT_NAMES`.
 
@@ -37,6 +39,7 @@ All templates have access to:
 | `{{ SKILLS.<CONSTANT> }}` | Any skill name by its Python constant | `{{ SKILLS.MAV_BP_OPERABILITY }}` → `mav-bp-operability` |
 | `{{ AGENTS.<CONSTANT> }}` | Any agent name by its Python constant | `{{ AGENTS.AGENT_CODE_REVIEWER }}` → `agent-code-reviewer` |
 | `{{ ARGUMENTS }}` | User-supplied arguments (skills only) | |
+| `{{ RUNTIME.<KEY> }}` | Runtime-specific wording from the render target (`src/maverick/targets.py`) | `{{ RUNTIME.NAME }}` → `Claude Code` |
 | `{{ DEPENDS_ON }}` | Comma-separated dependency list (skills only) | |
 
 Custom variables can be passed via `extra_context` on `SkillConfig`, `AgentConfig`, or `GlobalConfig`.
@@ -62,6 +65,9 @@ make build
 
 # Just render skills and agents
 make generate
+
+# Render one runtime target's complete plugin (skills, agents, hooks) into a directory
+cd src && python -m maverick.registry --target claude --out /tmp/maverick-claude
 ```
 
 ## Releasing
@@ -76,7 +82,7 @@ The version string appears in four files that must stay in sync:
 |------|--------|
 | `pyproject.toml` | `version = "X.Y.Z"` |
 | `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` |
-| `.claude-plugin/marketplace.json` | top-level `version` and `plugins[0].version` |
+| `.claude-plugin/marketplace.json` | top-level `version` only — the plugin entry has no `version`; the plugin's own `plugin.json` carries it |
 | `.cursor-plugin/cursor.plugin.json` | `"version": "X.Y.Z"` |
 
 `uv.lock` also contains the version but is regenerated automatically by `uv lock` during the release.
@@ -114,12 +120,17 @@ The release script follows a trunk-based flow. `main` carries the current `-dev`
 
 **CI phase** (`.github/workflows/release-finalize.yml`):
 
-After the release PR squash-merges into `main`:
+After the release PR squash-merges into `main`, three jobs run in order:
 
-1. Tags the merge commit `vX.Y.Z`
-2. Creates a GitHub Release with notes extracted from `CHANGELOG.md`
-3. Fast-forwards the `stable` branch to the new tag commit (this is what end users clone)
-4. Opens a follow-up PR (`chore/begin-X.Y.(Z+1)-dev-cycle`) that bumps `main` back to the next `-dev` version
+1. **`finalize`** — tags the merge commit `vX.Y.Z`, creates a GitHub Release with notes extracted from `CHANGELOG.md`, and opens a follow-up PR (`chore/begin-X.Y.(Z+1)-dev-cycle`) that bumps `main` back to the next `-dev` version
+2. **`publish-pypi`** — builds the CLI from the tag and publishes it to PyPI as `maverick-harness` (trusted publishing, `pypi` environment)
+3. **`publish-plugin`** — renders the Claude Code plugin (`python -m maverick.registry --target claude --out …`), commits it to [thermiteau/maverick-claude](https://github.com/thermiteau/maverick-claude) as `Release vX.Y.Z` with a matching tag, then fast-forwards `stable` to the release tag
+
+The order is deliberate. A released plugin installs the CLI release matching its own version from PyPI, so the plugin only becomes visible to users — through `maverick-claude` and through the marketplace entry on `stable` — after its CLI is published. If PyPI publishing fails, neither moves.
+
+### Where the plugin is installed from
+
+The `thermite` marketplace (`.claude-plugin/marketplace.json`, read by users from `stable`) lists the `maverick` plugin with a `github` source pointing at `thermiteau/maverick-claude`. That repository holds only the rendered plugin, and its default branch always holds the latest release; it is never edited by hand. Users get a new copy when the plugin's `plugin.json` version changes.
 
 ### The `stable` branch
 

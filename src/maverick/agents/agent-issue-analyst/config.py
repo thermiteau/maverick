@@ -1,4 +1,4 @@
-from maverick.models import AgentConfig
+from maverick.models import AgentConfig, ClaudeAgentOptions
 from maverick.names import (
     AGENT_ISSUE_ANALYST,
     MAV_CREATE_SOLUTION_DESIGN,
@@ -13,12 +13,12 @@ CONFIG = AgentConfig(
         " Dispatched by do-issue-solo and do-issue-guided as a subagent so that"
         " codebase exploration does not consume the caller's context window."
     ),
-    color="cyan",
     # Prose already says "do not modify source code" — enforce it.
-    disallowed_tools=["Edit", "Write", "NotebookEdit"],
+    read_only=True,
     skills=[
         MAV_GITHUB_ISSUE_WORKFLOW,
         MAV_CREATE_SOLUTION_DESIGN,
         MAV_SCOPE_BOUNDARIES,
     ],
+    claude=ClaudeAgentOptions(color="cyan"),
 )

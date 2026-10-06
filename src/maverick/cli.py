@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 def _get_version() -> str:
     try:
-        v = version("maverick")
+        v = version("maverick-harness")
     except PackageNotFoundError:
         return "unknown"
     # importlib.metadata returns PEP 440 normalised form (e.g. "1.0.3.dev0"),
@@ -19,6 +19,15 @@ def _get_version() -> str:
 
 
 def main():
+    import sys
+
+    # Hooks run on every tool call: dispatch before building the full parser
+    # (which imports every subcommand module) to keep their latency low.
+    if len(sys.argv) > 1 and sys.argv[1] == "hook":
+        from maverick.runtime_hooks.cli import main as hook_main
+
+        sys.exit(hook_main(sys.argv[2:]))
+
     parser = argparse.ArgumentParser(
         prog="maverick",
         description="Claude Code provisioning and configuration tool",
@@ -199,6 +208,11 @@ def main():
         "value",
         choices=["true", "false"],
         help="New value for the flag",
+    )
+
+    # maverick hook — listed for --help only; main() dispatches it before parsing.
+    subparsers.add_parser(
+        "hook", help="Run a plugin hook handler on a runtime hook payload (stdin)"
     )
 
     # Coordination / state / worktree / gh-app sub-commands (new workflow)

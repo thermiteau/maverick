@@ -17,7 +17,7 @@ The check verifies the project is initialised and `uv` is on PATH.
 
 ## Invocation
 
-Topics live in `${CLAUDE_PLUGIN_ROOT}/skills/do-upskill/topics.json`
+Topics live in `{{ RUNTIME.PLUGIN_ROOT }}/skills/do-upskill/topics.json`
 (resolve the env var once via Bash — the runtime cwd is the target
 project, not the plugin).
 
@@ -44,7 +44,7 @@ Each topic entry in `topics.json` provides:
 - **topic**: The skill topic name (e.g. "logging", "alerting", "unit-testing")
 - **prompt**: Domain-specific guidance for scanning
 - **bestPracticeSkill**: Plugin-relative path to the best-practice skill
-  file — resolve against `${CLAUDE_PLUGIN_ROOT}` before reading
+  file — resolve against `{{ RUNTIME.PLUGIN_ROOT }}` before reading
 - **scanHints**: dependencies/grep/files detection hints for the topic
   (the same corpus is rendered below for reference)
 
@@ -234,7 +234,7 @@ digraph not_found {
 
 ### With a Best-Practice Skill Available
 
-1. **Read the best-practice skill** for the topic (`${CLAUDE_PLUGIN_ROOT}/<bestPracticeSkill>`, e.g. `${CLAUDE_PLUGIN_ROOT}/skills/mav-bp-operability/SKILL.md`)
+1. **Read the best-practice skill** for the topic (`{{ RUNTIME.PLUGIN_ROOT }}/<bestPracticeSkill>`, e.g. `{{ RUNTIME.PLUGIN_ROOT }}/skills/mav-bp-operability/SKILL.md`)
 2. **Analyse the codebase context** — identify the language, framework, deployment target (e.g. Node.js + Fastify on AWS Lambda), existing dependencies, and project structure
 3. **Generate a recommended implementation** — apply the best-practice guidance to the specific codebase, choosing concrete technologies and patterns that fit the project's stack
 

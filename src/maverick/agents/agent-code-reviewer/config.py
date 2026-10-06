@@ -1,4 +1,4 @@
-from maverick.models import AgentConfig
+from maverick.models import AgentConfig, ClaudeAgentOptions
 from maverick.names import (
     AGENT_CODE_REVIEWER,
     MAV_BP_CODE_REVIEW,
@@ -16,17 +16,19 @@ CONFIG = AgentConfig(
         " mandatory pre-push gate. Dispatched after completing implementation"
         " steps or before creating PRs."
     ),
-    color="yellow",
-    # The merge gate must not inherit whatever model the caller runs — a
-    # cost-conscious session would silently weaken the highest-stakes
-    # judgment in the system. Pin a strong model explicitly.
-    model="opus",
     # A reviewer that can fix what it reviews stops being a gate: read-only.
-    disallowed_tools=["Edit", "Write", "NotebookEdit"],
+    read_only=True,
     skills=[
         MAV_BP_CODE_REVIEW,
         MAV_BP_OPERABILITY,
         MAV_BP_TESTING,
         MAV_SCOPE_BOUNDARIES,
     ],
+    claude=ClaudeAgentOptions(
+        color="yellow",
+        # The merge gate must not inherit whatever model the caller runs — a
+        # cost-conscious session would silently weaken the highest-stakes
+        # judgment in the system. Pin a strong model explicitly.
+        model="opus",
+    ),
 )

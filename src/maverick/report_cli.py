@@ -513,7 +513,7 @@ def _agent_pinned_model(agent: str) -> str | None:
             from maverick.registry import discover_agents
 
             _AGENT_MODEL_CACHE = {
-                cfg.name: (f"claude-{cfg.model}" if cfg.model else None)
+                cfg.name: (f"claude-{cfg.claude.model}" if cfg.claude.model else None)
                 for cfg in discover_agents()
             }
         except Exception:  # noqa: BLE001 — best-effort
@@ -537,7 +537,7 @@ def _current_llm(
     3. **Agent rows only:** explicit per-agent override in the merged
        ``llm.agents`` config block (user or repo), if present.
     4. **Agent rows only:** the agent's own pinned model from its
-       ``AgentConfig.model`` field. This is the source of truth — the
+       ``AgentConfig.claude.model`` field. This is the source of truth — the
        same value that gets rendered into the agent's frontmatter and
        therefore the same generation Claude Code actually dispatches.
     5. ``llm.default`` from the merged config (defaults → user → repo).
