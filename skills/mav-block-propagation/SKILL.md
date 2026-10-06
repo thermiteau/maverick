@@ -76,4 +76,4 @@ the story run on the next wave.
 - **Always re-check at entry.** Another instance may have applied or
   removed a label since your run started.
 
-<!-- maverick-plugin-version: 5.1.1-dev -->
+<!-- maverick-plugin-version: 5.1.1 -->
