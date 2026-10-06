@@ -40,4 +40,4 @@ Split strategies: by layer (backend vs frontend), by feature slice (one endpoint
 | Self-approval on protected branch                  | Missing review gate                | Configure branch protection to disallow self-approval |
 | Skipping CI to merge faster                        | Bypassing quality gates            | CI must pass; fix failures, do not skip them         |
 
-<!-- maverick-plugin-version: 5.1.0 -->
+<!-- maverick-plugin-version: 5.1.1-dev -->
