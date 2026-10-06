@@ -620,7 +620,7 @@ class TestTemplatesAreRuntimeNeutral:
     """
 
     RUNTIME_SPECIFIC = ("Claude Code", "${CLAUDE_PLUGIN_ROOT}", "Claude's", "/maverick:")
-    ALLOWLIST = {"mav-claude-code-recovery"}
+    ALLOWLIST: set[str] = set()
 
     def test_no_hardcoded_runtime_strings(self):
         src = Path(__file__).resolve().parents[2] / "src" / "maverick"

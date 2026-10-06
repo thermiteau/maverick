@@ -5,12 +5,29 @@ Install the `maverick` CLI at the version that matches this plugin — from sour
 
 ## Execution Context
 
-This skill runs in its own forked context (`context: fork`) — you are
-executing it directly; there is no separate agent to dispatch. Follow the
+{% if RUNTIME.ID == "claude" %}This skill runs in its own forked context (`context: fork`) — you are
+executing it directly; there is no separate agent to dispatch.{% else %}You are
+executing this skill directly; there is no separate agent to dispatch.{% endif %} Follow the
 process below exactly and end with a structured result: task, SUCCESS or
 FAILURE, what was done, and any warnings.
 
-## Process
+{% if RUNTIME.ID == "kiro" %}## Process
+
+1. **Read the bundle version.** Maverick's Kiro bundle records its version in `{{ RUNTIME.PLUGIN_ROOT }}/{{ RUNTIME.PLUGIN_MANIFEST }}` (written by `maverick kiro install`):
+
+       python3 -c 'import json,os,sys; print(json.load(open(os.path.expanduser(sys.argv[1])))["version"])' "{{ RUNTIME.PLUGIN_ROOT }}/{{ RUNTIME.PLUGIN_MANIFEST }}"
+
+   Fail with a clear error if the file is missing: the bundle was not installed with `maverick kiro install`.
+
+2. **Install the matching CLI.** Verify `uv` and `gh` (GitHub CLI) are on PATH, then:
+
+       uv tool install --force maverick-harness==<version>
+
+   A development version (containing `dev`) is not on PyPI: install from a Maverick source checkout instead (`uv tool install --force <checkout>`).
+
+3. **Refresh the Kiro bundle and project guard.** Run `maverick kiro install`, then, in a project already initialised for Kiro, `maverick init --runtime kiro` to refresh `.kiro/hooks/maverick.json`.
+
+{% else %}## Process
 
 1. **Locate the plugin root.** If `{{ RUNTIME.PLUGIN_ROOT }}` is set, use that. Otherwise resolve two levels above this `SKILL.md` (i.e. the parent of `skills/do-install/`). Fail with a clear error if `hooks/install_cli.py` is not found under the resolved path.
 
@@ -27,6 +44,6 @@ FAILURE, what was done, and any warnings.
    - verifies `maverick` is on PATH (warns about `~/.local/bin` if not)
    - adds `Read(~/.claude/plugins/cache/thermite/maverick/**)` to `~/.claude/settings.json` `permissions.allow` (idempotent)
 
-3. **Verify.** Run `maverick --help` and capture the first line.
+{% endif %}{% if RUNTIME.ID == "kiro" %}4{% else %}3{% endif %}. **Verify.** Run `maverick --help` and capture the first line.
 
-4. **Report.** Return a structured result: what was installed (source path or PyPI release), whether the settings file was modified or already had the permission entry, and any PATH warnings.
+{% if RUNTIME.ID == "kiro" %}5. **Report.** Return a structured result: the CLI version installed, the bundle version, and any PATH warnings.{% else %}4. **Report.** Return a structured result: what was installed (source path or PyPI release), whether the settings file was modified or already had the permission entry, and any PATH warnings.{% endif %}

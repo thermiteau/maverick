@@ -30,7 +30,7 @@ Run `command -v maverick` to check whether the CLI is already on PATH.
 **If `maverick` is on PATH**, verify the installed CLI matches the loaded plugin. A stale binary from an earlier plugin version can be missing subcommands the rest of this skill depends on (e.g. `maverick integration`, `maverick preflight`).
 
 - Read the installed CLI version: `maverick --version`
-- Read the plugin version: `python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"`
+- Read the plugin version: `python3 -c 'import json,os,sys; print(json.load(open(os.path.expanduser(sys.argv[1])))["version"])' "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"`
 - If they differ, dispatch **/maverick:do-install** to refresh the CLI. That skill always reinstalls with `uv tool install --force`, so it overwrites whatever is currently installed. After it returns, re-run `maverick --version` and confirm it now matches the plugin version. If it still does not, surface the mismatch to the user and stop.
 - If the versions already match, skip to step 2.
 

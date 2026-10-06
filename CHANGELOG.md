@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Maverick's skills and agents for Kiro.** `maverick kiro install`
+  renders the new `kiro` target (Agent Skills frontmatter, Kiro V3 Markdown
+  agents with `skill://` resources, read-only agents denied `fs_write`) from
+  sources now shipped in the `maverick-harness` wheel, and installs them into
+  `~/.kiro`. A manifest scopes upgrades and `maverick kiro uninstall` to
+  Maverick's own files; same-named user skills are kept unless `--force`.
+  `maverick kiro status` checks the bundle against the CLI version.
+- `do-install` and `do-init` render Kiro-specific install steps.
 - **Kiro support for the scope guard.** `maverick init --runtime kiro`
   writes `.kiro/hooks/maverick.json`, which runs `maverick hook scope-guard
   --runtime kiro` before every tool call and releases claims at session
@@ -21,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `mav-claude-code-recovery` wording is runtime-neutral (the skill name is
+  unchanged).
+- Rendered version markers use the CLI's version form (`5.0.1-dev`) when
+  rendering from an installed CLI.
 - The instance id now prefers `KIRO_SESSION_ID` over Claude Code's session
   id, in both the coordinator and the hooks, so a Kiro session started
   from inside Claude Code is not mistaken for the Claude session.

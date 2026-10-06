@@ -35,13 +35,11 @@ def _get_version() -> str:
         match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(), re.MULTILINE)
         if match:
             return match.group(1)
-    try:
-        from importlib.metadata import version
+    # Installed CLI (no pyproject.toml beside the package): same form as
+    # `maverick --version`, so rendered markers match the Kiro manifest.
+    from maverick.cli import _get_version as cli_version
 
-        return version("maverick-harness")
-    except Exception:
-        pass
-    return "unknown"
+    return cli_version()
 
 
 SKILLS_TEMPLATES_DIR = Path(__file__).resolve().parent / "skills"
