@@ -619,7 +619,15 @@ class TestTemplatesAreRuntimeNeutral:
     target's build. Skills that are *about* one runtime are allowlisted.
     """
 
-    RUNTIME_SPECIFIC = ("Claude Code", "${CLAUDE_PLUGIN_ROOT}", "Claude's", "/maverick:")
+    RUNTIME_SPECIFIC = (
+        "Claude Code",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "Claude's",
+        "/maverick:",
+        ".claude/rules",
+    )
+    # `.claude/settings` is not listed: do-install's Claude-only branch must
+    # name it. test_kiro_target checks the rendered Kiro bundle instead.
     ALLOWLIST: set[str] = set()
 
     def test_no_hardcoded_runtime_strings(self):

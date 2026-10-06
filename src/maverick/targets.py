@@ -143,6 +143,10 @@ CLAUDE = Target(
         "SKILL_PREFIX": "/maverick:",
         # Plugin manifest carrying the plugin version, relative to PLUGIN_ROOT.
         "PLUGIN_MANIFEST": ".claude-plugin/plugin.json",
+        # Project folder whose files the runtime always loads into context.
+        "RULES_DIR": ".claude/rules",
+        # Project file `maverick init --runtime <ID>` writes for this runtime.
+        "INIT_FILE": ".claude/settings.json",
     },
     arguments_token="$ARGUMENTS",
     skill_frontmatter=claude_skill_frontmatter,
@@ -166,6 +170,9 @@ CLAUDE = Target(
 #: them, tracked by a manifest under KIRO_MANIFEST.
 KIRO_HOME = "~/.kiro"
 KIRO_MANIFEST = "maverick/manifest.json"
+#: Project steering folder. Kiro's custom agents don't load steering unless it
+#: is listed in their resources, so Maverick's agents list it explicitly.
+KIRO_STEERING_DIR = ".kiro/steering"
 
 
 def kiro_skill_frontmatter(skill: SkillConfig, description: str | None) -> dict[str, Any]:
@@ -183,8 +190,9 @@ def kiro_skill_frontmatter(skill: SkillConfig, description: str | None) -> dict[
 def kiro_agent_frontmatter(agent: AgentConfig, description: str) -> dict[str, Any]:
     """Kiro custom agent (V3 Markdown format: frontmatter + body as prompt).
 
-    - Skills are attached as ``skill://`` resources; custom agents load no
-      skills unless listed.
+    - Skills are attached as ``skill://`` resources and the project's
+      steering as a ``file://`` resource; custom agents load neither unless
+      listed.
     - ``read_only`` drops the write tools and denies ``fs_write``, so the
       agent can still read and run commands (git diff, tests) but not edit.
     - Claude-only options (model aliases, colours) are not rendered: Kiro
@@ -196,10 +204,11 @@ def kiro_agent_frontmatter(agent: AgentConfig, description: str) -> dict[str, An
         data["permissions"] = {
             "rules": [{"capability": "fs_write", "effect": "deny"}]
         }
-    if agent.skills:
-        data["resources"] = [
-            f"skill://{KIRO_HOME}/skills/{name}/SKILL.md" for name in agent.skills
-        ]
+    # Project steering (including do-upskill's convention pointers): custom
+    # agents don't load it unless listed. Workspace-relative.
+    resources = [f"file://{KIRO_STEERING_DIR}/**/*.md"]
+    resources += [f"skill://{KIRO_HOME}/skills/{name}/SKILL.md" for name in agent.skills]
+    data["resources"] = resources
     return data
 
 
@@ -217,6 +226,9 @@ KIRO = Target(
         "SKILL_PREFIX": "/",
         # Written by `maverick kiro install`; carries the bundle version.
         "PLUGIN_MANIFEST": KIRO_MANIFEST,
+        # Steering files default to always-included, like .claude/rules.
+        "RULES_DIR": KIRO_STEERING_DIR,
+        "INIT_FILE": ".kiro/hooks/maverick.json",
     },
     arguments_token="$ARGUMENTS",
     skill_frontmatter=kiro_skill_frontmatter,

@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from maverick import epic_state as es
 from maverick.epic_state import EpicState, load_local, save_local
 
 
@@ -43,3 +44,25 @@ class TestLocalPersistence:
         # tmp file should have been renamed away
         assert not (tmp_path / "state.json.tmp").exists()
         assert "merged" in json.loads(p.read_text())["stories"].values()
+
+
+class TestLocalCachePath:
+    """The cache is runtime-neutral (.maverick/), not under Claude's .claude/."""
+
+    def test_saves_under_maverick_dir(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        es.save_local(es.EpicState(epic=7, stories={"8": "pending"}))
+        assert (tmp_path / ".maverick" / "epic-state.json").is_file()
+        assert not (tmp_path / ".claude").exists()
+
+    def test_reads_legacy_cache(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        es.save_local(es.EpicState(epic=7, stories={"8": "merged"}), es.LEGACY_LOCAL_STATE_PATH)
+        state = es.load_local()
+        assert state is not None and state.stories == {"8": "merged"}
+
+    def test_new_cache_wins_over_legacy(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        es.save_local(es.EpicState(epic=7, stories={"8": "pending"}), es.LEGACY_LOCAL_STATE_PATH)
+        es.save_local(es.EpicState(epic=7, stories={"8": "merged"}))
+        assert es.load_local().stories == {"8": "merged"}

@@ -85,10 +85,10 @@ action. If preflight fails, surface this to the user verbatim:
 Run:
 
 ```bash
-uv run maverick init
+uv run maverick init --runtime claude
 ```
 
-This detects the project's tech stack, writes `.maverick/config.json` with the detected modules and a fresh `integration` block (`init: true`, all other flags `false`), and prints a summary of what was detected. If a config already exists, the command preserves any integration flags that are already `true` — re-running is safe.
+This detects the project's tech stack, writes `.maverick/config.json` with the detected modules and a fresh `integration` block (`init: true`, all other flags `false`), writes `.claude/settings.json` (baseline permission deny rules), and prints a summary of what was detected. If a config already exists, the command preserves any integration flags that are already `true` — re-running is safe.
 
 ### 4. Initialise project-level overrides
 
@@ -128,6 +128,8 @@ The earlier steps wrote a number of new and modified files. Commit them on a fre
    ```bash
    git checkout -b chore/maverick-init
    git add .maverick/
+   [ -f .claude/settings.json ] && git add .claude/settings.json
+   [ -d .claude/rules ] && git add .claude/rules/maverick-*.md
    [ -d docs/maverick ] && git add docs/maverick/
    [ -f docs/security-audit.md ] && git add docs/security-audit.md
    # Stage anything else under docs/ that do-docs greenfield created.

@@ -93,7 +93,7 @@ digraph hydrate {
 Treat the local files below as **hints** — always reconcile against GitHub
 before acting on them:
 
-- `.claude/epic-state.json` — epic-state cache (mirror of `maverick-state`)
+- `.maverick/epic-state.json` — epic-state cache (mirror of `maverick-state`)
 - `.maverick/worktrees/<branch>/` — worktree checkouts
 - `.maverick/session-auth.json` — authorization cache (re-derivable via
   `uv run maverick coord authorize`)

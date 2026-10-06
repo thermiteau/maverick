@@ -139,7 +139,7 @@ Read the files found in steps 2-3 to understand:
 **Single-repo:** Write `SKILL.md` to `docs/maverick/skills/<topic>/SKILL.md` using the Write tool (which creates parent directories automatically). Do NOT use `mkdir` via Bash.
 
 **Native-session pointer:** after writing each root-level project skill,
-also write a thin pointer at `.claude/rules/maverick-<topic>.md` so
+also write a thin pointer at `{{ RUNTIME.RULES_DIR }}/maverick-<topic>.md` so
 sessions that don't know Maverick's lookup convention still load the
 facts:
 

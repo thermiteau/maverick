@@ -1,4 +1,4 @@
-"""Epic-state persistence — local cache at .claude/epic-state.json mirrored
+"""Epic-state persistence — local cache at .maverick/epic-state.json mirrored
 to a rolling `maverick-state` comment on the epic issue.
 
 GitHub is the source of truth; the local file is a cache to reduce API
@@ -31,7 +31,10 @@ from maverick.gh_state import latest_marker, upsert_marker
 
 Status = Literal["pending", "in_flight", "merged", "ejected", "blocked"]
 
-LOCAL_STATE_PATH = Path(".claude/epic-state.json")
+LOCAL_STATE_PATH = Path(".maverick/epic-state.json")
+#: Where the cache lived before it moved out of the Claude Code-specific
+#: .claude/ directory (runtime-neutral since Kiro support). Read-only fallback.
+LEGACY_LOCAL_STATE_PATH = Path(".claude/epic-state.json")
 
 
 @dataclass
@@ -66,7 +69,11 @@ def _now_iso() -> str:
 
 def load_local(path: Path = LOCAL_STATE_PATH) -> EpicState | None:
     if not path.exists():
-        return None
+        # An epic started before the move still has its cache at the old path.
+        if path == LOCAL_STATE_PATH and LEGACY_LOCAL_STATE_PATH.exists():
+            path = LEGACY_LOCAL_STATE_PATH
+        else:
+            return None
     return EpicState.from_payload(json.loads(path.read_text()))
 
 

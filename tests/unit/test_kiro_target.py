@@ -58,8 +58,19 @@ class TestKiroRender:
     def test_no_claude_code_wording(self, bundle):
         for path in bundle.rglob("*.md"):
             text = path.read_text()
-            for needle in ("Claude Code", "CLAUDE_PLUGIN_ROOT", "/maverick:", ".claude-plugin"):
+            for needle in (
+                # No .claude/ path at all: Kiro projects must not grow one.
+                "Claude Code", "CLAUDE_PLUGIN_ROOT", "/maverick:", ".claude",
+            ):
                 assert needle not in text, f"{path.relative_to(bundle)}: {needle!r}"
+
+    def test_init_configures_kiro_runtime(self, bundle):
+        """do-init must install Kiro's guard, not Claude's settings (demo-repo bug)."""
+        init = (bundle / "skills" / "do-init" / "SKILL.md").read_text()
+        assert "maverick init --runtime kiro" in init
+        assert "git add .kiro/hooks/maverick.json" in init
+        upskill = (bundle / "skills" / "do-upskill" / "SKILL.md").read_text()
+        assert ".kiro/steering/maverick-<topic>.md" in upskill
 
     def test_install_skill_uses_kiro_flow(self, bundle):
         text = (bundle / "skills" / "do-install" / "SKILL.md").read_text()
@@ -73,6 +84,7 @@ class TestKiroRender:
         assert "write" not in fm["tools"] and "shell" in fm["tools"]
         assert {"capability": "fs_write", "effect": "deny"} in fm["permissions"]["rules"]
         assert "skill://~/.kiro/skills/mav-scope-boundaries/SKILL.md" in fm["resources"]
+        assert "file://.kiro/steering/**/*.md" in fm["resources"]
         assert "model" not in fm  # Claude model aliases are not Kiro model ids
 
 
@@ -81,7 +93,8 @@ class TestKiroFrontmatter:
         agent = AgentConfig(name="agent-w", description="Writes docs")
         fm = _frontmatter(_build_agent_frontmatter(agent, KIRO) + "\n")
         assert fm["tools"] == ["read", "write", "shell", "web"]
-        assert "permissions" not in fm and "resources" not in fm
+        assert "permissions" not in fm
+        assert fm["resources"] == ["file://.kiro/steering/**/*.md"]
 
     def test_claude_options_ignored(self):
         agent = AgentConfig(
