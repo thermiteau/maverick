@@ -65,6 +65,14 @@ def main():
         help="Set the cloud platform (e.g., aws)",
     )
     init_parser.add_argument(
+        "--runtime",
+        action="append",
+        choices=["claude", "kiro"],
+        metavar="NAME",
+        help="Agent runtime to configure: claude (default) or kiro. Repeat for both. "
+        "kiro writes .kiro/hooks/maverick.json (scope guard + claim release).",
+    )
+    init_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would be detected without writing anything",

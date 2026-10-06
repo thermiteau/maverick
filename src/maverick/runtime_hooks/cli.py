@@ -6,9 +6,12 @@ response. Dispatched from ``maverick.cli.main`` *before* the full argument
 parser is built, so a hook pays only for the imports it needs — it runs on
 every tool call.
 
-Contract with the shim: exit 0 on every path the CLI controls, including
-internal errors (fail open, with a warning on stderr). The shim treats any
-non-zero exit as "this CLI cannot run hooks" and fails open too.
+Exit codes: the adapter decides. Claude Code's adapter always exits 0 and
+expresses decisions as JSON, because its plugin shim treats any non-zero
+exit as "this CLI cannot run hooks" and fails open. Kiro's adapter signals a
+block with ``KIRO_BLOCK_EXIT``, which the generated Kiro hook command maps to
+Kiro's own "block" code. Internal errors and unparseable input always exit 0
+(fail open, with a warning on stderr).
 """
 
 from __future__ import annotations
@@ -58,7 +61,19 @@ def run(handler: str, runtime: str, raw: dict, env: dict[str, str]) -> HookOutpu
 
 
 def main(argv: list[str]) -> int:
-    args = _parser().parse_args(argv)
+    try:
+        args = _parser().parse_args(argv)
+    except SystemExit as exc:
+        # A handler or runtime this CLI doesn't know (version skew between
+        # the CLI and the hook config) must fail open, not block every call.
+        if exc.code in (0, None):
+            raise
+        print(
+            "maverick hook: unrecognised arguments; hook skipped. The hook "
+            "config may be newer than this CLI — upgrade maverick-harness.",
+            file=sys.stderr,
+        )
+        return 0
     try:
         raw = json.loads(sys.stdin.read() or "{}")
         if not isinstance(raw, dict):
@@ -76,4 +91,4 @@ def main(argv: list[str]) -> int:
         print(out.stdout)
     if out.stderr:
         sys.stderr.write(out.stderr)
-    return 0
+    return out.exit_code
