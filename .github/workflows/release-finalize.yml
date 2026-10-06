@@ -57,9 +57,18 @@ jobs:
 
       - name: Extract version from branch name
         id: version
+        env:
+          # Via env, not inline ${{ }}: a branch name is attacker-
+          # controllable text and must never be spliced into the script.
+          BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          BRANCH="${{ github.event.pull_request.head.ref }}"
           VERSION="${BRANCH#release/}"
+          # Branch names may contain shell metacharacters; accept only
+          # a plain X.Y.Z before the version reaches any later step.
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release branch '${BRANCH}' does not carry an X.Y.Z version" >&2
+            exit 1
+          fi
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
