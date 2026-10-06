@@ -31,7 +31,6 @@ def main() -> None:
         ".claude-plugin/marketplace.json",
         [
             (["version"], version),
-            (["plugins", 0, "version"], version),
         ],
     )
 

@@ -10,8 +10,10 @@
     {
       "name": "maverick",
       "description": "Skills, Agents, and Hooks for autonomous AI development. Claude Code, Cursor IDE, Codex.",
-      "version": "4.0.2-dev",
-      "source": "./",
+      "source": {
+        "source": "github",
+        "repo": "thermiteau/maverick-claude"
+      },
       "author": {
         "name": "David Cheal",
         "email": "david.cheal@thermite.au"

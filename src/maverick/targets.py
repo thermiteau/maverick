@@ -43,6 +43,10 @@ class Target:
     #: Stdlib-only CLI modules the hooks need before the CLI is installed
     #: (installer, version check), copied into the hooks directory.
     hook_modules: tuple[Path, ...] = ()
+    #: Files that make the output a standalone plugin repo (manifest, README,
+    #: LICENSE), as (source, destination relative to the output root).
+    #: Rendered only with ``--out``; the repo root already has its own.
+    dist_files: tuple[tuple[Path, str], ...] = ()
     #: Plugin layout, relative to the output root.
     skills_dir: str = "skills"
     agents_dir: str = "agents"
@@ -54,6 +58,7 @@ class Target:
 # ---------------------------------------------------------------------------
 
 _SRC = Path(__file__).resolve().parent
+_REPO = _SRC.parent.parent
 
 #: Tools Claude Code agents lose when the config says ``read_only``.
 CLAUDE_EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
@@ -141,6 +146,12 @@ CLAUDE = Target(
     agent_frontmatter=claude_agent_frontmatter,
     hooks_source=_SRC / "hooks",
     hook_modules=(_SRC / "install_cli.py", _SRC / "version_check.py"),
+    dist_files=(
+        # Single source for the manifest: release.sh bumps its version.
+        (_REPO / ".claude-plugin" / "plugin.json", ".claude-plugin/plugin.json"),
+        (_SRC / "dist" / "claude" / "README.md", "README.md"),
+        (_REPO / "LICENSE", "LICENSE"),
+    ),
 )
 
 TARGETS: dict[str, Target] = {CLAUDE.name: CLAUDE}

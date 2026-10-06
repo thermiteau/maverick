@@ -82,7 +82,7 @@ The version string appears in four files that must stay in sync:
 |------|--------|
 | `pyproject.toml` | `version = "X.Y.Z"` |
 | `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` |
-| `.claude-plugin/marketplace.json` | top-level `version` and `plugins[0].version` |
+| `.claude-plugin/marketplace.json` | top-level `version` only — the plugin entry has no `version`; the plugin's own `plugin.json` carries it |
 | `.cursor-plugin/cursor.plugin.json` | `"version": "X.Y.Z"` |
 
 `uv.lock` also contains the version but is regenerated automatically by `uv lock` during the release.
@@ -120,12 +120,17 @@ The release script follows a trunk-based flow. `main` carries the current `-dev`
 
 **CI phase** (`.github/workflows/release-finalize.yml`):
 
-After the release PR squash-merges into `main`:
+After the release PR squash-merges into `main`, three jobs run in order:
 
-1. Tags the merge commit `vX.Y.Z`
-2. Creates a GitHub Release with notes extracted from `CHANGELOG.md`
-3. Fast-forwards the `stable` branch to the new tag commit (this is what end users clone)
-4. Opens a follow-up PR (`chore/begin-X.Y.(Z+1)-dev-cycle`) that bumps `main` back to the next `-dev` version
+1. **`finalize`** — tags the merge commit `vX.Y.Z`, creates a GitHub Release with notes extracted from `CHANGELOG.md`, and opens a follow-up PR (`chore/begin-X.Y.(Z+1)-dev-cycle`) that bumps `main` back to the next `-dev` version
+2. **`publish-pypi`** — builds the CLI from the tag and publishes it to PyPI as `maverick-harness` (trusted publishing, `pypi` environment)
+3. **`publish-plugin`** — renders the Claude Code plugin (`python -m maverick.registry --target claude --out …`), commits it to [thermiteau/maverick-claude](https://github.com/thermiteau/maverick-claude) as `Release vX.Y.Z` with a matching tag, then fast-forwards `stable` to the release tag
+
+The order is deliberate. A released plugin installs the CLI release matching its own version from PyPI, so the plugin only becomes visible to users — through `maverick-claude` and through the marketplace entry on `stable` — after its CLI is published. If PyPI publishing fails, neither moves.
+
+### Where the plugin is installed from
+
+The `thermite` marketplace (`.claude-plugin/marketplace.json`, read by users from `stable`) lists the `maverick` plugin with a `github` source pointing at `thermiteau/maverick-claude`. That repository holds only the rendered plugin, and its default branch always holds the latest release; it is never edited by hand. Users get a new copy when the plugin's `plugin.json` version changes.
 
 ### The `stable` branch
 

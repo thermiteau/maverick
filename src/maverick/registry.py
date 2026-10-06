@@ -412,8 +412,15 @@ def render_all_hooks(
     return written
 
 
-def render_target(target: Target, output_root: Path) -> list[Path]:
-    """Render one target's complete plugin (skills, agents, hooks) under *output_root*."""
+def render_target(
+    target: Target, output_root: Path, standalone: bool = False
+) -> list[Path]:
+    """Render one target's plugin (skills, agents, hooks) under *output_root*.
+
+    With *standalone*, also write the target's manifest, README and LICENSE so
+    *output_root* is a complete plugin repository (what gets published to the
+    target's own repo, e.g. thermiteau/maverick-claude).
+    """
     from maverick.generate_topics import generate_topics_json  # imports this module
 
     skills_dir = output_root / target.skills_dir
@@ -427,6 +434,11 @@ def render_target(target: Target, output_root: Path) -> list[Path]:
     for module in target.hook_modules:
         hooks_dir.mkdir(parents=True, exist_ok=True)
         written.append(Path(shutil.copy2(module, hooks_dir / module.name)))
+    if standalone:
+        for source, dest in target.dist_files:
+            out = output_root / dest
+            out.parent.mkdir(parents=True, exist_ok=True)
+            written.append(Path(shutil.copy2(source, out)))
     return written
 
 
@@ -443,7 +455,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--out", type=Path, metavar="DIR",
-        help="Render only the target's plugin into DIR. Without it, the default "
+        help="Render the target's complete standalone plugin repo (with its "
+        "manifest, README and LICENSE) into DIR. Without it, the default "
         "target renders into the repo root along with the docs index and "
         "CloudFormation templates.",
     )
@@ -451,7 +464,7 @@ def main(argv: list[str] | None = None) -> None:
     target = TARGETS[args.target]
 
     output_root = args.out.resolve() if args.out else PROJECT_ROOT
-    for output in render_target(target, output_root):
+    for output in render_target(target, output_root, standalone=bool(args.out)):
         print(f"Generated {output}")
     if args.out:
         return

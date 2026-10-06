@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -656,3 +657,18 @@ class TestRenderTarget:
         # Bootstrap modules the hooks need before the CLI exists.
         assert (tmp_path / "hooks" / "install_cli.py").is_file()
         assert (tmp_path / "hooks" / "version_check.py").is_file()
+        # Not standalone: no repo files (the repo root has its own).
+        assert not (tmp_path / "README.md").exists()
+
+    def test_standalone_is_a_complete_plugin_repo(self, tmp_path: Path):
+        render_target(CLAUDE, tmp_path, standalone=True)
+        manifest = json.loads((tmp_path / ".claude-plugin" / "plugin.json").read_text())
+        root_manifest = json.loads(
+            (Path(__file__).resolve().parents[2] / ".claude-plugin" / "plugin.json").read_text()
+        )
+        assert manifest == root_manifest
+        assert manifest["name"] == "maverick"
+        assert "generated" in (tmp_path / "README.md").read_text()
+        assert (tmp_path / "LICENSE").is_file()
+        # The marketplace stays in the core repo.
+        assert not (tmp_path / ".claude-plugin" / "marketplace.json").exists()

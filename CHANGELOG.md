@@ -34,8 +34,19 @@ from the install steps in `do-install` and `do-init`.
 - `python -m maverick.registry --target claude --out DIR` renders one
   runtime's complete plugin into a directory.
 
+- **The plugin is now installed from
+  [thermiteau/maverick-claude](https://github.com/thermiteau/maverick-claude).**
+  The `thermite` marketplace still lives in this repo, so users keep
+  `/plugin marketplace add thermiteau/maverick`; its `maverick` entry now
+  points at the generated plugin repo, which CI updates on each release.
+  Existing installs move over on their next plugin update. The release
+  workflow publishes the CLI to PyPI first, then the plugin, then
+  fast-forwards `stable`.
+
 ### Fixed
 
+- Hook commands quote `${CLAUDE_PLUGIN_ROOT}`, so a plugin path containing
+  a space no longer breaks every hook.
 - The subagent-report hook now resolves the instance id the same way as the
   scope guard and coordinator, including the `~/.maverick/instance_id` file
   fallback, so report bookkeeping no longer goes silent when the hook
