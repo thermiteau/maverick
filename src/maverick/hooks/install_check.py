@@ -9,7 +9,8 @@ plugin that ``/plugin update`` refreshes. Steady-state cost is a single
 
 Behaviour:
   - ``maverick`` not on PATH and ``CLAUDE_PLUGIN_ROOT`` set
-        -> auto-install via ``python -m maverick.install_cli``.
+        -> auto-install via ``hooks/install_cli.py`` (from source in a
+           checkout, else the matching ``maverick-harness`` PyPI release).
   - ``maverick`` not on PATH and no plugin root
         -> print one-line nudge, exit 0.
   - ``maverick`` on PATH and version is older than the plugin
@@ -26,32 +27,41 @@ hook only surfaces the problem early.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+HOOKS_DIR = Path(__file__).resolve().parent
+
 
 def _import_version_check(plugin_root: str):
-    """Best-effort import of ``maverick.version_check`` from the plugin source.
+    """Best-effort import of the ``version_check`` module shipped beside this hook.
 
-    The hook runs under bare ``python3``, not ``uv``, so ``maverick``
-    isn't necessarily on the import path. We point ``sys.path`` at the
-    plugin's ``src/`` directory and import directly. Returns ``None`` if
-    the module is missing — older plugin checkouts pre-date the version
-    check, and that's fine: preflight remains the backstop.
+    The hook runs under bare ``python3``, not ``uv``, so ``maverick`` isn't
+    necessarily importable. The build copies the stdlib-only
+    ``version_check.py`` into ``hooks/``; source checkouts also have it
+    under ``src/maverick/``. Returns ``None`` if neither is found — older
+    plugins pre-date the version check, and preflight remains the backstop.
     """
-    src_dir = Path(plugin_root) / "src"
-    if not src_dir.is_dir():
-        return None
-    if str(src_dir) not in sys.path:
-        sys.path.insert(0, str(src_dir))
-    try:
-        from maverick import version_check  # type: ignore[import-not-found]
-    except Exception:
-        return None
-    return version_check
+    for candidate in (HOOKS_DIR / "version_check.py",
+                      Path(plugin_root) / "src" / "maverick" / "version_check.py"):
+        if not candidate.is_file():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location("maverick_version_check", candidate)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            # dataclasses resolve annotations through sys.modules.
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module
+        except Exception:
+            continue
+    return None
 
 
 def _warn_if_stale(plugin_root: str) -> None:
@@ -100,13 +110,8 @@ def main() -> int:
     try:
         subprocess.run(
             [
-                "uv",
-                "run",
-                "--directory",
-                plugin_root,
-                "python",
-                "-m",
-                "maverick.install_cli",
+                sys.executable,
+                str(HOOKS_DIR / "install_cli.py"),
                 "--plugin-root",
                 plugin_root,
             ],

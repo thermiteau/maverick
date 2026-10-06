@@ -24,7 +24,7 @@ def get_current_version() -> str:
     try:
         from importlib.metadata import version
 
-        return version("maverick")
+        return version("maverick-harness")
     except Exception:
         pass
     return "unknown"

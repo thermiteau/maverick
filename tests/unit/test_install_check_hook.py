@@ -62,6 +62,7 @@ class TestWarnIfStale:
                 remediation="",
             ),
         )
+        monkeypatch.setattr(hook_module, "_import_version_check", lambda _root: version_check)
         hook_module._warn_if_stale(str(tmp_path))
         assert capsys.readouterr().err == ""
 
@@ -85,6 +86,7 @@ class TestWarnIfStale:
                 ),
             ),
         )
+        monkeypatch.setattr(hook_module, "_import_version_check", lambda _root: version_check)
         hook_module._warn_if_stale(str(tmp_path))
         err = capsys.readouterr().err
         assert "version skew" in err
@@ -102,6 +104,7 @@ class TestWarnIfStale:
             raise RuntimeError("boom")
 
         monkeypatch.setattr(version_check, "check_cli_compatibility", explode)
+        monkeypatch.setattr(hook_module, "_import_version_check", lambda _root: version_check)
         hook_module._warn_if_stale(str(tmp_path))
         # No raise; no warning printed because we swallowed the error.
         assert capsys.readouterr().err == ""
@@ -120,3 +123,23 @@ class TestWarnIfStale:
         with patch.dict(sys.modules, {"maverick.version_check": None}):
             hook_module._warn_if_stale(str(tmp_path))
         assert capsys.readouterr().err == ""
+
+
+class TestImportVersionCheck:
+    """The hook loads version_check by path: built plugins ship it in hooks/."""
+
+    def test_loads_from_source_checkout(self, tmp_path, hook_module):
+        root = _write_plugin(tmp_path, "4.1.0")
+        module = hook_module._import_version_check(str(root))
+        assert module is not None
+        assert hasattr(module, "check_cli_compatibility")
+
+    def test_loads_from_hooks_dir_of_built_plugin(self, tmp_path, hook_module, monkeypatch):
+        hooks = tmp_path / "hooks"
+        hooks.mkdir()
+        real = Path(__file__).resolve().parents[2] / "src" / "maverick" / "version_check.py"
+        (hooks / "version_check.py").write_text(real.read_text())
+        monkeypatch.setattr(hook_module, "HOOKS_DIR", hooks)
+        module = hook_module._import_version_check(str(tmp_path))  # no src/
+        assert module is not None
+        assert Path(module.__file__) == hooks / "version_check.py"

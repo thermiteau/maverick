@@ -38,7 +38,7 @@ def _get_version() -> str:
     try:
         from importlib.metadata import version
 
-        return version("maverick")
+        return version("maverick-harness")
     except Exception:
         pass
     return "unknown"
@@ -421,8 +421,12 @@ def render_target(target: Target, output_root: Path) -> list[Path]:
     # do-upskill reads topics.json at runtime; render_all_skills just cleaned it.
     written.append(generate_topics_json(skills_dir))
     written += render_all_agents(output_dir=output_root / target.agents_dir, target=target)
+    hooks_dir = output_root / target.hooks_dir
     if target.hooks_source is not None:
-        written += render_all_hooks(target.hooks_source, output_root / target.hooks_dir)
+        written += render_all_hooks(target.hooks_source, hooks_dir)
+    for module in target.hook_modules:
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        written.append(Path(shutil.copy2(module, hooks_dir / module.name)))
     return written
 
 

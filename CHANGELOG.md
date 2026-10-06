@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Groundwork for splitting Maverick into a core repo plus generated
+per-runtime plugin repos. Rendered skills and agents are unchanged apart
+from the install steps in `do-install` and `do-init`.
+
+### Changed
+
+- **The CLI distribution is renamed to `maverick-harness`** (the `maverick`
+  name is taken on PyPI). The command and import package are still
+  `maverick`. `do-install` and the SessionStart hook remove the legacy
+  `maverick` uv tool before installing, so both cannot claim the same
+  executable. A plugin without source installs the matching
+  `maverick-harness==<version>` from PyPI; a source checkout still installs
+  from itself.
+- **Hook logic now runs in the CLI** as `maverick hook <handler> --runtime
+  <name>`. The plugin ships `hooks.json` and a stdlib shim that fails open on
+  any CLI error, so a CLI that predates `maverick hook` skips the hooks with a
+  warning instead of blocking every tool call. Upgrade the CLI to keep the
+  scope guard active.
+- **Skill and agent configs are runtime-neutral.** Claude Code-only options
+  move to `claude=ClaudeSkillOptions(...)` / `claude=ClaudeAgentOptions(...)`;
+  agents declare `read_only=True`. Runtime wording in templates comes from
+  `{{ RUNTIME.* }}` (`src/maverick/targets.py`).
+- `python -m maverick.registry --target claude --out DIR` renders one
+  runtime's complete plugin into a directory.
+
+### Fixed
+
+- The subagent-report hook now resolves the instance id the same way as the
+  scope guard and coordinator, including the `~/.maverick/instance_id` file
+  fallback, so report bookkeeping no longer goes silent when the hook
+  subprocess lacks the session-id env (the #130 class).
+
 ## [4.0.1] - 2026-07-14
 
 ### Fixed

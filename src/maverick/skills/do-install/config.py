@@ -3,7 +3,7 @@ from maverick.names import DO_INSTALL
 
 CONFIG = SkillConfig(
     name=DO_INSTALL,
-    description=("Install the maverick CLI tool system-wide from the plugin directory."),
+    description=("Install the maverick CLI tool system-wide at the version matching this plugin."),
     user_invocable=True,
     # Runs in an isolated forked context: the audit/setup work is
     # self-contained and would otherwise pollute the caller's window

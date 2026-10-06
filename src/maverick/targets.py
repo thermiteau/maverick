@@ -40,6 +40,9 @@ class Target:
     arguments_token: str = ""
     #: Source directory of the target's hook config and shim, copied verbatim.
     hooks_source: Path | None = None
+    #: Stdlib-only CLI modules the hooks need before the CLI is installed
+    #: (installer, version check), copied into the hooks directory.
+    hook_modules: tuple[Path, ...] = ()
     #: Plugin layout, relative to the output root.
     skills_dir: str = "skills"
     agents_dir: str = "agents"
@@ -49,6 +52,8 @@ class Target:
 # ---------------------------------------------------------------------------
 # Claude Code
 # ---------------------------------------------------------------------------
+
+_SRC = Path(__file__).resolve().parent
 
 #: Tools Claude Code agents lose when the config says ``read_only``.
 CLAUDE_EDIT_TOOLS = ("Edit", "Write", "NotebookEdit")
@@ -128,11 +133,14 @@ CLAUDE = Target(
         "PLUGIN_ROOT": "${CLAUDE_PLUGIN_ROOT}",
         # Prefix that turns a skill name into a user invocation.
         "SKILL_PREFIX": "/maverick:",
+        # Plugin manifest carrying the plugin version, relative to PLUGIN_ROOT.
+        "PLUGIN_MANIFEST": ".claude-plugin/plugin.json",
     },
     arguments_token="$ARGUMENTS",
     skill_frontmatter=claude_skill_frontmatter,
     agent_frontmatter=claude_agent_frontmatter,
-    hooks_source=Path(__file__).resolve().parent / "hooks",
+    hooks_source=_SRC / "hooks",
+    hook_modules=(_SRC / "install_cli.py", _SRC / "version_check.py"),
 )
 
 TARGETS: dict[str, Target] = {CLAUDE.name: CLAUDE}

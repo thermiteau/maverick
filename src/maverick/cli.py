@@ -6,7 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 def _get_version() -> str:
     try:
-        v = version("maverick")
+        v = version("maverick-harness")
     except PackageNotFoundError:
         return "unknown"
     # importlib.metadata returns PEP 440 normalised form (e.g. "1.0.3.dev0"),

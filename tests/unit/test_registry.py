@@ -653,3 +653,6 @@ class TestRenderTarget:
         assert (tmp_path / "skills" / "do-upskill" / "topics.json").is_file()
         assert (tmp_path / "hooks" / "hooks.json").is_file()
         assert (tmp_path / "hooks" / "run_hook.py").is_file()
+        # Bootstrap modules the hooks need before the CLI exists.
+        assert (tmp_path / "hooks" / "install_cli.py").is_file()
+        assert (tmp_path / "hooks" / "version_check.py").is_file()
