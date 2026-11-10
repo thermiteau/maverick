@@ -223,4 +223,4 @@ their commits landed unreviewed.
 - **Use conventional commits** that reference the issue number (e.g., `feat: add rubric export (#42)`).
 - **Always create a PR** at the end — deliver a complete result.
 
-<!-- maverick-plugin-version: 5.2.0 -->
+<!-- maverick-plugin-version: 5.2.1-dev -->

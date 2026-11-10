@@ -203,4 +203,4 @@ MAVERICK_VERDICT: FAIL
 - **If in doubt, FAIL.** A conservative eject is recoverable via human
   review; a lenient PASS merges broken code.
 
-<!-- maverick-plugin-version: 5.2.0 -->
+<!-- maverick-plugin-version: 5.2.1-dev -->
