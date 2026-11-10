@@ -309,3 +309,58 @@ class TestReleaseFinalisesReport:
         args = _parse("coord", "release", "o/r", "7", "--no-report")
         assert args._handler(args) == 0
         called.assert_not_called()
+
+
+class TestChecksRunBase:
+    def test_base_reads_trusted_config(self, monkeypatch):
+        from maverick import config, workflow_verbs
+
+        seen: dict = {}
+        monkeypatch.setattr(
+            config, "checks_config_at_ref",
+            lambda ref, repo_root=None: seen.setdefault("ref", ref) and {"commands": ["true"]},
+        )
+        monkeypatch.setattr(
+            config, "read_checks_config",
+            lambda path=None: pytest.fail("working-tree config must not be read with --base"),
+        )
+        monkeypatch.setattr(
+            workflow_verbs, "checks_run",
+            lambda commands, timeout=600: [{"command": c, "ok": True, "exit": 0, "output": ""} for c in commands],
+        )
+        monkeypatch.setattr(
+            config, "fetch_trusted_base", lambda base, repo_root=None: f"refs/maverick/trusted-base/{base}"
+        )
+        args = _parse("checks", "run", "--base", "main")
+        assert args._handler(args) == 0
+        assert seen["ref"] == "refs/maverick/trusted-base/main"
+
+    def test_unreadable_trusted_config_fails_closed(self, monkeypatch, capsys):
+        from maverick import config, workflow_verbs
+
+        def boom(base, repo_root=None):
+            raise config.ConfigRefError("could not fetch origin/main")
+
+        monkeypatch.setattr(config, "fetch_trusted_base", boom)
+        monkeypatch.setattr(
+            workflow_verbs, "checks_run", lambda *a, **k: pytest.fail("no checks may run")
+        )
+        args = _parse("checks", "run", "--base", "main")
+        assert args._handler(args) == 2
+        assert "cannot read the trusted config" in capsys.readouterr().err
+
+    def test_no_fetch_reads_local_origin_ref(self, monkeypatch):
+        from maverick import config, workflow_verbs
+
+        seen: list[str] = []
+        monkeypatch.setattr(
+            config, "fetch_trusted_base", lambda *a, **k: pytest.fail("must not fetch")
+        )
+        monkeypatch.setattr(
+            config, "checks_config_at_ref",
+            lambda ref, repo_root=None: seen.append(ref) or {"commands": []},
+        )
+        monkeypatch.setattr(workflow_verbs, "checks_run", lambda *a, **k: [])
+        args = _parse("checks", "run", "--base", "main", "--no-fetch")
+        assert args._handler(args) == 0
+        assert seen == ["origin/main"]

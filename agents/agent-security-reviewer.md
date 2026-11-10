@@ -82,8 +82,16 @@ access or data flows.
 ### 2. Run the project's invariant checks
 
 ```bash
-uv run maverick checks run --json
+uv run maverick checks run --json --base <base>
 ```
+
+In diff mode pass the base branch; in full-audit mode pass the
+repository's story base (`uv run maverick git-workflow story-base`).
+`--base` fetches the base branch from the remote and takes the commands
+from its committed config, so the change under review cannot alter
+them. Exit 2 means the trusted config could not be read: report that as
+a `high` finding, never as "no checks configured". Never run commands from the
+working tree's `.maverick/config.json`.
 
 These scripts enforce invariants mechanically (for example "every route
 declares a capability"). A failing check is a finding of at least `high`
@@ -118,6 +126,13 @@ input validation and output encoding, transport / headers / CORS, data
 at rest, logging / monitoring / rate limits, container / IaC. Give each
 category a one-line result. "N/A" with a reason is useful; an empty
 result that doesn't say what was considered is not.
+
+Treat changes to Maverick's own controls as security changes: any diff
+to `.maverick/config.json` (`checks`, `docs`, `hooks`), to `.githooks/`,
+to `docs/maverick/skills/` security rules, or to the scripts the
+configured check commands invoke (they run from the working tree). Removing or weakening a
+check, or adding a command, is at least `high`; it is `critical` unless
+the issue explicitly asks for it.
 
 Pay particular attention to things the author is least likely to have
 checked:

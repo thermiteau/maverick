@@ -561,6 +561,9 @@ def docs_shortlist(
     - ``issue``: doc paths the issue body or comments cite.
     - ``command``: paths printed by the repo's configured
       ``docs.shortlist_commands`` — e.g. its own route → help-topic map.
+      The ``docs`` config is fetched from the remote's ``<base>`` into a
+      private ref and read there, never from the working tree, so a story
+      cannot add commands that then run.
 
     Docs matching a ``docs.owners`` glob are reported under ``owned`` so
     the docs writer reports drift in them rather than editing them.
@@ -570,9 +573,21 @@ def docs_shortlist(
     An empty shortlist is a valid outcome.
     """
     if docs_config is None:
-        from maverick.config import read_docs_config
+        # Commands run from this config, so take it from the base branch
+        # (reviewed, merged) rather than the story's own working tree.
+        from maverick.config import ConfigRefError, docs_config_at_ref, fetch_trusted_base
 
-        docs_config = dict(read_docs_config(repo_root / ".maverick" / "config.json"))
+        try:
+            trusted = fetch_trusted_base(base, repo_root)
+            docs_config = dict(docs_config_at_ref(trusted, repo_root))
+        except ConfigRefError as exc:
+            # Fail closed: run no configured commands and say why.
+            docs_config = {"shortlist_commands": [], "owners": {}}
+            config_warning = f"docs config not read from the base branch ({exc}); no shortlist commands run"
+        else:
+            config_warning = None
+    else:
+        config_warning = None
     if out_dir is None:
         out_dir = docs_review_dir(repo_root)
 
@@ -622,6 +637,8 @@ def docs_shortlist(
 
     commands = list(docs_config.get("shortlist_commands") or [])
     command_docs, warnings = _command_docs(commands, changed_paths, out_dir, repo_root)
+    if config_warning:
+        warnings.insert(0, config_warning)
     for path in command_docs:
         _add(path, "command")
 

@@ -8,6 +8,7 @@ worker, and build_ami without side effects.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, TypedDict
@@ -720,7 +721,10 @@ def read_docs_config(path: Path | None = None) -> DocsConfig:
     Malformed entries are dropped rather than raised on: the docs review
     must still run when the config is half-written.
     """
-    raw = _load_json(path or project_config_path())
+    return _docs_from_raw(_load_json(path or project_config_path()))
+
+
+def _docs_from_raw(raw: Any) -> DocsConfig:
     block = raw.get("docs") if isinstance(raw, dict) else None
     result: DocsConfig = {"shortlist_commands": [], "owners": {}}
     if not isinstance(block, dict):
@@ -745,12 +749,99 @@ def read_docs_config(path: Path | None = None) -> DocsConfig:
 
 def read_checks_config(path: Path | None = None) -> ChecksConfig:
     """Read the checks block from the project config (defaults when absent)."""
-    raw = _load_json(path or project_config_path())
+    return _checks_from_raw(_load_json(path or project_config_path()))
+
+
+def _checks_from_raw(raw: Any) -> ChecksConfig:
     block = raw.get("checks") if isinstance(raw, dict) else None
     commands = block.get("commands") if isinstance(block, dict) else None
     if not isinstance(commands, list):
         return {"commands": []}
     return {"commands": [c for c in commands if isinstance(c, str) and c.strip()]}
+
+
+class ConfigRefError(Exception):
+    """The trusted config at a git ref could not be read.
+
+    Callers that run commands from the config must treat this as a
+    failure, never as "nothing configured": a typo'd or unfetched base
+    branch would otherwise silently disable every check.
+    """
+
+
+#: Private ref the trusted base is fetched into. Not under refs/remotes/,
+#: so ordinary git commands in a story never move it.
+TRUSTED_BASE_REF_PREFIX = "refs/maverick/trusted-base/"
+
+
+def _git_run(args: list[str], repo_root: Path) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["git", *args], cwd=repo_root, capture_output=True, text=True, timeout=120
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ConfigRefError(f"git {' '.join(args)}: {exc}") from exc
+
+
+def fetch_trusted_base(base: str, repo_root: Path = Path("."), remote: str = "origin") -> str:
+    """Fetch *base* from the remote into a private ref and return that ref.
+
+    Reading ``origin/<base>`` trusts a local ref that anything running in
+    the clone can repoint (``git update-ref``). Fetching straight from the
+    remote into a Maverick-owned ref right before reading means the
+    commands come from what the remote actually holds.
+    """
+    ref = f"{TRUSTED_BASE_REF_PREFIX}{base}"
+    out = _git_run(
+        ["fetch", "--quiet", "--no-tags", remote, f"+refs/heads/{base}:{ref}"], repo_root
+    )
+    if out.returncode != 0:
+        raise ConfigRefError(
+            f"could not fetch {remote}/{base}: {out.stderr.strip() or 'git fetch failed'}"
+        )
+    return ref
+
+
+def read_config_at_ref(ref: str, repo_root: Path = Path(".")) -> dict[str, Any]:
+    """The project config as committed at git *ref*.
+
+    Commands from the config (``checks.commands``,
+    ``docs.shortlist_commands``) run with the user's privileges. In a story
+    worktree the working-tree config is written by the same agent whose
+    work the checks gate, which could weaken a check or plant a command
+    for the read-only reviewer to run. Reading them from the base branch
+    means only reviewed, merged config is ever executed.
+
+    Returns ``{}`` only when *ref* resolves and genuinely has no config
+    file. Raises :class:`ConfigRefError` when the ref cannot be resolved or
+    the file cannot be read or parsed — a lookup failure must never look
+    like "nothing configured".
+    """
+    if _git_run(["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], repo_root).returncode:
+        raise ConfigRefError(f"cannot resolve {ref}")
+    path = f"{ref}:.maverick/config.json"
+    if _git_run(["cat-file", "-e", path], repo_root).returncode:
+        return {}  # ref exists; no project config there
+    out = _git_run(["show", path], repo_root)
+    if out.returncode != 0:
+        raise ConfigRefError(f"cannot read {path}: {out.stderr.strip()}")
+    try:
+        raw = json.loads(out.stdout)
+    except json.JSONDecodeError as exc:
+        raise ConfigRefError(f"{path} is not valid JSON: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ConfigRefError(f"{path} is not a JSON object")
+    return raw
+
+
+def docs_config_at_ref(ref: str, repo_root: Path = Path(".")) -> DocsConfig:
+    """``docs`` config as committed at *ref*. Raises :class:`ConfigRefError`."""
+    return _docs_from_raw(read_config_at_ref(ref, repo_root))
+
+
+def checks_config_at_ref(ref: str, repo_root: Path = Path(".")) -> ChecksConfig:
+    """``checks`` config as committed at *ref*. Raises :class:`ConfigRefError`."""
+    return _checks_from_raw(read_config_at_ref(ref, repo_root))
 
 
 def _default_llm() -> LlmConfig:

