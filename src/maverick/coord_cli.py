@@ -471,13 +471,25 @@ def _docs_shortlist(args: argparse.Namespace) -> int:
 
 
 def _checks_run(args: argparse.Namespace) -> int:
-    from maverick.config import checks_config_at_ref, read_checks_config
+    from maverick.config import (
+        ConfigRefError,
+        checks_config_at_ref,
+        fetch_trusted_base,
+        read_checks_config,
+    )
 
     if args.base:
-        # Trusted source: the base branch's committed config. A story must
-        # not be able to weaken or replace the checks that gate it.
-        commands = checks_config_at_ref(f"origin/{args.base}")["commands"]
-        source = f"origin/{args.base}:.maverick/config.json"
+        # Trusted source: the base branch's committed config, fetched from
+        # the remote into a private ref. A story must not be able to weaken
+        # or replace the checks that gate it — and a lookup failure must
+        # fail the run, never read as "no checks configured".
+        try:
+            ref = f"origin/{args.base}" if args.no_fetch else fetch_trusted_base(args.base)
+            commands = checks_config_at_ref(ref)["commands"]
+        except ConfigRefError as exc:
+            print(f"checks: cannot read the trusted config: {exc}", file=sys.stderr)
+            return 2
+        source = f"{ref}:.maverick/config.json"
     else:
         commands = read_checks_config()["commands"]
         source = ".maverick/config.json (working tree)"
@@ -1005,8 +1017,9 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p = checks_sub.add_parser(
         "run",
         help=(
-            "Run every configured check command; exits 1 if any fails. "
-            "Exits 0 with a notice when none are configured."
+            "Run every configured check command; exits 1 if any fails, 2 if "
+            "the trusted config cannot be read. Exits 0 with a notice when "
+            "none are configured."
         ),
     )
     p.add_argument(
@@ -1016,6 +1029,14 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
             "Read checks.commands from origin/<base>'s committed config instead "
             "of the working tree. Workflows always pass this, so a story "
             "cannot change the checks that gate it."
+        ),
+    )
+    p.add_argument(
+        "--no-fetch",
+        action="store_true",
+        help=(
+            "With --base, read the local origin/<base> instead of fetching it "
+            "first (offline use; trusts the local ref)"
         ),
     )
     p.add_argument("--json", action="store_true", help="Print results as JSON")

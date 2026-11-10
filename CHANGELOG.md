@@ -83,8 +83,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.maverick/config.json` (`maverick checks run --base <branch>`; `docs
   shortlist` always), never the story's working tree. Otherwise the agent
   writing a story could weaken the checks that gate it, or add a command
-  for the read-only security reviewer to run. The security reviewer also
-  treats changes to Maverick's own controls as security findings.
+  for the read-only security reviewer to run. The base branch is fetched
+  from the remote into a private ref (`refs/maverick/trusted-base/<base>`)
+  right before reading, so a repointed local `origin/<base>` is ignored
+  (`--no-fetch` reads the local ref for offline use). A base that can't be
+  fetched or a config that can't be read fails `checks run` with exit 2
+  instead of looking like "no checks configured". The security reviewer
+  also treats changes to Maverick's own controls, including the scripts
+  that check commands invoke, as security findings.
 - **Parallel stories overwrote each other's docs-review files.**
   `maverick docs shortlist` wrote to fixed `/tmp` paths. It now defaults to a
   directory under the worktree's own git dir and prints the paths it used.
