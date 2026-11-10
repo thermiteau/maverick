@@ -168,4 +168,4 @@ produces false confidence.
   entire epic when you only intend to work on one wave blocks other
   instances unnecessarily.
 
-<!-- maverick-plugin-version: 5.2.2 -->
+<!-- maverick-plugin-version: 5.2.3-dev -->

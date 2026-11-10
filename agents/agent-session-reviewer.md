@@ -92,4 +92,4 @@ Return your findings as structured markdown:
 - **Consider context** — prototyping code has different standards than production code
 - **Focus on actionable findings** — each finding should suggest what to do differently
 
-<!-- maverick-plugin-version: 5.2.2 -->
+<!-- maverick-plugin-version: 5.2.3-dev -->
