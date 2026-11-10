@@ -202,4 +202,4 @@ appears more than once, the caller treats the review as BLOCKING.
 - **Stay read-only.** Follow `mav-scope-boundaries`: never
   touch production systems, credentials or remote state.
 
-<!-- maverick-plugin-version: 5.2.2 -->
+<!-- maverick-plugin-version: 5.2.3-dev -->
