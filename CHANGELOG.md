@@ -78,6 +78,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (and `release-all`, which the SessionEnd hook runs) now writes the report
   for the released issue, so every exit path leaves one. Use `--no-report` to
   skip it.
+- **Config commands are read from the base branch.** `checks.commands`
+  and `docs.shortlist_commands` now come from `origin/<base>`'s committed
+  `.maverick/config.json` (`maverick checks run --base <branch>`; `docs
+  shortlist` always), never the story's working tree. Otherwise the agent
+  writing a story could weaken the checks that gate it, or add a command
+  for the read-only security reviewer to run. The security reviewer also
+  treats changes to Maverick's own controls as security findings.
 - **Parallel stories overwrote each other's docs-review files.**
   `maverick docs shortlist` wrote to fixed `/tmp` paths. It now defaults to a
   directory under the worktree's own git dir and prints the paths it used.

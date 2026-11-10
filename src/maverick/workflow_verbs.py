@@ -561,6 +561,8 @@ def docs_shortlist(
     - ``issue``: doc paths the issue body or comments cite.
     - ``command``: paths printed by the repo's configured
       ``docs.shortlist_commands`` — e.g. its own route → help-topic map.
+      The ``docs`` config is read from ``origin/<base>``, never the
+      working tree, so a story cannot add commands that then run.
 
     Docs matching a ``docs.owners`` glob are reported under ``owned`` so
     the docs writer reports drift in them rather than editing them.
@@ -570,9 +572,11 @@ def docs_shortlist(
     An empty shortlist is a valid outcome.
     """
     if docs_config is None:
-        from maverick.config import read_docs_config
+        # Commands run from this config, so take it from the base branch
+        # (reviewed, merged) rather than the story's own working tree.
+        from maverick.config import docs_config_at_ref
 
-        docs_config = dict(read_docs_config(repo_root / ".maverick" / "config.json"))
+        docs_config = dict(docs_config_at_ref(f"origin/{base}", repo_root))
     if out_dir is None:
         out_dir = docs_review_dir(repo_root)
 

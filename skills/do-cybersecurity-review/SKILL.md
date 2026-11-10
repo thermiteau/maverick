@@ -49,7 +49,7 @@ the report's **Project checklist** section.
 Then run the project's invariant checks and record the result:
 
 ```bash
-uv run maverick checks run
+uv run maverick checks run --base "$(uv run maverick git-workflow story-base)"
 ```
 
 A failing check is a FAIL in the category it enforces.

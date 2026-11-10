@@ -720,7 +720,10 @@ def read_docs_config(path: Path | None = None) -> DocsConfig:
     Malformed entries are dropped rather than raised on: the docs review
     must still run when the config is half-written.
     """
-    raw = _load_json(path or project_config_path())
+    return _docs_from_raw(_load_json(path or project_config_path()))
+
+
+def _docs_from_raw(raw: Any) -> DocsConfig:
     block = raw.get("docs") if isinstance(raw, dict) else None
     result: DocsConfig = {"shortlist_commands": [], "owners": {}}
     if not isinstance(block, dict):
@@ -745,12 +748,56 @@ def read_docs_config(path: Path | None = None) -> DocsConfig:
 
 def read_checks_config(path: Path | None = None) -> ChecksConfig:
     """Read the checks block from the project config (defaults when absent)."""
-    raw = _load_json(path or project_config_path())
+    return _checks_from_raw(_load_json(path or project_config_path()))
+
+
+def _checks_from_raw(raw: Any) -> ChecksConfig:
     block = raw.get("checks") if isinstance(raw, dict) else None
     commands = block.get("commands") if isinstance(block, dict) else None
     if not isinstance(commands, list):
         return {"commands": []}
     return {"commands": [c for c in commands if isinstance(c, str) and c.strip()]}
+
+
+def read_config_at_ref(ref: str, repo_root: Path = Path(".")) -> dict[str, Any]:
+    """The project config as committed at git *ref* ({} if absent or unreadable).
+
+    Commands from the config (``checks.commands``,
+    ``docs.shortlist_commands``) run with the user's privileges. In a story
+    worktree the working-tree config is written by the same agent whose
+    work the checks gate, which could weaken a check or plant a command
+    for the read-only reviewer to run. Reading them from the base branch
+    means only reviewed, merged config is ever executed.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "show", f"{ref}:.maverick/config.json"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if out.returncode != 0:
+        return {}
+    try:
+        raw = json.loads(out.stdout)
+    except json.JSONDecodeError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def docs_config_at_ref(ref: str, repo_root: Path = Path(".")) -> DocsConfig:
+    """``docs`` config as committed at *ref* (see :func:`read_config_at_ref`)."""
+    return _docs_from_raw(read_config_at_ref(ref, repo_root))
+
+
+def checks_config_at_ref(ref: str, repo_root: Path = Path(".")) -> ChecksConfig:
+    """``checks`` config as committed at *ref* (see :func:`read_config_at_ref`)."""
+    return _checks_from_raw(read_config_at_ref(ref, repo_root))
 
 
 def _default_llm() -> LlmConfig:

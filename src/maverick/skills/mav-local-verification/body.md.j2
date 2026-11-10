@@ -87,9 +87,11 @@ Run in this order — each stage catches different classes of issues:
    retract-only table"), configured in `.maverick/config.json` under
    `checks.commands`:
    ```bash
-   uv run maverick checks run
+   uv run maverick checks run --base "$(uv run maverick git-workflow story-base)"
    ```
-   It exits 0 with a notice when none are configured. A failing check is
+   `--base` reads the checks from the base branch's committed config, so
+   a change on your branch can never alter the checks that gate it. It
+   exits 0 with a notice when none are configured. A failing check is
    a failed verification like any other: fix the code, never the check,
    unless the issue explicitly changes the invariant.
 

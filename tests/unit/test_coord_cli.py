@@ -309,3 +309,25 @@ class TestReleaseFinalisesReport:
         args = _parse("coord", "release", "o/r", "7", "--no-report")
         assert args._handler(args) == 0
         called.assert_not_called()
+
+
+class TestChecksRunBase:
+    def test_base_reads_trusted_config(self, monkeypatch):
+        from maverick import config, workflow_verbs
+
+        seen: dict = {}
+        monkeypatch.setattr(
+            config, "checks_config_at_ref",
+            lambda ref, repo_root=None: seen.setdefault("ref", ref) and {"commands": ["true"]},
+        )
+        monkeypatch.setattr(
+            config, "read_checks_config",
+            lambda path=None: pytest.fail("working-tree config must not be read with --base"),
+        )
+        monkeypatch.setattr(
+            workflow_verbs, "checks_run",
+            lambda commands, timeout=600: [{"command": c, "ok": True, "exit": 0, "output": ""} for c in commands],
+        )
+        args = _parse("checks", "run", "--base", "main")
+        assert args._handler(args) == 0
+        assert seen["ref"] == "origin/main"
