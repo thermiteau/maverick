@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The scope guard's BLOCKED message repeated its escalation text.**
+  Infrastructure rules embedded the "restricted by mav-scope-boundaries…"
+  guidance, and the autonomous deny appended it again. Rules now give only
+  the reason, and the guidance is added once to every decision that needs
+  consent. Interactive prompts for `git` rules now carry it too.
+
 ## [5.2.1] - 2026-11-10
 
 ### Fixed
