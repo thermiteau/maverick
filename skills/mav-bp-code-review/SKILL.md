@@ -12,7 +12,7 @@ Ensure all code changes are reviewed before merging; in Maverick the reviewer is
 ## Maverick's Rules
 
 - **No unreviewed merges**: at least one approval on protected branches; no self-approval; stale approvals are dismissed when new commits are pushed; all CI checks must pass. Never disable or skip a check to merge faster — fix the check or the code.
-- **Security is out of scope for PR review** — it runs as a separate pre-push gate via `do-cybersecurity-review` (update mode against the diff and impact set) before the PR is opened. By review time, security findings are already surfaced and folded into the PR body.
+- **Security is out of scope for PR review** — it runs as a separate pre-PR gate: the independent `agent-security-reviewer` reviews the diff, its impact set and the project's security checklist in a fresh context before the PR is opened. By review time, security findings are already surfaced and folded into the PR body.
 - **Review scope**: correctness, maintainability, test coverage, documentation. Style and formatting are the linter's job — do not comment on them. Do not review generated code (codegen, lockfiles) line by line, and do not request changes to correct-but-different approaches on personal preference.
 - **Verdict discipline**: distinguish blocking findings from non-blocking (prefix "nit:" or "optional:"); demonstrate understanding of the change rather than rubber-stamping; approve once the code is correct, tested, and maintainable — do not hold changes hostage for perfection. AI review findings require judgement — dismiss false positives with reasoning, never silently.
 - **Automated checks pass before review begins** — do not review code that fails lint, type checks, or tests.

@@ -19,9 +19,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
 
-ToolKind = Literal["shell", "write", "fetch", "skill", "other"]
+ToolKind = Literal["shell", "write", "fetch", "skill", "agent", "other"]
 EventKind = Literal[
-    "tool_call", "subagent_start", "subagent_stop", "session_end", "other"
+    "tool_call",
+    "tool_done",
+    "subagent_start",
+    "subagent_stop",
+    "session_start",
+    "session_end",
+    "other",
 ]
 
 
@@ -35,6 +41,13 @@ class ToolCall:
     path: str = ""  # write
     url: str = ""  # fetch
     skill: str = ""  # skill (bare name, namespace stripped)
+    #: agent: the dispatched subagent type (namespace stripped).
+    agent: str = ""
+    #: Free text the call carries — a subagent prompt or a skill's args.
+    #: Used to find a ``maverick-issue: <N>`` attribution marker.
+    text: str = ""
+    #: agent: dispatched in the background (its tool call returns at launch).
+    background: bool = False
 
 
 @dataclass(frozen=True)
@@ -45,6 +58,10 @@ class HookInput:
     cwd: Path = field(default_factory=lambda: Path("."))
     tool: ToolCall | None = None
     agent: str | None = None  # subagent name, namespace stripped
+    #: The model the session reports (SessionStart carries it), if any.
+    model: str | None = None
+    #: The session transcript, when the runtime provides one.
+    transcript_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -78,8 +95,10 @@ class ClaudeAdapter:
 
     _EVENTS: dict[str, EventKind] = {
         "PreToolUse": "tool_call",
+        "PostToolUse": "tool_done",
         "SubagentStart": "subagent_start",
         "SubagentStop": "subagent_stop",
+        "SessionStart": "session_start",
         "SessionEnd": "session_end",
     }
 
@@ -92,11 +111,17 @@ class ClaudeAdapter:
         if tool_name is not None and event == "other":
             event = "tool_call"
         tool = self._tool(tool_name or "", raw.get("tool_input") or {}, cwd)
+        model = raw.get("model")
+        if isinstance(model, dict):  # some payloads carry {"id": ..., ...}
+            model = model.get("id")
+        transcript = raw.get("transcript_path")
         return HookInput(
             event=event,
             cwd=cwd,
-            tool=tool if event == "tool_call" else None,
+            tool=tool if event in ("tool_call", "tool_done") else None,
             agent=self._agent(raw),
+            model=model if isinstance(model, str) and model else None,
+            transcript_path=transcript if isinstance(transcript, str) and transcript else None,
         )
 
     @staticmethod
@@ -110,7 +135,15 @@ class ClaudeAdapter:
             return ToolCall("fetch", cwd, url=str(tool_input.get("url") or ""))
         if name == "Skill":
             skill = _strip_namespace(str(tool_input.get("skill") or ""))
-            return ToolCall("skill", cwd, skill=skill)
+            return ToolCall("skill", cwd, skill=skill, text=str(tool_input.get("args") or ""))
+        if name in ("Agent", "Task"):
+            return ToolCall(
+                "agent",
+                cwd,
+                agent=_strip_namespace(str(tool_input.get("subagent_type") or "")),
+                text=str(tool_input.get("prompt") or ""),
+                background=bool(tool_input.get("run_in_background")),
+            )
         return ToolCall("other", cwd)
 
     @staticmethod

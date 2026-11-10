@@ -113,9 +113,20 @@ def _coord_resume_point(args: argparse.Namespace) -> int:
     return 0
 
 
+def _finalise_report(repo: str, issue: int) -> None:
+    """Write the workflow report for a released issue (best-effort)."""
+    from maverick import report_cli
+
+    path = report_cli.finalise_report(repo, issue)
+    if path is not None:
+        print(f"report: {path}")
+
+
 def _coord_release(args: argparse.Namespace) -> int:
     coordinator.release(args.repo, args.issue, reason=args.reason)
     print("released")
+    if not args.no_report:
+        _finalise_report(args.repo, args.issue)
     return 0
 
 
@@ -123,6 +134,7 @@ def _coord_release_all(args: argparse.Namespace) -> int:
     released = coordinator.release_all(reason=args.reason)
     for repo, issue in released:
         print(f"released {repo}#{issue}")
+        _finalise_report(repo, issue)
     print(f"{len(released)} claim(s) released")
     return 0
 
@@ -447,8 +459,46 @@ def _issue_comment_update(args: argparse.Namespace) -> int:
 
 
 def _docs_shortlist(args: argparse.Namespace) -> int:
-    result = workflow_verbs.docs_shortlist(args.base, out_dir=Path(args.out_dir))
+    result = workflow_verbs.docs_shortlist(
+        args.base,
+        out_dir=Path(args.out_dir) if args.out_dir else None,
+        issue=args.issue,
+    )
+    for warning in result.get("warnings", []):
+        print(f"warning: {warning}", file=sys.stderr)
     _json_print(result)
+    return 0
+
+
+def _checks_run(args: argparse.Namespace) -> int:
+    from maverick.config import read_checks_config
+
+    commands = read_checks_config()["commands"]
+    if not commands:
+        print(
+            "no project checks configured (checks.commands in .maverick/config.json)",
+            file=sys.stderr,
+        )
+        return 0
+    results = workflow_verbs.checks_run(commands, timeout=args.timeout)
+    failed = [r for r in results if not r["ok"]]
+    if args.json:
+        _json_print({"ok": not failed, "results": results})
+    else:
+        for r in results:
+            print(f"{'PASS' if r['ok'] else 'FAIL'}  {r['command']}")
+            if not r["ok"] and r["output"].strip():
+                for line in r["output"].strip().splitlines()[-20:]:
+                    print(f"      {line}")
+        print(f"{len(results) - len(failed)}/{len(results)} checks passed")
+    return 1 if failed else 0
+
+
+def _docs_owners(args: argparse.Namespace) -> int:
+    from maverick.config import read_docs_config
+
+    owners = read_docs_config()["owners"]
+    _json_print(workflow_verbs.doc_owners(list(args.paths), dict(owners)))
     return 0
 
 
@@ -582,6 +632,11 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("repo")
     p.add_argument("issue", type=int)
     p.add_argument("--reason", default="complete")
+    p.add_argument(
+        "--no-report",
+        action="store_true",
+        help="Skip generating the workflow report for this issue on release",
+    )
     p.set_defaults(_handler=_coord_release)
 
     p = coord_sub.add_parser(
@@ -915,13 +970,53 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         "shortlist",
         help=(
             "Build the candidate-doc shortlist for the docs-review phase from "
-            "the diff against a base branch. Writes diff.patch, "
-            "changed-paths.txt, and doc-shortlist.txt to --out-dir."
+            "the diff against a base branch, issue-cited docs, and the repo's "
+            "docs.shortlist_commands. Writes diff.patch, changed-paths.txt, "
+            "doc-shortlist.txt and doc-shortlist.json to --out-dir."
         ),
     )
     p.add_argument("--base", required=True, help="Base branch (e.g. from git-workflow story-base)")
-    p.add_argument("--out-dir", default="/tmp", help="Output directory (default /tmp)")
+    p.add_argument(
+        "--out-dir",
+        default=None,
+        help=(
+            "Output directory (default: a per-worktree directory under the "
+            "worktree's git dir, so parallel stories never collide)"
+        ),
+    )
+    p.add_argument(
+        "--issue",
+        type=int,
+        default=None,
+        help="Also shortlist docs/ paths cited in this issue's body and comments",
+    )
     p.set_defaults(_handler=_docs_shortlist)
+
+    # checks — project invariant checks
+    checks = subparsers.add_parser(
+        "checks", help="Project invariant checks (checks.commands in .maverick/config.json)"
+    )
+    checks_sub = checks.add_subparsers(dest="checks_cmd", required=True)
+    p = checks_sub.add_parser(
+        "run",
+        help=(
+            "Run every configured check command; exits 1 if any fails. "
+            "Exits 0 with a notice when none are configured."
+        ),
+    )
+    p.add_argument("--json", action="store_true", help="Print results as JSON")
+    p.add_argument("--timeout", type=int, default=600, help="Per-check timeout in seconds")
+    p.set_defaults(_handler=_checks_run)
+
+    p = docs_sub.add_parser(
+        "owners",
+        help=(
+            "Print which configured docs.owners entry (if any) owns each "
+            "path, as JSON {path: owner}. Unowned paths are omitted."
+        ),
+    )
+    p.add_argument("paths", nargs="+")
+    p.set_defaults(_handler=_docs_owners)
 
     # git-workflow — per-project branching config
     gw = subparsers.add_parser(

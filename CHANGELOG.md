@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`agent-security-reviewer`: an independent security gate.** The pre-PR
+  security review used to run inside the context that wrote the code (the
+  author checking their own work), while `agent-code-reviewer` leaves
+  security out. `do-issue-solo` and `do-issue-guided` now dispatch a
+  read-only agent with a fresh context, pinned to a strong model. It reads
+  the project's security skills under `docs/maverick/skills/` and answers
+  every rule in them, runs the project's invariant checks, and ends with a
+  `MAVERICK_SECURITY_VERDICT: PASS|FINDINGS|BLOCKING` marker (missing or
+  ambiguous counts as BLOCKING). `do-cybersecurity-review`'s update mode now
+  hands off to it, and its full-audit mode also uses the project checklist
+  and proposes invariant checks. `do-upskill`'s `application-security` topic
+  now records the project's security rules as checkable rules.
+- **End-of-epic audit and docs sweep.** `do-epic` now runs
+  `agent-security-reviewer` in full-audit mode over the merged result,
+  because per-story reviews only see code near their own diff. It opens one
+  `security-audit` issue per new critical or high finding. It also runs a
+  docs sweep over the combined diff and opens a follow-up issue per doc
+  owner.
+- **Project invariant checks.** `checks.commands` in `.maverick/config.json`
+  lists scripts that enforce a rule mechanically.
+  `maverick checks run` runs all of them and exits 1 if any fails. Local
+  verification and the security reviewer both run it.
+- **Docs-review shortlist sources and owners.** `maverick docs shortlist`
+  takes `--issue N` to add `docs/` paths the issue cites. It also runs the
+  repo's `docs.shortlist_commands`, which receive the changed paths on stdin
+  and print doc paths, for repo-specific links such as route → help topic.
+  `docs.owners` maps globs to an owner (`owner`, `agent`, `label`,
+  `editable`). The docs writer never edits an owned doc. Drift in one goes to
+  the owner's agent, or to a labelled follow-up issue, instead of a PR note.
+  `maverick docs owners <path>...` looks them up. Example:
+
+  ```json
+  {
+    "docs": {
+      "shortlist_commands": ["node scripts/docs-for-routes.js"],
+      "owners": {
+        "docs/product/**": {"owner": "product-owner", "agent": "product-owner"},
+        "docs/adr/**": {"owner": "architects", "label": "adr-drift"}
+      }
+    },
+    "checks": {"commands": ["pnpm db:check-retract-not-delete"]}
+  }
+  ```
+- **Review gates in the workflow report.** A new section shows, for the
+  docs, security and code review gates, what was dispatched and the
+  evidence the workflow recorded. A gate that ran without evidence is
+  flagged, so a quick no-op can be told apart from a skipped step.
+
+### Fixed
+
+- **Reports from epic runs showed zero agent and skill dispatches.** The
+  dispatch hook only recorded anything when the session held exactly one
+  claim. A `do-epic` session holds the epic's claim plus one per in-flight
+  story, so it recorded nothing. Dispatches are now attributed by a
+  `maverick-issue: <N>` marker in the dispatch prompt or skill arguments,
+  then the only claim, then the story branch checked out in the working
+  directory. Agent dispatches are tracked on the Agent tool call
+  (`PreToolUse`/`PostToolUse`) instead of `SubagentStart`/`SubagentStop`,
+  because only the tool call carries the prompt.
+- **Every report claimed `claude-opus-4-7`.** That id was the hard-coded
+  `llm.default`. The plugin hooks now record the session's real model from
+  the runtime (the SessionStart payload, or the transcript), and report rows
+  use it ahead of any configured label. `llm.default` is now empty and only
+  used as a fallback label.
+- **Reports were never written for runs that stopped early.** Report
+  generation was the last step of a successful run. `maverick coord release`
+  (and `release-all`, which the SessionEnd hook runs) now writes the report
+  for the released issue, so every exit path leaves one. Use `--no-report` to
+  skip it.
+- **Parallel stories overwrote each other's docs-review files.**
+  `maverick docs shortlist` wrote to fixed `/tmp` paths. It now defaults to a
+  directory under the worktree's own git dir and prints the paths it used.
+
 ## [5.1.1] - 2026-10-07
 
 ### Fixed

@@ -216,7 +216,7 @@ The `agent-code-reviewer` checks test adequacy as part of Stage 2. It verifies t
 
 ### Code review and security
 
-Security is **not** part of the code review process. The `agent-code-reviewer`'s scope is limited to whether the code is well-written, tested, and meets the GitHub issue requirements. Security findings are surfaced separately by `do-cybersecurity-review` (in update mode) as a mandatory pre-push gate that runs before the PR is opened — by the time a reviewer sees the PR, security findings have already been folded into the PR body. See security-review.md for the broader security pipeline.
+Security is **not** part of the code review process. The `agent-code-reviewer`'s scope is limited to whether the code is well-written, tested, and meets the GitHub issue requirements. Security findings are surfaced separately by the independent `agent-security-reviewer` as a mandatory pre-PR gate that runs before the PR is opened — by the time a reviewer sees the PR, security findings have already been folded into the PR body. See security-review.md for the broader security pipeline.
 
 ### Code review and CI/CD
 

@@ -6,6 +6,10 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/install_check.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.py\" subagent-report --runtime claude"
           }
         ]
       }
@@ -21,7 +25,7 @@
         ]
       },
       {
-        "matcher": "Skill",
+        "matcher": "Skill|Agent|Task",
         "hooks": [
           {
             "type": "command",
@@ -30,18 +34,9 @@
         ]
       }
     ],
-    "SubagentStart": [
+    "PostToolUse": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/run_hook.py\" subagent-report --runtime claude"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
+        "matcher": "Agent|Task",
         "hooks": [
           {
             "type": "command",

@@ -183,7 +183,17 @@ Decide based on:
 
 If parallel: dispatch one subagent per worktree, running
 `do-issue-solo` for that story inside that worktree. Track
-the subagents and aggregate results.
+the subagents and aggregate results. Every story prompt must:
+
+- end with the line `maverick-issue: <story>`, and
+- tell the subagent to `cd` into its worktree first and to put
+  `maverick-issue: <story>` in every agent it dispatches and every inner
+  skill it invokes.
+
+This session holds the epic's claim plus one per in-flight story, so
+the plugin hooks can only attribute a dispatch to the right story's
+report through that marker (or the story branch checked out in the
+working directory). Without it, story reports show no dispatches.
 
 If serial: iterate worktrees one at a time, running
 `do-issue-solo` in each.
@@ -222,17 +232,56 @@ When every story in the wave is terminal (merged or ejected):
 ## Phase 6: Epic completion
 
 1. Every child story is either merged or ejected.
-2. Post a summary comment on the epic:
+2. **Epic-level security audit (mandatory).** Each story's security
+   review only sees its own diff and one or two hops around it. Problems
+   in code no story touched — a logger without redaction, a handler that
+   skips a check, a stale database grant — never appear in any diff, so
+   only a whole-codebase pass finds them. Run it once per epic, against
+   the merged result:
+   1. Refresh the story base in the main checkout
+      (`git fetch origin "$STORY_BASE"` and fast-forward it) so the
+      audit sees every merged story.
+   2. Dispatch **agent-security-reviewer** with
+      `Mode: full-audit`, the epic's title and goal as the spec, and the
+      line `maverick-issue: $ARGUMENTS`.
+   3. For each `critical` or `high` finding, look for an open issue that
+      already covers it
+      (`gh issue list --label security-audit --state open --search "<file path>"`).
+      If none does, open one with the Maverick GitHub App identity,
+      labelled `security-audit` (plus `needs-human` for `critical`),
+      with the finding's location, description and recommendation and a
+      `Found by the epic #$ARGUMENTS audit.` line. Create the label
+      first if it doesn't exist.
+   4. If the audit proposes invariant checks (findings a script could
+      catch every time), open one issue listing them, labelled
+      `security-audit`, so they get added to `checks.commands`.
+3. **Epic-level docs sweep (mandatory).** Per-story docs reviews see one
+   diff each and miss drift that builds up across stories.
+   1. Concatenate the merged stories' diffs into one file in a fresh
+      temporary directory (`gh pr diff <pr>` for each merged PR).
+   2. Dispatch **agent-tech-docs-writer** in `update` mode
+      with that diff, the docs the epic and its stories cite, and the
+      line `maverick-issue: $ARGUMENTS`. Instruct it to **report
+      only** (it is running on the base branch, where nothing may be
+      committed directly): return each stale doc with what is stale.
+   3. Group the stale docs by owner (`uv run maverick docs owners <path> ...`)
+      and open one follow-up issue per group, labelled with the owner's
+      `label` (default `docs-drift`) and naming the owner. If an owner
+      has an `agent`, say so in the issue so whoever picks it up
+      dispatches that agent.
+4. Post a summary comment on the epic:
    - Count merged vs ejected.
    - Link to every PR.
    - Call out the ejected stories as the human's queue.
-3. Update `maverick-state` one last time.
-4. Release the epic-level claim:
+   - The audit verdict, with links to the security and docs follow-up
+     issues opened in steps 2–3 (or "none").
+5. Update `maverick-state` one last time.
+6. Release the epic-level claim:
    `uv run maverick coord release <repo> $ARGUMENTS --reason complete`.
-5. The `heartbeat-loop` background processes self-terminate within one
+7. The `heartbeat-loop` background processes self-terminate within one
    `--interval` window once their claims are released — `wait` for them
    if you backgrounded them with PIDs, or just let the parent shell exit.
-6. Close the epic issue only if **no stories were ejected** AND the
+8. Close the epic issue only if **no stories were ejected** AND the
    per-project close policy allows it (#52). Per-PR closes for child
    stories already ran via `do-issue-solo` Phase 10, but the epic
    itself spans multiple branches/PRs, so the simple `close-on-merge`

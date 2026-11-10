@@ -332,6 +332,7 @@ def main():
         "tasks",
         "bprop",
         "docs",
+        "checks",
         "git-workflow",
         "report",
     ):

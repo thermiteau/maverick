@@ -521,6 +521,19 @@ def _agent_pinned_model(agent: str) -> str | None:
     return _AGENT_MODEL_CACHE.get(agent)
 
 
+def _session_model() -> str | None:
+    """The model the plugin hooks recorded for this session, if any."""
+    import os as _os
+
+    try:
+        from maverick.runtime_hooks import session_model
+        from maverick.runtime_hooks.claims import instance_id
+
+        return session_model.lookup(instance_id(dict(_os.environ)))
+    except Exception:  # noqa: BLE001 — best-effort; fall through on any error
+        return None
+
+
 def _current_llm(
     explicit: str | None = None,
     issue: int | None = None,
@@ -540,17 +553,21 @@ def _current_llm(
        ``AgentConfig.claude.model`` field. This is the source of truth — the
        same value that gets rendered into the agent's frontmatter and
        therefore the same generation Claude Code actually dispatches.
-    5. ``llm.default`` from the merged config (defaults → user → repo).
-    6. Latest ``run-start`` row's ``llm`` for this issue (inherits
+    5. The model the runtime reported for this session, recorded by the
+       plugin hooks (``runtime_hooks.session_model``). This is what the
+       session actually ran on, so it outranks any configured label.
+    6. ``llm.default`` from the merged config (defaults → user → repo);
+       empty unless a user or repo sets it.
+    7. Latest ``run-start`` row's ``llm`` for this issue (inherits
        across CLI invocations even if the orchestrator never opened
        the project config — useful for one-off runs).
-    7. The ``FALLBACK_LLM`` literal.
+    8. The ``FALLBACK_LLM`` literal.
 
     ``skill_name`` is accepted for API compatibility but no longer
     drives resolution: skills are instruction blocks loaded into the
     orchestrator's session and cannot run on a different model from it
-    (#108). Skill-dispatch rows therefore land in step 5 (orchestrator
-    default) unless an explicit per-skill override is set in the
+    (#108). Skill-dispatch rows therefore land in step 5 (the
+    orchestrator's model) unless an explicit per-skill override is set in the
     config's ``llm.skills`` block.
     """
     import os as _os
@@ -576,6 +593,10 @@ def _current_llm(
 
     if skill_name and llm_cfg is not None and skill_name in llm_cfg["skills"]:
         return llm_cfg["skills"][skill_name]
+
+    detected = _session_model()
+    if detected:
+        return detected
 
     if llm_cfg is not None and llm_cfg["default"]:
         return llm_cfg["default"]
@@ -810,6 +831,8 @@ def render(
     out.append("")
     _append_analysis_table(out, events, total_seconds)
 
+    _append_review_gates(out, events, phases)
+
     notes = [e for e in events if e.get("action") == "note"]
     if notes:
         out.append("")
@@ -981,6 +1004,58 @@ def _append_analysis_table(out: list[str], events: Sequence[Event], total: int) 
     out.append(f"| Implementation (unwrapped, inside Phase 5) | {impl_total} |")
     out.append(f"| User decision points | {question_total} |")
     out.append(f"| Coordination / CLI / checkpoint overhead | {coord_total} |")
+
+
+#: The review gates a run must pass, in workflow order. Each is a phase.
+REVIEW_GATES: tuple[tuple[str, str], ...] = (
+    ("docs", "Documentation review"),
+    ("security", "Security review"),
+    ("review", "Code review"),
+)
+
+
+def _append_review_gates(
+    out: list[str],
+    events: Sequence[Event],
+    phases: Sequence[tuple[str, str, str]],
+) -> None:
+    """Per review gate: did it run, what was dispatched, what it found.
+
+    A gate's duration alone cannot tell a genuine "nothing to do" from a
+    skipped step. The workflow records an evidence note for every gate
+    (what was checked and the verdict); a gate that ran without one is
+    flagged so a reader knows the record is incomplete.
+    """
+    spans = {phase: (start, end) for phase, start, end in phases}
+    out.append("")
+    out.append("## Review gates")
+    out.append("")
+    out.append("| Gate | Ran | Seconds | Dispatches | Evidence |")
+    out.append("|---|---|---|---|---|")
+    for phase, label in REVIEW_GATES:
+        span = spans.get(phase)
+        dispatches = [
+            e
+            for e in events
+            if e.get("phase") == phase and e.get("action") in ("agent-dispatch", "skill-dispatch")
+        ]
+        notes = [
+            str(e.get("notes") or "").replace("|", "\\|").replace("\n", " ")
+            for e in events
+            if e.get("phase") == phase and e.get("action") == "note" and e.get("notes")
+        ]
+        if span is None and not dispatches and not notes:
+            out.append(f"| {label} | no | — | 0 | ⚠ gate never reached |")
+            continue
+        seconds = _seconds_between(*span) if span else "—"
+        names = ", ".join(
+            f"{e.get('maverick_agent') or e.get('dispatched_skill') or '?'}"
+            f" ({e.get('outcome') or '?'})"
+            for e in dispatches
+        )
+        dispatch_cell = f"{len(dispatches)}: {names}" if dispatches else "0"
+        evidence = "; ".join(notes) if notes else "⚠ no evidence recorded"
+        out.append(f"| {label} | yes | {seconds} | {dispatch_cell} | {evidence} |")
 
 
 def _unwrapped_implementation_seconds(events: Sequence[Event]) -> int:
@@ -1249,22 +1324,58 @@ def _report_resume(args: argparse.Namespace) -> int:
 def _report_generate(args: argparse.Namespace) -> int:
     issue = args.issue
     repo_root = _main_repo_root()
-    _flush_dangling_intervals(issue, args)
     tpath = timeline_path(issue, repo_root=repo_root)
-    events = load_timeline(tpath)
-    if not events:
+    out_path = generate_report(args)
+    if out_path is None:
         print(f"no timeline data for issue {issue} at {tpath}", file=sys.stderr)
         return 2
-
-    pr = _fetch_pr(args.repo, issue) if args.repo else None
-    usage = _gather_usage(events, repo_root, no_tokens=args.no_tokens)
-    md = render(issue=issue, events=events, pr=pr, usage=usage)
-
-    out_path = Path(args.out) if args.out else report_path(issue, repo_root=repo_root)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(md, encoding="utf-8")
     print(str(out_path))
     return 0
+
+
+def generate_report(args: argparse.Namespace) -> Path | None:
+    """Flush dangling intervals and render the report. None = no timeline.
+
+    ``args`` needs ``issue``; ``repo``, ``out`` and ``no_tokens`` are
+    optional (PR lookup, output path override, token-usage skip).
+    """
+    issue = args.issue
+    repo_root = _main_repo_root()
+    _flush_dangling_intervals(issue, args)
+    events = load_timeline(timeline_path(issue, repo_root=repo_root))
+    if not events:
+        return None
+
+    repo = getattr(args, "repo", None)
+    pr = _fetch_pr(repo, issue) if repo else None
+    usage = _gather_usage(events, repo_root, no_tokens=getattr(args, "no_tokens", False))
+    md = render(issue=issue, events=events, pr=pr, usage=usage)
+
+    out = getattr(args, "out", None)
+    out_path = Path(out) if out else report_path(issue, repo_root=repo_root)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(md, encoding="utf-8")
+    return out_path
+
+
+def finalise_report(repo: str | None, issue: int) -> Path | None:
+    """Best-effort report generation when a claim is released.
+
+    The workflow's own `report generate` step is the last thing a run does,
+    so halted, blocked and cut-off runs never reached it and their reports
+    were never written. Releasing the claim happens on every exit path
+    (merge, eject, abort, and the SessionEnd hook), so it finalises here
+    too. A no-op when the issue has no timeline (e.g. an epic's own
+    claim); never raises.
+    """
+    try:
+        if not timeline_path(issue).exists():
+            return None
+        args = argparse.Namespace(issue=issue, repo=repo, out=None, no_tokens=False, llm=None)
+        return generate_report(args)
+    except Exception as exc:  # noqa: BLE001 — a report must never block a release
+        print(f"warning: report not finalised for #{issue}: {exc}", file=sys.stderr)
+        return None
 
 
 def _gather_usage(

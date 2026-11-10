@@ -399,7 +399,8 @@ class TestReadLlmConfig:
     ):
         self._stage(tmp_path, monkeypatch, user=None, repo=None)
         cfg = config.read_llm_config()
-        assert cfg["default"] == "claude-opus-4-7"
+        # No hard-coded model id: the report detects the real model.
+        assert cfg["default"] == ""
         # Per-agent / per-skill presumption tables are intentionally empty.
         assert cfg["agents"] == {}
         assert cfg["skills"] == {}
@@ -472,3 +473,34 @@ class TestSaveConfig:
         config.save_config({"new": True})  # type: ignore[typeddict-item]
         data = json.loads(cfg_file.read_text())
         assert data == {"new": True}
+
+
+class TestDocsAndChecksConfig:
+    def test_defaults_when_absent(self, tmp_path: Path):
+        path = tmp_path / "config.json"
+        assert config.read_docs_config(path) == {"shortlist_commands": [], "owners": {}}
+        assert config.read_checks_config(path) == {"commands": []}
+
+    def test_reads_and_sanitises(self, tmp_path: Path):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({
+            "docs": {
+                "shortlist_commands": ["node scripts/route-docs.js", "", 3],
+                "owners": {
+                    "docs/product/**": {"owner": "product-owner", "agent": "product-owner",
+                                        "editable": False, "junk": 1},
+                    "bad": "not-a-dict",
+                },
+            },
+            "checks": {"commands": ["pnpm db:check-retract-not-delete", None]},
+        }))
+        docs = config.read_docs_config(path)
+        assert docs["shortlist_commands"] == ["node scripts/route-docs.js"]
+        assert docs["owners"] == {
+            "docs/product/**": {"owner": "product-owner", "agent": "product-owner", "editable": False}
+        }
+        assert config.read_checks_config(path) == {"commands": ["pnpm db:check-retract-not-delete"]}
+
+    def test_new_sections_are_known_keys(self):
+        raw = {"docs": {"shortlist_commands": [], "owners": {}}, "checks": {"commands": []}}
+        assert config._has_unknown_keys(raw) == []

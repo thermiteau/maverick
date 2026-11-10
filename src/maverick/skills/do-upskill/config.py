@@ -123,7 +123,14 @@ TOPICS: list[TopicConfig] = [
             " input validation patterns, authentication/authorisation middleware,"
             " security headers, CSP configuration, secrets management, SAST/DAST"
             " tooling in CI, and dependency vulnerability scanning. Use the application"
-            " security best practice skill to guide the implementation."
+            " security best practice skill to guide the implementation. The"
+            " independent security reviewer treats every rule in this skill as a"
+            " mandatory checklist item, so in Patterns also list this project's own"
+            " security invariants as short, checkable rules: tenant isolation and"
+            " row-level security, how records are deleted or retracted, privileged"
+            " database functions, how routes declare permissions, what must never"
+            " be logged, where data may flow. Cite the ADRs or specs that define"
+            " them, and name the check script that enforces each one, if any."
         ),
         best_practice_skill=MAV_BP_APPLICATION_SECURITY,
         scan_dependencies=[

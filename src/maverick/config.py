@@ -244,6 +244,60 @@ class IntegrationStatus(TypedDict):
     cybersecurity_reviewed: bool  # do-cybersecurity-review produced docs/security-audit.md
 
 
+class DocsOwner(TypedDict, total=False):
+    """Who owns a set of docs the docs writer must not edit itself.
+
+    Fields (all optional):
+        owner: Human-readable owner, e.g. ``"product-owner"``.
+        agent: A project agent to dispatch with the drift so it can update
+               the docs on the story branch (e.g. ``"product-owner"``).
+        label: Label for the follow-up issue opened when no ``agent`` is
+               set (default ``"docs-drift"``).
+        editable: ``False`` (the default) means the docs writer may only
+                  report drift in these docs, never edit them.
+    """
+
+    owner: str
+    agent: str
+    label: str
+    editable: bool
+
+
+class DocsConfig(TypedDict):
+    """Per-project docs-review configuration.
+
+    Fields:
+        shortlist_commands: Shell commands that print extra candidate doc
+                            paths (one per line) for the docs-review
+                            shortlist. Each runs at the repo root with the
+                            changed paths on stdin and
+                            ``MAVERICK_CHANGED_PATHS`` / ``MAVERICK_DIFF``
+                            pointing at files holding them — the hook for
+                            repo-specific links such as route → help topic.
+        owners:             Glob (repo-relative, ``fnmatch``) → owner. Docs
+                            matching a glob belong to that owner; drift
+                            in them is routed to the owner instead of
+                            being edited by the docs writer or left as a
+                            PR note.
+    """
+
+    shortlist_commands: list[str]
+    owners: dict[str, DocsOwner]
+
+
+class ChecksConfig(TypedDict):
+    """Project invariant checks — scripts that enforce a rule mechanically.
+
+    Fields:
+        commands: Shell commands run at the repo root by ``maverick checks
+                  run`` (and so by local verification). Each must exit
+                  non-zero when its invariant is broken, e.g.
+                  ``"pnpm db:check-retract-not-delete"``.
+    """
+
+    commands: list[str]
+
+
 class MaverickConfig(TypedDict):
     """Top-level maverick configuration schema.
 
@@ -261,6 +315,8 @@ class MaverickConfig(TypedDict):
     git_workflow: GitWorkflowConfig
     hooks: HooksConfig
     llm: LlmConfig
+    docs: DocsConfig
+    checks: ChecksConfig
 
 
 # Defaults applied when sections or keys are missing.
@@ -313,11 +369,14 @@ CONFIG_DEFAULTS: MaverickConfig = {
         "worktree_post_create": "",
     },
     "llm": {
-        # Default model for any row not matched by a more specific
-        # rule. Opus is the safe default — reasoning-heavy work expects
-        # it. Set per-user in ~/.maverick/config.json's `llm.default`,
-        # or per-repo in .maverick/config.json (repo overrides user).
-        "default": "claude-opus-4-7",
+        # Fallback model label for report rows when the session's real
+        # model could not be detected (the plugin hooks record it from
+        # the runtime — see runtime_hooks/session_model.py). Empty by
+        # default: a hard-coded model id here made every report claim
+        # that model regardless of what actually ran. Set per-user in
+        # ~/.maverick/config.json's `llm.default`, or per-repo in
+        # .maverick/config.json (repo overrides user).
+        "default": "",
         # Per-agent overrides are intentionally empty: the source of
         # truth for an agent's model is its AgentConfig.claude.model field
         # (rendered into the agent's frontmatter), NOT a presumption
@@ -332,6 +391,13 @@ CONFIG_DEFAULTS: MaverickConfig = {
         # at resolution time; it remains here for backward compatibility
         # with existing config files that wrote into it.
         "skills": {},
+    },
+    "docs": {
+        "shortlist_commands": [],
+        "owners": {},
+    },
+    "checks": {
+        "commands": [],
     },
 }
 
@@ -646,6 +712,45 @@ def read_hooks_config(path: Path | None = None) -> HooksConfig:
             if key in block and isinstance(block[key], str):
                 hooks[key] = block[key]  # type: ignore[literal-required]
     return hooks
+
+
+def read_docs_config(path: Path | None = None) -> DocsConfig:
+    """Read the docs block from the project config (defaults when absent).
+
+    Malformed entries are dropped rather than raised on: the docs review
+    must still run when the config is half-written.
+    """
+    raw = _load_json(path or project_config_path())
+    block = raw.get("docs") if isinstance(raw, dict) else None
+    result: DocsConfig = {"shortlist_commands": [], "owners": {}}
+    if not isinstance(block, dict):
+        return result
+    commands = block.get("shortlist_commands")
+    if isinstance(commands, list):
+        result["shortlist_commands"] = [c for c in commands if isinstance(c, str) and c.strip()]
+    owners = block.get("owners")
+    if isinstance(owners, dict):
+        for glob, entry in owners.items():
+            if not isinstance(glob, str) or not isinstance(entry, dict):
+                continue
+            clean: DocsOwner = {}
+            for key in ("owner", "agent", "label"):
+                if isinstance(entry.get(key), str) and entry[key]:
+                    clean[key] = entry[key]  # type: ignore[literal-required]
+            if isinstance(entry.get("editable"), bool):
+                clean["editable"] = entry["editable"]
+            result["owners"][glob] = clean
+    return result
+
+
+def read_checks_config(path: Path | None = None) -> ChecksConfig:
+    """Read the checks block from the project config (defaults when absent)."""
+    raw = _load_json(path or project_config_path())
+    block = raw.get("checks") if isinstance(raw, dict) else None
+    commands = block.get("commands") if isinstance(block, dict) else None
+    if not isinstance(commands, list):
+        return {"commands": []}
+    return {"commands": [c for c in commands if isinstance(c, str) and c.strip()]}
 
 
 def _default_llm() -> LlmConfig:

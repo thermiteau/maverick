@@ -284,3 +284,203 @@ class TestHookDecisions:
             registry=registry,
         )
         assert cmd is None
+
+
+# ---------------------------------------------------------------------------
+# Multi-claim attribution (do-epic holds the epic + every in-flight story)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def epic_claims(tmp_path):
+    """An epic session: epic #100 plus stories #101 and #102 in flight."""
+    registry = tmp_path / "active-claims.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {"repo": "o/r", "issue": n, "instance_id": "i-hook"}
+                    for n in (100, 101, 102)
+                ]
+            }
+        )
+    )
+    return registry
+
+
+def _agent_call(event: str, prompt: str, cwd: Path, **extra) -> dict:
+    return {
+        "hook_event_name": event,
+        "tool_name": "Agent",
+        "cwd": str(cwd),
+        "tool_input": {
+            "subagent_type": "maverick:agent-code-reviewer",
+            "prompt": prompt,
+            **extra,
+        },
+    }
+
+
+class TestMultiClaimAttribution:
+    def test_marker_in_agent_prompt_attributes_dispatch(self, hook, epic_claims, tmp_path):
+        cmd = hook.handle(
+            _agent_call("PreToolUse", "Review this.\nmaverick-issue: 102\n", tmp_path),
+            ENV,
+            registry=epic_claims,
+        )
+        assert cmd == [
+            "begin", "agent-dispatch", "--issue", "102", "--agent", "agent-code-reviewer",
+        ]
+
+    def test_post_tool_use_closes_the_same_interval(self, hook, epic_claims, tmp_path):
+        cmd = hook.handle(
+            _agent_call("PostToolUse", "maverick-issue: #101", tmp_path),
+            ENV,
+            registry=epic_claims,
+        )
+        assert cmd is not None
+        assert cmd[:2] == ["end", "--auto"]
+        assert cmd[cmd.index("--issue") + 1] == "101"
+        assert cmd[cmd.index("--if-agent") + 1] == "agent-code-reviewer"
+
+    def test_background_dispatch_not_closed_at_launch(self, hook, epic_claims, tmp_path):
+        cmd = hook.handle(
+            _agent_call(
+                "PostToolUse", "maverick-issue: 101", tmp_path, run_in_background=True
+            ),
+            ENV,
+            registry=epic_claims,
+        )
+        assert cmd is None
+
+    def test_marker_for_unclaimed_issue_ignored(self, hook, epic_claims, tmp_path):
+        cmd = hook.handle(
+            _agent_call("PreToolUse", "maverick-issue: 999", tmp_path),
+            ENV,
+            registry=epic_claims,
+        )
+        assert cmd is None  # several claims, no usable marker, no story branch
+
+    def test_marker_in_skill_args(self, hook, epic_claims, tmp_path):
+        cmd = hook.handle(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Skill",
+                "cwd": str(tmp_path),
+                "tool_input": {"skill": "do-code", "args": "add x (maverick-issue: 101)"},
+            },
+            ENV,
+            registry=epic_claims,
+        )
+        assert cmd == [
+            "begin", "skill-dispatch", "--issue", "101", "--skill-name", "do-code",
+        ]
+
+    def test_story_branch_attributes_when_no_marker(
+        self, hook, epic_claims, tmp_path, monkeypatch
+    ):
+        seen: list[Path] = []
+
+        def fake_branch(cwd: Path) -> int | None:
+            seen.append(cwd)
+            return 101
+
+        monkeypatch.setattr(subagent_report, "branch_issue", fake_branch)
+        cmd = hook.handle(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Skill",
+                "cwd": str(tmp_path),
+                "tool_input": {"skill": "do-cybersecurity-review"},
+            },
+            ENV,
+            registry=epic_claims,
+        )
+        assert cmd is not None and cmd[cmd.index("--issue") + 1] == "101"
+        assert seen == [tmp_path]
+
+    def test_single_claim_needs_no_marker(self, hook, one_claim, tmp_path):
+        cmd = hook.handle(
+            _agent_call("PreToolUse", "no marker here", tmp_path),
+            ENV,
+            registry=one_claim,
+        )
+        assert cmd is not None and cmd[cmd.index("--issue") + 1] == "42"
+
+    def test_non_maverick_agent_tool_ignored(self, hook, epic_claims, tmp_path):
+        payload = _agent_call("PreToolUse", "maverick-issue: 101", tmp_path)
+        payload["tool_input"]["subagent_type"] = "general-purpose"
+        assert hook.handle(payload, ENV, registry=epic_claims) is None
+
+
+class TestBranchIssue:
+    def test_reads_issue_from_story_branch(self, tmp_path):
+        import subprocess
+
+        subprocess.run(["git", "init", "-q", "-b", "feat/123-add-export", str(tmp_path)], check=True)
+        assert subagent_report.branch_issue(tmp_path) == 123
+
+    def test_non_story_branch(self, tmp_path):
+        import subprocess
+
+        subprocess.run(["git", "init", "-q", "-b", "main", str(tmp_path)], check=True)
+        assert subagent_report.branch_issue(tmp_path) is None
+
+    def test_not_a_repo(self, tmp_path):
+        assert subagent_report.branch_issue(tmp_path / "missing") is None
+
+
+# ---------------------------------------------------------------------------
+# Session model detection
+# ---------------------------------------------------------------------------
+
+
+class TestSessionModel:
+    def test_transcript_last_assistant_model_wins(self, tmp_path):
+        from maverick.runtime_hooks import session_model
+
+        transcript = tmp_path / "t.jsonl"
+        rows = [
+            {"type": "assistant", "message": {"model": "claude-sonnet-5-5"}},
+            {"type": "user", "message": {"content": "hi"}},
+            {"type": "assistant", "message": {"model": "claude-opus-5-5"}},
+            {"type": "assistant", "message": {"model": "<synthetic>"}},
+        ]
+        transcript.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        assert session_model.model_from_transcript(transcript) == "claude-opus-5-5"
+
+    def test_missing_transcript(self, tmp_path):
+        from maverick.runtime_hooks import session_model
+
+        assert session_model.model_from_transcript(tmp_path / "nope.jsonl") is None
+
+    def test_hook_records_session_start_model(self, tmp_path, monkeypatch):
+        from maverick.runtime_hooks import session_model
+
+        registry = tmp_path / "session-models.json"
+        monkeypatch.setattr(session_model, "registry_path", lambda: registry)
+        event = ClaudeAdapter().normalize(
+            {"hook_event_name": "SessionStart", "model": "claude-opus-5-5"}
+        )
+        subagent_report.record_model(event, ENV)
+        assert session_model.lookup("i-hook", registry) == "claude-opus-5-5"
+
+    def test_hook_records_model_from_transcript(self, tmp_path, monkeypatch):
+        from maverick.runtime_hooks import session_model
+
+        registry = tmp_path / "session-models.json"
+        monkeypatch.setattr(session_model, "registry_path", lambda: registry)
+        transcript = tmp_path / "t.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "assistant", "message": {"model": "claude-fable-5-2"}}) + "\n"
+        )
+        event = ClaudeAdapter().normalize(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Skill",
+                "tool_input": {"skill": "do-code"},
+                "transcript_path": str(transcript),
+            }
+        )
+        subagent_report.record_model(event, ENV)
+        assert session_model.lookup("i-hook", registry) == "claude-fable-5-2"
