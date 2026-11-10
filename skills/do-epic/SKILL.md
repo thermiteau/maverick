@@ -106,10 +106,14 @@ Build a machine-readable DAG of child stories.
    }
    ```
 3. **Persist the DAG to GitHub** — this is durable for any instance to
-   resume from. Write the payload JSON to a file and let the CLI compose
-   and upsert the fenced marker (never hand-compose marker comments):
+   resume from. Pipe the payload JSON on stdin and let the CLI compose
+   and upsert the fenced marker (never hand-compose marker comments, and
+   never stage the payload in a fixed `/tmp` path — concurrent runs share
+   it, #159):
    ```bash
-   uv run maverick gh-state write <repo> $ARGUMENTS maverick-dag --payload-file /tmp/dag.json
+   uv run maverick gh-state write <repo> $ARGUMENTS maverick-dag --payload-file - <<'EOF'
+   <DAG payload JSON>
+   EOF
    ```
 
 ## Phase 3: Wave grouping

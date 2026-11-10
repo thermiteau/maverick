@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -648,6 +649,24 @@ class TestTemplatesAreRuntimeNeutral:
         assert not problems, (
             "Use {{ RUNTIME.* }} (maverick.targets) instead of: " + ", ".join(problems)
         )
+
+
+class TestTemplatesAvoidSharedTmpFiles:
+    """#159: a fixed /tmp body or payload file is shared by every concurrent
+    story on the machine, so one story's content can be posted to another
+    story's issue. Templates must pass bodies on stdin (`-`) instead."""
+
+    PATTERN = re.compile(r"--(?:body|payload)-file\s+/tmp/")
+
+    def test_no_fixed_tmp_body_files(self):
+        src = Path(__file__).resolve().parents[2] / "src" / "maverick"
+        problems = [
+            str(path.relative_to(src))
+            for kind in ("skills", "agents")
+            for path in sorted((src / kind).glob("*/body.md.j2"))
+            if self.PATTERN.search(path.read_text())
+        ]
+        assert not problems, "Use --body-file - (stdin) in: " + ", ".join(problems)
 
 
 class TestRenderTarget:

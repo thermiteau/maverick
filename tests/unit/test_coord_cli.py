@@ -364,3 +364,39 @@ class TestChecksRunBase:
         args = _parse("checks", "run", "--base", "main", "--no-fetch")
         assert args._handler(args) == 0
         assert seen == ["origin/main"]
+
+
+class TestGhStateWritePayloadStdin:
+    """#159: `--payload-file -` reads the payload from stdin so callers never
+    stage it in a shared /tmp path that concurrent runs can overwrite."""
+
+    def test_reads_payload_from_stdin(self, monkeypatch, capsys):
+        import io
+
+        seen: dict = {}
+
+        def fake_upsert(repo, issue, kind, payload, preamble=None):
+            seen.update(repo=repo, issue=issue, kind=kind, payload=payload)
+            return 42
+
+        monkeypatch.setattr(coord_cli.gh_state, "upsert_marker", fake_upsert)
+        monkeypatch.setattr("sys.stdin", io.StringIO('{"stories": {}}'))
+        args = _parse(
+            "gh-state", "write", "o/r", "7", "maverick-dag", "--payload-file", "-"
+        )
+        assert args._handler(args) == 0
+        assert seen["payload"] == {"stories": {}}
+        assert '"comment_id": 42' in capsys.readouterr().out
+
+    def test_invalid_stdin_payload_exits_2(self, monkeypatch, capsys):
+        import io
+
+        monkeypatch.setattr(
+            coord_cli.gh_state, "upsert_marker", lambda *a, **k: pytest.fail("no write")
+        )
+        monkeypatch.setattr("sys.stdin", io.StringIO("not json"))
+        args = _parse(
+            "gh-state", "write", "o/r", "7", "maverick-dag", "--payload-file", "-"
+        )
+        assert args._handler(args) == 2
+        assert "cannot read payload" in capsys.readouterr().err
