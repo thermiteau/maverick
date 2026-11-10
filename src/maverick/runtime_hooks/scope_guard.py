@@ -317,7 +317,7 @@ def decide(call: ToolCall) -> Verdict:
             return Verdict(
                 ASK,
                 f"{path} is infrastructure (CI/CD, containers, IaC) — "
-                "explicit authorization required. " + ESCALATION,
+                "explicit authorization required.",
             )
         return _ALLOW
 
@@ -351,7 +351,7 @@ def decide(call: ToolCall) -> Verdict:
                     return Verdict(
                         ASK,
                         f"command writes to infrastructure path {candidate!r} — "
-                        "explicit authorization required. " + ESCALATION,
+                        "explicit authorization required.",
                     )
         return _ALLOW
 
@@ -361,7 +361,13 @@ def decide(call: ToolCall) -> Verdict:
 def resolve(verdict: Verdict, call: ToolCall, env: dict[str, str],
             claims_path: Path | None = None,
             id_path: Path | None = None) -> Verdict:
-    """Apply the interactive-vs-autonomous policy to a rule hit."""
+    """Apply the interactive-vs-autonomous policy to a rule hit.
+
+    Rules return only *why* an action is restricted; the escalation
+    guidance (``ESCALATION``) is added here, exactly once, to every
+    decision that needs consent. Rules that also appended it produced a
+    message repeating the guidance twice (#151).
+    """
     if verdict.decision == ALLOW:
         return verdict
     if verdict.always_deny:
@@ -378,9 +384,8 @@ def resolve(verdict: Verdict, call: ToolCall, env: dict[str, str],
     if is_autonomous(env, claims_path, id_path):
         return Verdict(
             DENY,
-            verdict.reason
-            + " (autonomous mode: denied — no user is present to consent). "
-            + ESCALATION,
+            f"{verdict.reason} (autonomous mode: denied — no user is present "
+            f"to consent). {ESCALATION}",
         )
     # Interactive: surface the decision to the user.
-    return Verdict(ASK, verdict.reason)
+    return Verdict(ASK, f"{verdict.reason} {ESCALATION}")

@@ -261,6 +261,27 @@ class TestResolve:
         assert resolved.decision == guard.DENY
         assert "autonomous" in resolved.reason
 
+    @pytest.mark.parametrize(
+        "call",
+        [
+            _edit(".github/workflows/ci.yml"),
+            _bash("echo x > Dockerfile"),
+            _bash("git push --force origin feat/1-x"),
+        ],
+        ids=["infra-edit", "infra-shell-write", "git-force-push"],
+    )
+    @pytest.mark.parametrize("autonomous", [False, True], ids=["interactive", "autonomous"])
+    def test_escalation_text_appears_exactly_once(self, guard, tmp_path, call, autonomous):
+        """#151: rules used to embed ESCALATION and resolve() appended it again."""
+        verdict = guard.decide(call)
+        assert verdict.decision == guard.ASK
+        assert guard.ESCALATION not in verdict.reason  # rules give only the why
+        env = {"MAVERICK_AUTONOMOUS": "1"} if autonomous else {}
+        resolved = guard.resolve(verdict, call, env=env, claims_path=tmp_path / "none.json")
+        assert resolved.decision == (guard.DENY if autonomous else guard.ASK)
+        assert resolved.reason.count(guard.ESCALATION) == 1
+        assert resolved.reason.count("mav-scope-boundaries") == 1
+
     def test_autonomous_via_claims_registry(self, guard, tmp_path):
         claims = tmp_path / "active-claims.json"
         claims.write_text(
