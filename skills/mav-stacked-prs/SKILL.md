@@ -169,4 +169,4 @@ orphan.
 - **Cross-reference `mav-git-workflow`** for conventional commit
   format, branch naming, and conflict resolution.
 
-<!-- maverick-plugin-version: 5.2.2-dev -->
+<!-- maverick-plugin-version: 5.2.2 -->
