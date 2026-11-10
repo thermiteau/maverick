@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Issues fixed by a release now close automatically.** PRs target
+  `main`, but the default branch is `stable`, so GitHub never acted on
+  their `Closes #N` keywords, and fixed issues stayed open. The Release
+  Finalize workflow now closes every open issue that a PR in the release
+  says it closes (`close`/`fix`/`resolve` keywords with `#N` or an issue URL
+  in this repository), with a "Released in vX.Y.Z via #PR" comment. The step
+  is best-effort and never blocks the release.
+
 ## [5.2.0] - 2026-11-10
 
 ### Added

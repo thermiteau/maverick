@@ -19,6 +19,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Close the issues a release resolves (see "Close resolved issues").
+  issues: write
 
 jobs:
   finalize:
@@ -98,6 +100,16 @@ jobs:
             --title "${{ steps.version.outputs.tag }}" \
             --notes-file /tmp/release-notes.md \
             --target main
+
+      # PRs target `main`, not the default branch (`stable`), so GitHub
+      # never acts on their `Closes #N` keywords. Close those issues here.
+      # Best-effort: a failure must not block the rest of the release.
+      - name: Close resolved issues
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: python3 scripts/close_released_issues.py "$TAG" --repo "$GITHUB_REPOSITORY"
 
       # Open the dev-cycle PR BEFORE updating `stable`. The stable
       # update can fail if `stable` has diverged from `main` (e.g.,
