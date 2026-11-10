@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.2.1] - 2026-11-10
+
 ### Fixed
 
 - **Issues fixed by a release now close automatically.** PRs target
@@ -535,7 +537,8 @@ First major release. The workflow shape changes substantially: every Maverick ac
 - AWS infrastructure provisioning support
 - Enforcement chain: best-practice skill → project skill → local verification → CI pipeline → agent review → human review
 
-[Unreleased]: https://github.com/thermiteau/maverick/compare/v5.2.0...HEAD
+[Unreleased]: https://github.com/thermiteau/maverick/compare/v5.2.1...HEAD
+[5.2.1]: https://github.com/thermiteau/maverick/compare/v5.2.0...v5.2.1
 [5.2.0]: https://github.com/thermiteau/maverick/compare/v5.1.1...v5.2.0
 [5.1.1]: https://github.com/thermiteau/maverick/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/thermiteau/maverick/compare/v5.0.0...v5.1.0
