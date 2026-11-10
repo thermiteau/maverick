@@ -11,7 +11,11 @@ them itself:
 1. Take the squash-merged PRs between the previous ``v*`` tag and the new
    one (each squash subject ends ``(#N)``).
 2. Parse each merged PR's body for closing keywords followed by ``#N`` or
-   an issue URL in this repository.
+   an issue URL in this repository. A PR whose body was edited after it
+   merged is skipped: the body is read at release time, and only the
+   version the merger saw is trusted — otherwise anyone able to edit a
+   merged PR (including a fork's author) could make the release close
+   arbitrary issues.
 3. Close each referenced issue that is still open, with a "Released in"
    comment. Pull requests and already-closed issues are skipped.
 
@@ -72,6 +76,24 @@ def closing_refs(body: str, repo: str) -> list[int]:
     return found
 
 
+def body_trusted(pr: dict) -> bool:
+    """True when the PR merged and its body was not edited after the merge.
+
+    *pr* has GraphQL ``state``, ``mergedAt`` and ``lastEditedAt`` (ISO 8601
+    UTC, same format, so string order is time order).
+    """
+    if pr.get("state") != "MERGED" or not pr.get("mergedAt"):
+        return False
+    edited = pr.get("lastEditedAt")
+    return not edited or edited <= pr["mergedAt"]
+
+
+_PR_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name)"
+    "{pullRequest(number:$number){body state mergedAt lastEditedAt}}}"
+)
+
+
 def _run(args: list[str]) -> str:
     return subprocess.run(args, capture_output=True, text=True, check=True).stdout
 
@@ -107,15 +129,25 @@ def main(argv: list[str]) -> int:
 
     failures = 0
     for pr in prs:
+        owner, name = args.repo.split("/", 1)
         try:
             info = json.loads(_run([
-                "gh", "pr", "view", str(pr), "--repo", args.repo, "--json", "body,state",
+                "gh", "api", "graphql", "-f", f"query={_PR_QUERY}",
+                "-F", f"owner={owner}", "-F", f"name={name}", "-F", f"number={pr}",
+                "--jq", ".data.repository.pullRequest",
             ]))
         except (subprocess.CalledProcessError, json.JSONDecodeError) as exc:
             print(f"#{pr}: could not read PR ({exc}); skipped", file=sys.stderr)
             failures += 1
             continue
-        if info.get("state") != "MERGED":
+        if not isinstance(info, dict) or info.get("state") != "MERGED":
+            continue
+        if not body_trusted(info):
+            print(
+                f"#{pr}: body edited after merge ({info.get('lastEditedAt')} > "
+                f"{info.get('mergedAt')}); its closing references are ignored",
+                file=sys.stderr,
+            )
             continue
         for issue in closing_refs(info.get("body") or "", args.repo):
             try:

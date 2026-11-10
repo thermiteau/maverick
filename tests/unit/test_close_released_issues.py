@@ -55,6 +55,26 @@ class TestClosingRefs:
         assert cri.closing_refs("", REPO) == []
 
 
+class TestBodyTrusted:
+    MERGED = "2026-11-10T09:02:01Z"
+
+    def test_never_edited(self):
+        assert cri.body_trusted({"state": "MERGED", "mergedAt": self.MERGED, "lastEditedAt": None})
+
+    def test_edited_before_merge(self):
+        assert cri.body_trusted(
+            {"state": "MERGED", "mergedAt": self.MERGED, "lastEditedAt": "2026-11-10T08:00:00Z"}
+        )
+
+    def test_edited_after_merge_is_untrusted(self):
+        assert not cri.body_trusted(
+            {"state": "MERGED", "mergedAt": self.MERGED, "lastEditedAt": "2026-11-11T00:00:00Z"}
+        )
+
+    def test_unmerged_is_untrusted(self):
+        assert not cri.body_trusted({"state": "CLOSED", "mergedAt": None, "lastEditedAt": None})
+
+
 class TestMainGuards:
     def test_rejects_non_release_tag(self, capsys):
         assert cri.main(["main", "--repo", REPO]) == 2
