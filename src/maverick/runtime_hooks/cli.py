@@ -42,7 +42,11 @@ def run(handler: str, runtime: str, raw: dict, env: dict[str, str]) -> HookOutpu
     event = adapter.normalize(raw)
 
     if handler == "scope-guard":
-        if env.get("MAVERICK_GUARD_DISABLE") == "1" or event.tool is None:
+        if (
+            env.get("MAVERICK_GUARD_DISABLE") == "1"
+            or event.event != "tool_call"
+            or event.tool is None
+        ):
             return HookOutput()
         from maverick.runtime_hooks import scope_guard
 

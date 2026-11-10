@@ -117,7 +117,7 @@ flowchart TD
         MORE{More tasks?}
         FULL[Run full verification suite]
         DOCS_REVIEW[Mandatory: dispatch agent-tech-docs-writer<br/>update mode against the diff]
-        SEC_REVIEW[Mandatory: dispatch do-cybersecurity-review<br/>update mode — diff + impact set]
+        SEC_REVIEW[Mandatory: dispatch agent-security-reviewer<br/>fresh context — diff + impact set + project checklist]
         SEC_VERDICT{Security verdict?}
         BLOCKING_HALT[Halt, surface findings, route<br/>back to implementation]
         RETARGET{Stacked branch:<br/>sibling base merged?}
@@ -220,8 +220,8 @@ This is the core loop and is identical for epic-driven and standalone work:
 2. **Branch.** From `story_base` (the repo's default branch unless overridden) for an independent story; from a sibling branch when the story depends on a sibling whose PR is open but not yet merged (stacked PR pattern).
 3. **Implement task by task.** Each task: implement (via `do-code`) → local verification (lint, typecheck, tests) → conventional commit referencing the issue → **push immediately** → check the task off durably (`maverick tasks check`). Pushing per task is a durability checkpoint — if the machine dies between tasks, the work survives. Dispatch intervals for the workflow report are recorded automatically by the plugin's lifecycle hooks; the model's only bookkeeping is a one-line outcome record per inner-skill dispatch.
 4. **Wrap up.** After the last task: full verification, then two mandatory pre-push reviews (always run, no skip path):
-   - **Documentation review** builds the diff and a candidate-doc shortlist in one deterministic step (`maverick docs shortlist`), then dispatches `agent-tech-docs-writer` in `update` mode — updating stale docs and creating new ones for new components. "No changes required" is a valid outcome but is recorded explicitly.
-   - **Cybersecurity review** dispatches `do-cybersecurity-review` in `update` mode against the diff. Reviews the changed code AND the code that could be impacted by it (callers, importers, dependents — bounded to one or two hops). Returns PASS / FINDINGS / BLOCKING. **BLOCKING halts the workflow** and routes the user back to implementation; FINDINGS are folded into the PR description so the human reviewer and `agent-code-reviewer` see them; PASS is recorded as `Security review: no concerns.`
+   - **Documentation review** builds the diff and a candidate-doc shortlist in one deterministic step (`maverick docs shortlist`), then dispatches `agent-tech-docs-writer` in `update` mode — updating stale docs and creating new ones for new components. The shortlist combines words from the diff, `docs/` paths the issue cites, and the repo's own `docs.shortlist_commands` (for example a route → help-topic map), and is written to a per-worktree directory so parallel stories never collide. Docs that belong to someone else (`docs.owners`, e.g. product specs or accepted ADRs) are never edited by the writer: drift in them goes to the owner's agent, or to a labelled follow-up issue. "No changes required" is a valid outcome but is recorded explicitly, with an evidence note in the workflow report.
+   - **Security review** dispatches `agent-security-reviewer`, a read-only agent with a fresh context, so the author never reviews their own work. It applies the project's security checklist from `docs/maverick/skills/`, runs `maverick checks run`, and reviews the changed code AND the code that could be impacted by it (callers, importers, dependents — bounded to one or two hops). Returns PASS / FINDINGS / BLOCKING. **BLOCKING halts the workflow** and routes the user back to implementation; FINDINGS are folded into the PR description so the human reviewer and `agent-code-reviewer` see them; PASS is recorded as `Security review: no concerns.`
    - Then: stacked-PR retarget guard if applicable, final push, and a **bounded** CI wait (`maverick pr wait --checks --timeout 30m` — distinct exit codes for green, failed, and timed-out checks; no unbounded polling). The PR opens ready-for-review.
 
 ### Code review — binary gate
@@ -239,6 +239,8 @@ When a story in an epic is ejected, `maverick bprop run` labels every transitive
 
 - **Standalone story:** PASS → merged → done. FAIL → ejected → done.
 - **Epic:** the wave loop continues until every wave is resolved (every story either merged or ejected). If all remaining waves are blocked by ejections, the epic halts and reports blockers to the user.
+- **Epic completion:** once every story is terminal, two epic-wide passes run against the merged result. `agent-security-reviewer` audits the whole codebase (per-story reviews only see code near their own diff) and each new critical or high finding becomes a `security-audit` issue. A docs sweep over the combined diff finds drift that built up across stories and opens one follow-up issue per doc owner.
+- **Workflow report:** releasing a claim writes the story's report (`.maverick/reports/do-issue-solo-<N>.md`), so every exit path — merge, eject, halt, or the SessionEnd hook — leaves one. Its **Review gates** section shows, per gate, what was dispatched and the evidence the workflow recorded (verdict, files reviewed, docs updated), and flags a gate that ran without evidence. Rows carry the model the session actually ran on, which the plugin hooks detect from the runtime.
 
 ## Key Invariants
 

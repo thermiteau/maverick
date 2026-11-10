@@ -451,20 +451,138 @@ _IDENTIFIER_RE = re.compile(
 _EXCLUDED_DIR_PARTS = {"node_modules", ".git", ".venv"}
 
 
+#: ``docs/...md`` / ``docs/...mdx`` paths cited in issue text.
+_DOC_PATH_RE = re.compile(r"(?<![\w/.-])((?:[\w.-]+/)*docs/[\w./-]+?\.mdx?)\b")
+
+#: How long one configured shortlist command may run.
+_SHORTLIST_COMMAND_TIMEOUT = 120
+
+
+def docs_review_dir(repo_root: Path = Path(".")) -> Path:
+    """Per-worktree scratch directory for docs-review artefacts.
+
+    Lives under this worktree's own git dir (``.git/worktrees/<name>/`` in a
+    linked worktree), so it is never committed and parallel stories in an
+    epic wave never overwrite each other's diff or shortlist — which they
+    did when everything went to ``/tmp``.
+    """
+    git_dir = _git("rev-parse", "--absolute-git-dir", cwd=repo_root).strip()
+    return Path(git_dir) / "maverick" / "docs-review"
+
+
+def _issue_cited_docs(issue: int, repo_root: Path) -> set[str]:
+    """Doc paths the issue body or its comments cite that exist in the repo."""
+    try:
+        raw = json.loads(_gh("issue", "view", str(issue), "--json", "body,comments"))
+    except (subprocess.CalledProcessError, OSError, json.JSONDecodeError):
+        return set()
+    texts = [str(raw.get("body") or "")]
+    texts += [str(c.get("body") or "") for c in raw.get("comments") or [] if isinstance(c, dict)]
+    found: set[str] = set()
+    for text in texts:
+        for match in _DOC_PATH_RE.findall(text):
+            candidate = match.removeprefix("./")
+            if (repo_root / candidate).is_file():
+                found.add(candidate)
+    return found
+
+
+def _command_docs(
+    commands: list[str], changed_paths: list[str], out_dir: Path, repo_root: Path
+) -> tuple[set[str], list[str]]:
+    """Run configured shortlist commands; (doc paths, warnings)."""
+    import os
+
+    env = {
+        **os.environ,
+        "MAVERICK_CHANGED_PATHS": str(out_dir / "changed-paths.txt"),
+        "MAVERICK_DIFF": str(out_dir / "diff.patch"),
+    }
+    found: set[str] = set()
+    warnings: list[str] = []
+    for command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                cwd=repo_root,
+                input="\n".join(changed_paths) + "\n",
+                capture_output=True,
+                text=True,
+                timeout=_SHORTLIST_COMMAND_TIMEOUT,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            warnings.append(f"{command}: {exc}")
+            continue
+        if result.returncode != 0:
+            warnings.append(f"{command}: exit {result.returncode}: {result.stderr.strip()[:200]}")
+            continue
+        for line in result.stdout.splitlines():
+            path = line.strip().removeprefix("./")
+            if path and (repo_root / path).is_file():
+                found.add(path)
+            elif path:
+                warnings.append(f"{command}: ignored missing path {path}")
+    return found, warnings
+
+
+def doc_owners(
+    paths: list[str], owners: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """Map each path to the first owner entry whose glob matches it."""
+    from fnmatch import fnmatch
+
+    result: dict[str, dict[str, Any]] = {}
+    for path in paths:
+        rel = path.removeprefix("./")
+        for glob, entry in owners.items():
+            if fnmatch(rel, glob):
+                result[path] = {"glob": glob, **entry}
+                break
+    return result
+
+
 def docs_shortlist(
-    base: str, repo_root: Path = Path("."), out_dir: Path = Path("/tmp")
+    base: str,
+    repo_root: Path = Path("."),
+    out_dir: Path | None = None,
+    issue: int | None = None,
+    docs_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the candidate-doc shortlist for the docs-review phase.
 
-    Ports the bash pipeline the skills used to carry inline: derive search
-    terms from the diff (top-level dirs, basenames, identifiers introduced
-    or removed), then find every .md/.mdx under any docs/ tree containing
-    one of them. Writes diff.patch, changed-paths.txt, and
-    doc-shortlist.txt to `out_dir`. An empty shortlist is a valid outcome.
+    Candidates come from three sources, each recorded per doc:
+
+    - ``terms``: words from the diff (top-level dirs, basenames,
+      identifiers introduced or removed) found in any .md/.mdx under a
+      docs/ tree. Cheap, but blind to docs that share no words with code
+      paths (product specs, journeys, help topics).
+    - ``issue``: doc paths the issue body or comments cite.
+    - ``command``: paths printed by the repo's configured
+      ``docs.shortlist_commands`` — e.g. its own route → help-topic map.
+
+    Docs matching a ``docs.owners`` glob are reported under ``owned`` so
+    the docs writer reports drift in them rather than editing them.
+
+    Writes diff.patch, changed-paths.txt, doc-shortlist.txt and
+    doc-shortlist.json to ``out_dir`` (default: :func:`docs_review_dir`).
+    An empty shortlist is a valid outcome.
     """
+    if docs_config is None:
+        from maverick.config import read_docs_config
+
+        docs_config = dict(read_docs_config(repo_root / ".maverick" / "config.json"))
+    if out_dir is None:
+        out_dir = docs_review_dir(repo_root)
+
     diff = _git("diff", f"origin/{base}...HEAD", cwd=repo_root)
     changed = _git("diff", "--name-only", f"origin/{base}...HEAD", cwd=repo_root)
     changed_paths = [p for p in changed.splitlines() if p.strip()]
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "diff.patch").write_text(diff)
+    (out_dir / "changed-paths.txt").write_text("\n".join(changed_paths) + "\n")
 
     terms: set[str] = set()
     for path in changed_paths:
@@ -476,12 +594,16 @@ def docs_shortlist(
             terms.update(_IDENTIFIER_RE.findall(line))
     terms = {t for t in terms if len(t) >= 3}
 
+    sources: dict[str, set[str]] = {}
+
+    def _add(path: str, source: str) -> None:
+        sources.setdefault(path, set()).add(source)
+
     doc_roots = [
         p
         for p in repo_root.rglob("docs")
         if p.is_dir() and not (_EXCLUDED_DIR_PARTS & set(p.parts))
     ]
-    shortlist: set[str] = set()
     if terms:
         for root in doc_roots:
             for doc in root.rglob("*"):
@@ -492,20 +614,82 @@ def docs_shortlist(
                 except OSError:
                     continue
                 if any(t in content for t in terms):
-                    shortlist.add(str(doc))
+                    _add(str(doc.relative_to(repo_root)), "terms")
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "diff.patch").write_text(diff)
-    (out_dir / "changed-paths.txt").write_text("\n".join(changed_paths) + "\n")
+    if issue is not None:
+        for path in _issue_cited_docs(issue, repo_root):
+            _add(path, "issue")
+
+    commands = list(docs_config.get("shortlist_commands") or [])
+    command_docs, warnings = _command_docs(commands, changed_paths, out_dir, repo_root)
+    for path in command_docs:
+        _add(path, "command")
+
+    docs = sorted(sources)
+    owned = doc_owners(docs, docs_config.get("owners") or {})
+
     shortlist_path = out_dir / "doc-shortlist.txt"
-    shortlist_path.write_text("\n".join(sorted(shortlist)) + ("\n" if shortlist else ""))
+    shortlist_path.write_text("\n".join(docs) + ("\n" if docs else ""))
+    detail = {
+        "docs": {d: sorted(sources[d]) for d in docs},
+        "owned": owned,
+        "warnings": warnings,
+    }
+    (out_dir / "doc-shortlist.json").write_text(json.dumps(detail, indent=2) + "\n")
 
     return {
         "terms": len(terms),
-        "docs": sorted(shortlist),
+        "docs": docs,
+        "sources": detail["docs"],
+        "owned": owned,
+        "warnings": warnings,
+        "out_dir": str(out_dir),
         "diff": str(out_dir / "diff.patch"),
         "shortlist": str(shortlist_path),
+        "detail": str(out_dir / "doc-shortlist.json"),
     }
+
+
+# ---------------------------------------------------------------------------
+# checks run — project invariant checks
+# ---------------------------------------------------------------------------
+
+
+def checks_run(
+    commands: list[str], repo_root: Path = Path("."), timeout: int = 600
+) -> list[dict[str, Any]]:
+    """Run each configured invariant check; one result dict per command.
+
+    Every command runs even when an earlier one fails, so a single run
+    reports every broken invariant. A check that cannot start or times out
+    counts as failed — a check that silently didn't run proves nothing.
+    """
+    results: list[dict[str, Any]] = []
+    for command in commands:
+        try:
+            proc = subprocess.run(
+                command,
+                shell=True,
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            results.append(
+                {
+                    "command": command,
+                    "ok": proc.returncode == 0,
+                    "exit": proc.returncode,
+                    "output": (proc.stdout + proc.stderr)[-4000:],
+                }
+            )
+        except subprocess.TimeoutExpired:
+            results.append(
+                {"command": command, "ok": False, "exit": None, "output": f"timed out after {timeout}s"}
+            )
+        except OSError as exc:
+            results.append({"command": command, "ok": False, "exit": None, "output": str(exc)})
+    return results
 
 
 # ---------------------------------------------------------------------------

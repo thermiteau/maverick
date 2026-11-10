@@ -64,12 +64,20 @@ Before any other phase.
    uv run maverick report run-start do-issue-solo --issue {{ ARGUMENTS }} --phase claimed
    ```
    From here, **agent-dispatch intervals are recorded automatically** by
-   the plugin's Subagent hooks (open on dispatch, closed on return), and
+   the plugin's hooks (open on dispatch, closed on return), and
    invoking a tracked inner skill auto-opens its `skill-dispatch`
    interval. Your only bookkeeping obligation is the one-line
    `report end --auto --outcome <…>` after each inner *skill* returns —
    everything else is hooks. Anything left open is flushed as
    `outcome=unknown` by `report generate`.
+
+   **Attribution marker (mandatory).** Every agent you dispatch and every
+   inner skill you invoke from here on must carry the line
+   `maverick-issue: {{ ARGUMENTS }}` — at the end of the agent prompt, or
+   appended to the skill's arguments. When this run is one story of an
+   epic, the session holds several claims at once and the marker is how
+   the hooks know which story's report a dispatch belongs to. Without
+   it, the dispatch is not recorded.
 4. Start the heartbeat daemon. It refreshes the lease every
    `HEARTBEAT_INTERVAL_MINUTES` minutes for as long as you hold the
    claim and exits on its own when the claim is released:
@@ -142,7 +150,8 @@ implementation.
 2. Dispatch the **{{ AGENTS.AGENT_ISSUE_ANALYST }}** agent with:
    - Issue number: `{{ ARGUMENTS }}`
    - Mode: `solo`
-   (The dispatch interval is recorded by the Subagent hooks — no
+   - `maverick-issue: {{ ARGUMENTS }}`
+   (The dispatch interval is recorded by the plugin hooks — no
    `report` calls needed.)
 3. When the agent returns, verify the design landed durably —
    `uv run maverick task-progress read <repo> {{ ARGUMENTS }}` shows
@@ -163,6 +172,7 @@ Run Phase 3 as a subagent.
 1. Dispatch the **{{ AGENTS.AGENT_GITHUB_ISSUE_PLANNER }}** agent with:
    - Issue number: `{{ ARGUMENTS }}`
    - Design comment ID from the task-progress marker (`comments.design`)
+   - `maverick-issue: {{ ARGUMENTS }}`
 2. When the agent returns, verify the tasks landed durably —
    `uv run maverick task-progress read <repo> {{ ARGUMENTS }}` shows:
    - If < 5 tasks: `comments.tasks` set to a comment ID (posted via
@@ -207,7 +217,7 @@ Each step below is its own obligation. After `/{{ SKILLS.DO_CODE }}` returns
 in step 1, **do not stop** — continue with step 2. The inner skill's
 return is a hand-back, not a task-complete signal (#106).
 
-1. **Invoke `/{{ SKILLS.DO_CODE }} <one-line task description>`.** The
+1. **Invoke `/{{ SKILLS.DO_CODE }} <one-line task description> (maverick-issue: {{ ARGUMENTS }})`.** The
    skill reads before writing, makes the smallest diff that satisfies
    the task, verifies per `{{ SKILLS.MAV_LOCAL_VERIFICATION }}`, and
    refuses to return on red. (Invoking it auto-opens the
@@ -262,48 +272,52 @@ path — the heuristic-gated version used to let stale docs ship when
 work is needed; the workflow decides whether the agent runs.
 
 The agent is dispatched with a **pre-filtered shortlist** of docs the
-diff plausibly touches, not the open-ended "audit every doc" brief
-that made this phase the longest single subagent cost on prior issues
-(observed: ~6 min on a 15-file diff). The agent still reports any
-out-of-shortlist docs it believes are impacted — those surface in the
-PR body as a follow-up note rather than being silently rewritten.
+change plausibly touches, not the open-ended "audit every doc" brief
+that made this phase the longest single subagent cost on prior issues.
+Docs that belong to someone else (configured in `docs.owners`) are
+never edited by the docs writer: drift in them is routed to their
+owner in step 4, not left as a PR note nobody acts on.
 
 1. **Build the diff and candidate-doc shortlist** in one deterministic step:
    ```bash
-   uv run maverick docs shortlist --base "$(uv run maverick git-workflow story-base)"
+   uv run maverick docs shortlist \
+       --base "$(uv run maverick git-workflow story-base)" --issue {{ ARGUMENTS }}
    ```
-   This writes `/tmp/diff.patch`, `/tmp/changed-paths.txt`, and
-   `/tmp/doc-shortlist.txt` (terms derived from changed paths and
-   identifiers in the diff, matched across every `docs/` tree). The
-   shortlist may legitimately be empty — that is a valid input to step 2.
+   The JSON output names the files it wrote (`diff`, `shortlist`,
+   `detail`) in a per-worktree directory, so parallel stories never
+   overwrite each other's — always use the paths it prints, never a
+   fixed `/tmp` path. Candidates come from three sources: words from the
+   diff, `docs/` paths the issue cites, and the repo's own
+   `docs.shortlist_commands` (e.g. a route → help-topic map). `owned`
+   lists shortlisted docs that belong to a `docs.owners` entry. Print
+   any `warning:` lines in the run notes. An empty shortlist is a valid
+   input to step 2.
 2. Dispatch **{{ AGENTS.AGENT_TECH_DOCS_WRITER }}** with (interval
-   recorded automatically by the Subagent hooks):
+   recorded automatically by the plugin hooks):
    - **Mode:** `update` (per `{{ SKILLS.DO_DOCS }}`)
-   - **Diff:** `/tmp/diff.patch`
-   - **Candidate docs:** the contents of `/tmp/doc-shortlist.txt`. If
-     the file is empty, pass the literal string
+   - **Diff:** the `diff` path from step 1
+   - **Candidate docs:** the contents of the `shortlist` file. If it is
+     empty, pass the literal string
      `<empty — scan only for gaps requiring new coverage>`.
+   - **Owned docs (report only, never edit):** the `owned` map from
+     step 1, if any.
+   - `maverick-issue: {{ ARGUMENTS }}`
    - **Instructions:**
      - Read each candidate doc. Update only sections rendered stale by
        the diff; do **not** refactor unrelated content.
+     - Never edit an owned doc unless its owner entry says
+       `editable: true`. Report what is stale in it instead.
      - If the diff introduces a component, subsystem, or architectural
        change with no coverage anywhere in `docs/`, create the new
        document.
      - If you find a doc **outside the candidate list** that you
        believe is impacted, **list its path in your return payload —
-       do not edit it.** One-pass dispatch: no widen-and-retry; the
-       caller folds these into a follow-up note on the PR for the
-       human reviewer.
-     - Returning "no doc changes required" is a valid outcome and must
-       be reported explicitly (not silently inferred).
-3. **Record the outcome** in the PR body or as a one-line PR comment so
-   the gate is auditable:
-   - If docs were updated or created: list the files changed.
-   - If the agent flagged out-of-shortlist docs: append a
-     `Docs follow-up: <paths>` line to the PR body so the reviewer
-     sees them.
-   - If no changes were required: post `Docs review: no changes required.`
-4. Commit any doc changes with a `docs:` conventional commit and push
+       do not edit it.** One-pass dispatch: no widen-and-retry.
+     - Return three lists: docs changed, owned docs with drift (path +
+       what is stale), other impacted docs not edited. Returning "no doc
+       changes required" is a valid outcome and must be stated
+       explicitly (not silently inferred).
+3. Commit any doc changes with a `docs:` conventional commit and push
    per the push-per-task rule. If a commit was made, log it so the
    docs phase row gets its own sub-row in the report:
    ```bash
@@ -312,50 +326,87 @@ PR body as a follow-up note rather than being silently rewritten.
    uv run maverick report commit --issue {{ ARGUMENTS }} \
        --phase docs --sha "$SHA" --subject "$SUBJECT"
    ```
-5. The PR cannot proceed to Phase 7 until this phase has produced
+4. **Route drift the writer could not fix.** Look up owners for every
+   path the writer reported but did not edit:
+   ```bash
+   uv run maverick docs owners <path> [<path> ...]
+   ```
+   - **Owner entry with `agent`** — dispatch that project agent (e.g. a
+     product-owner agent) with the diff path, the stale docs and what
+     the writer said is stale, plus `maverick-issue: {{ ARGUMENTS }}`.
+     Commit and push whatever it changes as in step 3.
+   - **Owner entry without `agent`, or no owner** — open one follow-up
+     issue listing the docs and what is stale, labelled with the
+     entry's `label` (default `docs-drift`), referencing this issue:
+     `uv run maverick gh-app gh -- issue create --title "Docs drift from #{{ ARGUMENTS }}" --label <label> --body-file <file>`.
+     Create the label first if it doesn't exist.
+   A PR-body note alone is not enough: nobody acts on those.
+5. **Record the outcome** in the PR body draft so the gate is auditable
+   (`Docs review: <n> updated, <n> routed to owners, <n> follow-up
+   issue(s)` or `Docs review: no changes required.`), and as evidence
+   in the report — the evidence note is what distinguishes a genuine
+   no-op from a skipped step:
+   ```bash
+   uv run maverick report note --issue {{ ARGUMENTS }} --phase docs \
+       --text "shortlist=<n> (terms <n>, issue <n>, command <n>) updated=<n> owned-drift=<n> followups=<links or none>"
+   ```
+6. The PR cannot proceed to Phase 7 until this phase has produced
    either committed doc changes or the auditable no-op record.
-6. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} docs`.
+7. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} docs`.
 
-## Phase 7: Pre-push Cybersecurity Review (mandatory)
+## Phase 7: Pre-PR Security Review (mandatory, independent)
 
 This phase **always runs** before the PR is opened. There is no skip
-path. Any changed code AND any code that could be impacted by the
-changes (callers, importers, dependents) must be reviewed by
-`{{ SKILLS.DO_CYBERSECURITY_REVIEW }}` before the PR can be opened.
+path. The review is done by **{{ AGENTS.AGENT_SECURITY_REVIEWER }}** — a
+read-only agent with a fresh context — not by you. You wrote the code;
+reviewing it yourself is the author checking their own work. The agent
+applies the project's security checklist from `docs/maverick/skills/`,
+runs the project's invariant checks, and reviews the changed code plus
+its impact set.
 
-Each step below is its own obligation. After `/{{ SKILLS.DO_CYBERSECURITY_REVIEW }}`
-returns in step 2, **do not stop** — continue with step 3. The inner
-skill's return is a hand-back, not a phase-complete signal (#106).
+1. **Refresh the diff** (Phase 6 may have added doc commits):
+   ```bash
+   uv run maverick docs shortlist \
+       --base "$(uv run maverick git-workflow story-base)"
+   ```
+   and use the `diff` path it prints.
+2. Dispatch **{{ AGENTS.AGENT_SECURITY_REVIEWER }}** with (interval
+   recorded automatically by the plugin hooks):
+   - **Mode:** `diff`
+   - **Diff:** the `diff` path from step 1
+   - **Base:** the story base branch
+   - **Spec:** the issue title and acceptance criteria
+   - `maverick-issue: {{ ARGUMENTS }}`
 
-1. **Compute the full diff:** `git diff origin/<base>...HEAD`.
-2. **Dispatch `/{{ SKILLS.DO_CYBERSECURITY_REVIEW }}`** with (invoking it
-   auto-opens the `skill-dispatch` interval via the Skill hook):
-   - **Mode:** `update`
-   - **Diff:** the output of step 1, passed via stdin or as a file path
-   - **Instructions:** review the changed code AND the impact set
-     (callers, importers, dependents — bounded to one or two hops).
-     Return the structured outcome (verdict + findings) defined in the
-     skill's Update Mode contract.
-
-   When the skill returns, proceed to step 3 — do not summarise and
-   stop.
-3. **Record the outcome:**
-   `uv run maverick report end --auto --issue {{ ARGUMENTS }} --outcome <success|failure|blocked>` (use `blocked` if the verdict was BLOCKING).
-4. **Act on the verdict:**
-   - **BLOCKING** — halt. Surface the findings to the user verbatim.
-     Do not open the PR. The user resolves the BLOCKING items by
-     returning to Phase 5 (implement, test, commit, push). Re-run
-     this phase against the new diff before proceeding.
+   Do not tell it what you think is safe or explain your design
+   choices; it must reach its own conclusions from the code.
+3. **Parse the verdict from the marker line only.** The reply must end
+   with exactly one `MAVERICK_SECURITY_VERDICT: PASS|FINDINGS|BLOCKING`
+   line. Missing, ambiguous or repeated with conflicting values → treat
+   as BLOCKING.
+4. **Record the evidence** (verdict, files reviewed, checklist and
+   checks counts, from the agent's JSON):
+   ```bash
+   uv run maverick report note --issue {{ ARGUMENTS }} --phase security \
+       --text "verdict=<V> files=<n> checklist=<n pass>/<n> checks=<n failed>/<n> findings=<n by severity>"
+   ```
+5. **Act on the verdict:**
+   - **BLOCKING** — do not open the PR. Fix the BLOCKING findings as
+     tasks in Phase 5 (implement, test, commit, push), then re-run this
+     phase from step 1. If a finding cannot be fixed within the issue's
+     scope (it needs an auth or infrastructure change the issue does not
+     authorise, or a product decision), halt and surface the findings to
+     the user verbatim.
    - **FINDINGS** — append a `## Security Review` section to the PR
      body draft listing each finding (severity, location, description,
      recommendation). The PR may proceed to Phase 8 with these items
      visible to the human reviewer and to {{ AGENTS.AGENT_CODE_REVIEWER }}.
-   - **PASS** — record `Security review: no concerns.` in the PR body
-     draft so the gate is auditable.
-5. The PR cannot proceed to Phase 8 until this phase has returned a
+   - **PASS** — record `Security review: PASS (<files> files, <checklist
+     summary>).` in the PR body draft so the gate is auditable.
+6. The PR cannot proceed to Phase 8 until this phase has returned a
    non-BLOCKING verdict and the outcome has been folded into the PR
    body draft.
-6. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} security`.
+7. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} security`.
 
 ## Phase 8: Open PR + Monitor CI
 
@@ -417,9 +468,10 @@ review gate the auto-merge path trusts. This is a binary verdict against
 the open PR, not a local-diff advisory loop.
 
 1. Dispatch **{{ AGENTS.AGENT_CODE_REVIEWER }}** with (interval
-   recorded automatically by the Subagent hooks):
+   recorded automatically by the plugin hooks):
    - The PR URL
    - The issue body, design comment, and tasks list (so it has the spec)
+   - `maverick-issue: {{ ARGUMENTS }}`
 2. **Parse the verdict from the marker line only.** The agent's reply
    must end with exactly one `MAVERICK_VERDICT: PASS` or
    `MAVERICK_VERDICT: FAIL` line — that line is the verdict; do not
@@ -431,7 +483,11 @@ the open PR, not a local-diff advisory loop.
      conflicting values** — treat as FAIL and eject. Do not re-dispatch
      the reviewer to "get a cleaner answer", and never substitute your
      own reading of the review body for a missing marker.
-3. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} review`.
+3. **Record the evidence:**
+   ```bash
+   uv run maverick report note --issue {{ ARGUMENTS }} --phase review        --text "verdict=<PASS|FAIL> <one-line reason>"
+   ```
+4. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} review`.
 
 There is no fix-and-re-review loop. If the reviewer FAILs the PR, the
 next step is eject-to-human, not iterate.
@@ -502,23 +558,26 @@ next step is eject-to-human, not iterate.
    uv run maverick issue close-on-merge <repo> {{ ARGUMENTS }} \
        --pr <pr-num> --target <target-branch>
    ```
-9. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason merged`.
-10. Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
-11. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} complete`.
-12. **Emit per-phase narrative notes** so the report's Analysis section
-    has context for what happened. The JSONL is the authoritative
-    record; the report is a pure render of it, so notes must land in
-    the JSONL — do not edit the rendered Markdown by hand:
-    ```bash
-    uv run maverick report note --issue {{ ARGUMENTS }} --phase design \
-        --text "<one-sentence summary of what the analyst returned>"
-    uv run maverick report note --issue {{ ARGUMENTS }} --phase implement \
-        --text "<one-sentence summary of what landed in Phase 5>"
-    # ... one `report note` per phase that produced work worth narrating
-    ```
-13. **Generate the workflow report**. Written to the **main repo's**
-    `.maverick/reports/` (resolved via `git rev-parse --git-common-dir`),
-    not the destroyed worktree's. Re-runs are deterministic:
+9. **Emit per-phase narrative notes** so the report's Analysis section
+   has context for what happened. The JSONL is the authoritative
+   record; the report is a pure render of it, so notes must land in
+   the JSONL — do not edit the rendered Markdown by hand:
+   ```bash
+   uv run maverick report note --issue {{ ARGUMENTS }} --phase design \
+       --text "<one-sentence summary of what the analyst returned>"
+   uv run maverick report note --issue {{ ARGUMENTS }} --phase implement \
+       --text "<one-sentence summary of what landed in Phase 5>"
+   # ... one `report note` per phase that produced work worth narrating
+   ```
+10. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason merged`.
+    Releasing also writes the workflow report to the **main repo's**
+    `.maverick/reports/` (it prints `report: <path>`), so the report
+    exists on every exit path — including halts and crashes, where the
+    SessionEnd hook does the release.
+11. Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
+12. **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} complete`.
+13. **Regenerate the report** so it includes the final checkpoint
+    (deterministic; safe to re-run):
     ```bash
     uv run maverick report generate <repo> {{ ARGUMENTS }}
     ```
@@ -528,7 +587,7 @@ next step is eject-to-human, not iterate.
 1. Post the reviewer's verdict as a PR comment (App identity, per
    `{{ SKILLS.MAV_GITHUB_ISSUE_WORKFLOW }}`):
    ```bash
-   uv run maverick gh-app gh -- pr comment <pr-url> --body-file /tmp/review-verdict.md
+   uv run maverick gh-app gh -- pr comment <pr-url> --body-file /tmp/review-verdict-{{ ARGUMENTS }}.md
    ```
 2. Apply the `needs-human` label to both the PR and the issue:
    ```bash
@@ -555,13 +614,11 @@ next step is eject-to-human, not iterate.
        --text "<one-sentence summary of what the reviewer flagged>"
    # ... one `report note` per phase that produced work worth narrating
    ```
-7. **Generate the workflow report**. Do this **before** releasing the
-   claim so the report lands even if release errors:
-   ```bash
-   uv run maverick report generate <repo> {{ ARGUMENTS }}
-   ```
-8. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason ejected`.
-9. Do **not** destroy the worktree — the human may want to inspect it.
+7. Release the claim: `uv run maverick coord release <repo> {{ ARGUMENTS }} --reason ejected`.
+   Releasing also writes the workflow report (it prints `report: <path>`).
+   If the release errors, generate it directly:
+   `uv run maverick report generate <repo> {{ ARGUMENTS }}`.
+8. Do **not** destroy the worktree — the human may want to inspect it.
    Log the worktree path so the user can find it.
 
 ## Rules
@@ -573,6 +630,10 @@ next step is eject-to-human, not iterate.
 - **Push after every task.** Durability trumps CI-cost optimisation.
 - **Binary review.** PASS auto-merges; FAIL ejects. No fix loop.
 - **Release the claim on every exit path.** Success, eject, abort, crash —
-  all of them must release.
+  all of them must release. Release is also what writes the report.
+- **Every dispatch carries `maverick-issue: {{ ARGUMENTS }}`.** Without it,
+  runs inside an epic record no dispatches.
+- **Never review your own code for security.** The security gate is
+  {{ AGENTS.AGENT_SECURITY_REVIEWER }}'s verdict, not yours.
 - **Never remove a `blocked-by:#N` label from inside the workflow.** Only a
   human may clear a block.

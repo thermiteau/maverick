@@ -113,48 +113,71 @@ its own heuristic.
 
 1. **Build the diff and candidate-doc shortlist** in one deterministic step:
    ```bash
-   uv run maverick docs shortlist --base "$(uv run maverick git-workflow story-base)"
+   uv run maverick docs shortlist \
+       --base "$(uv run maverick git-workflow story-base)" --issue $ARGUMENTS
    ```
-   This writes `/tmp/diff.patch`, `/tmp/changed-paths.txt`, and
-   `/tmp/doc-shortlist.txt`. An empty shortlist is valid — the agent is
-   dispatched with a pre-filtered shortlist rather than an open-ended
-   "audit every doc" brief (which cost ~6 min of wall clock on a
-   15-file diff on prior issues).
+   The JSON output names the files it wrote (`diff`, `shortlist`,
+   `detail`) in a per-worktree directory — use those paths, not a fixed
+   `/tmp` path. Candidates come from words in the diff, `docs/` paths the
+   issue cites, and the repo's `docs.shortlist_commands`; `owned` lists
+   shortlisted docs that belong to a `docs.owners` entry. An empty
+   shortlist is valid — the agent is dispatched with a pre-filtered
+   shortlist rather than an open-ended "audit every doc" brief.
 2. Dispatch the **agent-tech-docs-writer** agent with:
    - **Mode:** `update` (per `do-docs`)
-   - **Diff:** `/tmp/diff.patch`
-   - **Candidate docs:** the contents of `/tmp/doc-shortlist.txt`. If
-     the file is empty, pass the literal string
+   - **Diff:** the `diff` path from step 1
+   - **Candidate docs:** the contents of the `shortlist` file. If it is
+     empty, pass the literal string
      `<empty — scan only for gaps requiring new coverage>`.
+   - **Owned docs (report only, never edit):** the `owned` map, if any.
    - **Instructions:**
      - Read each candidate doc. Update only sections rendered stale by
        the diff; do **not** refactor unrelated content.
+     - Never edit an owned doc unless its owner entry says
+       `editable: true`. Report what is stale in it instead.
      - If the diff introduces a component, subsystem, or architectural
        change with no coverage anywhere in `docs/`, create the new
        document.
      - If you find a doc **outside the candidate list** that you
        believe is impacted, **list its path in your return payload —
-       do not edit it.** One-pass dispatch: no widen-and-retry; the
-       caller surfaces these as a follow-up note for the user.
-     - Returning "no doc changes required" is a valid outcome and must
-       be reported explicitly.
+       do not edit it.** One-pass dispatch: no widen-and-retry.
+     - Return three lists: docs changed, owned docs with drift (path +
+       what is stale), other impacted docs not edited. Returning "no doc
+       changes required" is a valid outcome and must be reported
+       explicitly.
 3. **🔲 Checkpoint — Review docs outcome with the user:** show what was
-   updated or created (or the explicit no-op decision), surface any
-   out-of-shortlist docs the agent flagged, and confirm. If updates are
-   inaccurate or out of scope, push back and ask the agent to revise.
+   updated or created (or the explicit no-op decision), and the drift
+   the agent reported but did not fix, with each path's owner from
+   `uv run maverick docs owners <path> ...`. Agree with the user how to
+   route it: dispatch the owner's `agent` if one is configured, or open
+   a follow-up issue labelled with the owner's `label` (default
+   `docs-drift`). If updates are inaccurate or out of scope, push back
+   and ask the agent to revise.
 4. Commit any doc changes with a `docs:` conventional commit.
 
-## Phase 7: Pre-push Cybersecurity Review (mandatory)
+## Phase 7: Pre-push Security Review (mandatory, independent)
 
-This phase **always runs** before push. Any changed code AND any code that could be impacted by the changes (callers, importers, dependents) must be reviewed by `do-cybersecurity-review` before the push proceeds.
+This phase **always runs** before push. The review is done by
+**agent-security-reviewer**, a read-only agent with a fresh
+context — not by you, because you wrote the code. It applies the
+project's security checklist from `docs/maverick/skills/`, runs the
+project's invariant checks (`maverick checks run`), and reviews the
+changed code plus its impact set.
 
-1. Compute the full diff: `git diff $(uv run maverick git-workflow story-base)...HEAD`.
-2. Dispatch the **do-cybersecurity-review** skill with:
-   - **Mode:** `update`
-   - **Diff:** the output of step 1, passed via stdin or as a file path
-   - **Instructions:** review the changed code AND the impact set (callers, importers, dependents — bounded to one or two hops). Return the structured outcome (verdict + findings).
-3. **🔲 Checkpoint — Review security outcome with the user:** show the verdict and any findings. If BLOCKING, halt and route the user back to Phase 5 (implement) to resolve the issues before re-running this phase. If FINDINGS or PASS, confirm with the user before proceeding.
-4. If FINDINGS, fold the security findings into the PR description draft so they are visible to the human reviewer.
+1. Refresh the diff: re-run the `docs shortlist` command from Phase 6
+   and use the `diff` path it prints.
+2. Dispatch **agent-security-reviewer** with:
+   - **Mode:** `diff`
+   - **Diff:** the `diff` path from step 1
+   - **Base:** the story base branch
+   - **Spec:** the issue title and acceptance criteria
+
+   Do not explain your design choices to it; it must reach its own
+   conclusions from the code.
+3. The verdict is the reply's final `MAVERICK_SECURITY_VERDICT: PASS|FINDINGS|BLOCKING`
+   line. Missing or ambiguous → treat as BLOCKING.
+4. **🔲 Checkpoint — Review security outcome with the user:** show the verdict and any findings. If BLOCKING, route back to Phase 5 (implement) to resolve the issues, then re-run this phase. If FINDINGS or PASS, confirm with the user before proceeding.
+5. If FINDINGS, fold the security findings into the PR description draft so they are visible to the human reviewer.
 
 ## Phase 8: Code Review
 

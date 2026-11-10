@@ -265,3 +265,47 @@ def _no_instance_id_persistence(monkeypatch, tmp_path):
     monkeypatch.setattr(
         coordinator, "_instance_id_path", lambda: tmp_path / "instance_id"
     )
+
+
+class TestReleaseFinalisesReport:
+    """Every exit path releases the claim, so release writes the report —
+    runs that halted before their own `report generate` step still get one."""
+
+    def test_release_generates_report(self, monkeypatch, tmp_path, capsys):
+        from maverick import coordinator, report_cli
+
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        monkeypatch.setattr(report_cli, "_fetch_pr", lambda repo, issue: None)
+        monkeypatch.setattr(report_cli, "_session_model", lambda: None)
+        monkeypatch.setattr(coordinator, "release", MagicMock())
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "i-1")
+        report_cli._report_run_start(
+            argparse.Namespace(skill="do-issue-solo", issue=7, phase="claimed", llm="m")
+        )
+
+        args = _parse("coord", "release", "o/r", "7", "--reason", "blocked")
+        assert args._handler(args) == 0
+        out = capsys.readouterr().out
+        assert "released" in out
+        report = report_cli.report_path(7, repo_root=tmp_path)
+        assert report.exists()
+        assert f"report: {report}" in out
+
+    def test_no_timeline_is_silent(self, monkeypatch, tmp_path, capsys):
+        from maverick import coordinator, report_cli
+
+        monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        monkeypatch.setattr(coordinator, "release", MagicMock())
+        args = _parse("coord", "release", "o/r", "100")
+        assert args._handler(args) == 0
+        assert "report:" not in capsys.readouterr().out
+
+    def test_no_report_flag(self, monkeypatch):
+        from maverick import report_cli
+
+        called = MagicMock()
+        monkeypatch.setattr(report_cli, "finalise_report", called)
+        monkeypatch.setattr(coord_cli.coordinator, "release", MagicMock())
+        args = _parse("coord", "release", "o/r", "7", "--no-report")
+        assert args._handler(args) == 0
+        called.assert_not_called()

@@ -314,12 +314,15 @@ class TestBeginEnd:
 
 class TestLLMResolution:
     """The fallback chain in `_current_llm`:
-    explicit → env → config.agents → config.skills → config.default →
-    run-start lookup → FALLBACK_LLM.
+    explicit → env → config.agents → agent pin → config.skills →
+    detected session model → config.default → run-start lookup →
+    FALLBACK_LLM.
     """
 
     def _setup(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr(report_cli, "_main_repo_root", lambda cwd=None: tmp_path)
+        # Never read the developer's real ~/.maverick/session-models.json.
+        monkeypatch.setattr(report_cli, "_session_model", lambda: None)
         monkeypatch.setenv("MAVERICK_INSTANCE_ID", "test1234ab")
         monkeypatch.delenv("MAVERICK_LLM", raising=False)
         # Isolate the agent-model cache so registry discovery never leaks
@@ -351,6 +354,40 @@ class TestLLMResolution:
         monkeypatch.setattr(config, "read_llm_config", boom)
         assert report_cli._current_llm() == report_cli.FALLBACK_LLM
         assert report_cli.FALLBACK_LLM == "claude-code"
+
+    def test_detected_session_model_beats_config_default(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """The hard-coded default used to label every row; the model the
+        runtime reported for the session must win over any configured label."""
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(monkeypatch, default="claude-opus-4-7")
+        monkeypatch.setattr(report_cli, "_session_model", lambda: "claude-opus-5-5")
+        assert report_cli._current_llm() == "claude-opus-5-5"
+        # An explicit --llm still wins.
+        assert report_cli._current_llm(explicit="x") == "x"
+
+    def test_detected_session_model_does_not_beat_agent_pin(
+        self, tmp_path: Path, monkeypatch
+    ):
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(monkeypatch, default="")
+        monkeypatch.setattr(report_cli, "_session_model", lambda: "claude-opus-5-5")
+        monkeypatch.setattr(
+            report_cli, "_AGENT_MODEL_CACHE", {"agent-tech-docs-writer": "claude-sonnet"}
+        )
+        assert report_cli._current_llm(agent="agent-tech-docs-writer") == "claude-sonnet"
+
+    def test_session_model_read_from_registry(self, tmp_path: Path, monkeypatch):
+        from maverick.runtime_hooks import session_model
+
+        registry = tmp_path / "session-models.json"
+        monkeypatch.setattr(session_model, "registry_path", lambda: registry)
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "inst-1")
+        session_model.record("inst-1", "claude-opus-5-5")
+        assert report_cli._session_model() == "claude-opus-5-5"
+        monkeypatch.setenv("MAVERICK_INSTANCE_ID", "inst-2")
+        assert report_cli._session_model() is None
 
     def test_config_default_used_when_no_explicit_or_env(
         self, tmp_path: Path, monkeypatch
@@ -1211,3 +1248,45 @@ class TestRunStartCapturesSessionId:
             report_cli.timeline_path(321, repo_root=tmp_path)
         )
         assert "claude_session_id" not in events[-1]
+
+
+class TestReviewGates:
+    """A gate's duration can't distinguish "nothing to do" from a skip, so
+    the report shows each gate's dispatches and evidence notes, and flags
+    gates that ran without evidence."""
+
+    def _gates(self, md: str) -> str:
+        return md.split("## Review gates", 1)[1]
+
+    def test_gates_without_evidence_flagged(self):
+        md = report_cli.render(issue=321, events=_pass_path_events())
+        gates = self._gates(md)
+        assert "| Documentation review | yes |" in gates
+        assert "agent-tech-docs-writer (success)" in gates
+        assert "do-cybersecurity-review (success)" in gates
+        assert gates.count("⚠ no evidence recorded") >= 2
+
+    def test_evidence_note_rendered(self):
+        events = _pass_path_events()
+        events.append(_full_event(
+            action="note", phase="security", start_ts="2026-05-19T10:16:10Z",
+            notes="verdict=PASS files=14 | findings=0",
+        ))
+        gates = self._gates(report_cli.render(issue=321, events=events))
+        security = next(line for line in gates.splitlines() if line.startswith("| Security"))
+        assert "verdict=PASS files=14 \\| findings=0" in security
+        assert "⚠" not in security
+
+    def test_evidence_alone_marks_gate_as_run(self):
+        events = [e for e in _pass_path_events() if e.get("phase") != "review"]
+        events.append(_full_event(
+            action="note", phase="review", start_ts="2026-05-19T10:20:00Z",
+            notes="verdict=PASS",
+        ))
+        gates = self._gates(report_cli.render(issue=321, events=events))
+        assert "| Code review | yes | — | 0 | verdict=PASS |" in gates
+
+    def test_unreached_gate(self):
+        events = [e for e in _pass_path_events() if e.get("phase") not in ("review",)]
+        gates = self._gates(report_cli.render(issue=321, events=events))
+        assert "| Code review | no | — | 0 | ⚠ gate never reached |" in gates

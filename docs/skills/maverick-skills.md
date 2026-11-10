@@ -15,7 +15,7 @@ Implement a focused code change. Use this skill as the wrapper for any implement
 
 ## do-cybersecurity-review
 
-Audit a codebase for security risks in one of two modes. In full-audit mode it scans the entire codebase and writes a findings report to docs/security-audit.md (run as part of do-init or on demand). In update mode it reviews only a diff plus the code it could impact, returning a structured findings list as a pre-push gate for do-issue-solo and do-issue-guided. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks.
+Audit a codebase for security risks in one of two modes. In full-audit mode it scans the entire codebase and writes a findings report to docs/security-audit.md (run as part of do-init or on demand). In update mode it hands a diff to the independent agent-security-reviewer, which reviews the diff plus the code it could impact in a fresh context and returns PASS, FINDINGS or BLOCKING. Applies the project's own security checklist from docs/maverick/skills/ and its invariant checks. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks.
 
 
 ## do-docs

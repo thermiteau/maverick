@@ -445,3 +445,108 @@ class TestBpropRun:
             pytest.raises(RuntimeError, match="no maverick-dag"),
         ):
             workflow_verbs.bprop_run("o/r", 100, 142)
+
+
+class TestDocsShortlistSources:
+    """Docs that share no words with code paths (product specs, journeys,
+    help topics) reach the shortlist via the issue and repo commands."""
+
+    def _repo(self, tmp_path: Path) -> Path:
+        repo = tmp_path / "repo"
+        for rel in (
+            "docs/product/journeys/signup.md",
+            "docs/help/billing.md",
+            "docs/technical/api.md",
+        ):
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text("prose with no code words\n")
+        return repo
+
+    def _run(self, repo: Path, out: Path, *, issue=None, config=None, gh_body=""):
+        def fake_gh(*args, env=None):
+            assert args[:2] == ("issue", "view")
+            return json.dumps({"body": gh_body, "comments": [{"body": "see ./docs/help/billing.md"}]})
+
+        with (
+            patch.object(workflow_verbs, "_git", side_effect=["+x = 1\n", "src/routes/billing.ts\n"]),
+            patch.object(workflow_verbs, "_gh", side_effect=fake_gh),
+        ):
+            return workflow_verbs.docs_shortlist(
+                "main", repo_root=repo, out_dir=out, issue=issue,
+                docs_config=config or {"shortlist_commands": [], "owners": {}},
+            )
+
+    def test_issue_cited_docs(self, tmp_path: Path):
+        repo = self._repo(tmp_path)
+        result = self._run(
+            repo, tmp_path / "out", issue=7,
+            gh_body="Spec: docs/product/journeys/signup.md and docs/missing.md",
+        )
+        assert result["sources"]["docs/product/journeys/signup.md"] == ["issue"]
+        assert "docs/help/billing.md" in result["docs"]  # cited in a comment
+        assert "docs/missing.md" not in result["docs"]  # cited but absent
+
+    def test_shortlist_command_receives_changed_paths(self, tmp_path: Path):
+        repo = self._repo(tmp_path)
+        command = (
+            'grep -q "src/routes/billing.ts" && test -f "$MAVERICK_DIFF" '
+            '&& echo docs/help/billing.md && echo docs/gone.md'
+        )
+        result = self._run(
+            repo, tmp_path / "out",
+            config={"shortlist_commands": [command, "exit 3"], "owners": {}},
+        )
+        assert result["sources"]["docs/help/billing.md"] == ["command"]
+        assert any("ignored missing path docs/gone.md" in w for w in result["warnings"])
+        assert any("exit 3" in w for w in result["warnings"])
+
+    def test_owned_docs_reported(self, tmp_path: Path):
+        repo = self._repo(tmp_path)
+        out = tmp_path / "out"
+        result = self._run(
+            repo, out, issue=7, gh_body="docs/product/journeys/signup.md",
+            config={
+                "shortlist_commands": [],
+                "owners": {"docs/product/**": {"owner": "product-owner", "agent": "product-owner"}},
+            },
+        )
+        owned = result["owned"]["docs/product/journeys/signup.md"]
+        assert owned["agent"] == "product-owner"
+        assert owned["glob"] == "docs/product/**"
+        detail = json.loads((out / "doc-shortlist.json").read_text())
+        assert "docs/product/journeys/signup.md" in detail["owned"]
+
+    def test_default_out_dir_is_per_worktree(self, tmp_path: Path):
+        with patch.object(workflow_verbs, "_git", return_value=f"{tmp_path}/.git/worktrees/s1\n"):
+            assert workflow_verbs.docs_review_dir(tmp_path) == (
+                tmp_path / ".git" / "worktrees" / "s1" / "maverick" / "docs-review"
+            )
+
+
+class TestDocOwners:
+    def test_first_matching_glob_wins(self):
+        owners = {
+            "docs/adr/*": {"owner": "architects"},
+            "docs/**": {"owner": "everyone"},
+        }
+        result = workflow_verbs.doc_owners(
+            ["docs/adr/0007.md", "./docs/x.md", "src/a.md"], owners
+        )
+        assert result["docs/adr/0007.md"]["owner"] == "architects"
+        assert result["./docs/x.md"]["owner"] == "everyone"
+        assert "src/a.md" not in result
+
+
+class TestChecksRun:
+    def test_runs_every_check_and_reports_failures(self, tmp_path: Path):
+        results = workflow_verbs.checks_run(
+            ["true", "echo broken >&2; exit 2", "echo ok"], repo_root=tmp_path
+        )
+        assert [r["ok"] for r in results] == [True, False, True]
+        assert results[1]["exit"] == 2
+        assert "broken" in results[1]["output"]
+
+    def test_timeout_is_a_failure(self, tmp_path: Path):
+        results = workflow_verbs.checks_run(["sleep 5"], repo_root=tmp_path, timeout=1)
+        assert results[0]["ok"] is False
+        assert "timed out" in results[0]["output"]

@@ -88,6 +88,16 @@ Run in this order — each stage catches different classes of issues:
 1. **Lint** — catches style issues, unused imports, formatting
 2. **Typecheck** — catches type errors, missing properties, wrong arguments
 3. **Tests** — catches logic errors, regressions, broken integrations
+4. **Project checks** — the project's invariant scripts (rules such as
+   "every route declares a capability" or "nothing deletes from a
+   retract-only table"), configured in `.maverick/config.json` under
+   `checks.commands`:
+   ```bash
+   uv run maverick checks run
+   ```
+   It exits 0 with a notice when none are configured. A failing check is
+   a failed verification like any other: fix the code, never the check,
+   unless the issue explicitly changes the invariant.
 
 Stop at the first failure. Fix it before proceeding to the next stage.
 
@@ -95,12 +105,12 @@ Stop at the first failure. Fix it before proceeding to the next stage.
 
 Not every change needs the full suite:
 
-| Change type | Lint | Typecheck | Tests |
-|---|---|---|---|
-| Code changes | Yes | Yes | Yes — at minimum the affected test files |
-| Config/YAML only | No | No | No (unless config affects runtime) |
-| Documentation only | No | No | No |
-| New dependencies added | Yes | Yes | Yes — full suite |
+| Change type | Lint | Typecheck | Tests | Project checks |
+|---|---|---|---|---|
+| Code changes | Yes | Yes | Yes — at minimum the affected test files | Yes |
+| Config/YAML only | No | No | No (unless config affects runtime) | Yes |
+| Documentation only | No | No | No | No |
+| New dependencies added | Yes | Yes | Yes — full suite | Yes |
 
 For the final push before PR creation, always run the full suite regardless of change type.
 

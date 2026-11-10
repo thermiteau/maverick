@@ -12,8 +12,8 @@ CONFIG = AgentConfig(
     description=(
         "Autonomous code reviewer that performs two-stage review — spec compliance"
         " first, then code quality (correctness, test coverage, maintainability)."
-        " Security is out of scope; do-cybersecurity-review handles that as a"
-        " mandatory pre-push gate. Dispatched after completing implementation"
+        " Security is out of scope; the independent agent-security-reviewer"
+        " handles that as a mandatory pre-PR gate. Dispatched after completing implementation"
         " steps or before creating PRs."
     ),
     # A reviewer that can fix what it reviews stops being a gate: read-only.

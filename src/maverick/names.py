@@ -99,6 +99,7 @@ AGENT_ISSUE_ANALYST = "agent-issue-analyst"
 AGENT_GITHUB_ISSUE_PLANNER = "agent-github-issue-planner"
 AGENT_TECH_DOCS_WRITER = "agent-tech-docs-writer"
 AGENT_SESSION_REVIEWER = "agent-session-reviewer"
+AGENT_SECURITY_REVIEWER = "agent-security-reviewer"
 
 ALL_AGENT_NAMES = {
     AGENT_CODE_REVIEWER,
@@ -106,4 +107,5 @@ ALL_AGENT_NAMES = {
     AGENT_GITHUB_ISSUE_PLANNER,
     AGENT_TECH_DOCS_WRITER,
     AGENT_SESSION_REVIEWER,
+    AGENT_SECURITY_REVIEWER,
 }

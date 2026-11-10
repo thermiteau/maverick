@@ -1,6 +1,6 @@
 ---
 name: do-cybersecurity-review
-description: Audit a codebase for security risks in one of two modes. In full-audit mode it scans the entire codebase and writes a findings report to docs/security-audit.md (run as part of do-init or on demand). In update mode it reviews only a diff plus the code it could impact, returning a structured findings list as a pre-push gate for do-issue-solo and do-issue-guided. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks.
+description: Audit a codebase for security risks in one of two modes. In full-audit mode it scans the entire codebase and writes a findings report to docs/security-audit.md (run as part of do-init or on demand). In update mode it hands a diff to the independent agent-security-reviewer, which reviews the diff plus the code it could impact in a fresh context and returns PASS, FINDINGS or BLOCKING. Applies the project's own security checklist from docs/maverick/skills/ and its invariant checks. Covers secrets exposure, dependency vulnerabilities, authentication and authorisation patterns, input validation, transport security, and common OWASP risks.
 user-invocable: true
 disable-model-invocation: false
 context: fork
@@ -11,7 +11,7 @@ context: fork
 Audit a codebase for security risks. Operates in two modes:
 
 - **full-audit** — scan the entire codebase. Used by `do-init` at adoption time and on demand. Produces `docs/security-audit.md`. Flips `cybersecurity_reviewed` milestone.
-- **update** — scoped to a diff, plus the code that could be impacted by the diff. Used by `do-issue-solo` and `do-issue-guided` as a mandatory pre-push gate before opening a PR. Returns a structured findings list to the orchestrator; does not flip the milestone (it's per-PR work, not a one-time milestone).
+- **update** — scoped to a diff, plus the code that could be impacted by the diff. Performed by the independent **agent-security-reviewer** in a fresh context, never by the agent that wrote the code. `do-issue-solo` and `do-issue-guided` dispatch that agent directly as the mandatory pre-PR gate. Does not flip the milestone (it's per-PR work, not a one-time milestone).
 
 Refer to `mav-bp-application-security` for the standards each finding should be measured against. The skill **surfaces** risks; it does not modify code.
 
@@ -37,7 +37,24 @@ If no mode is specified, default to `full-audit`.
 
 Identify language, framework, and runtime so subsequent checks know what to look for. Use the same detectors as `do-maverick-alignment`: `package.json`, `pyproject.toml`, `Dockerfile`, etc.
 
-### 2. Walk the audit categories
+### 2. Load the project's own security checklist and checks
+
+Generic categories miss the rules that matter most in a given codebase.
+Read every project skill under `docs/maverick/skills/` whose name or
+description concerns security, authorisation, tenancy, privacy,
+personal data or compliance (e.g. `application-security`). Every rule
+in them is an audit item: report each as PASS / WARN / FAIL / N/A in
+the report's **Project checklist** section.
+
+Then run the project's invariant checks and record the result:
+
+```bash
+uv run maverick checks run
+```
+
+A failing check is a FAIL in the category it enforces.
+
+### 3. Walk the audit categories
 
 For each category below, search the codebase and assign one of:
 
@@ -108,7 +125,7 @@ Also check `.env*` files (any tracked) and history (`git log --all --full-histor
 - Is `.dockerignore` keeping `.env`, secrets, and `.git` out of layers?
 - For IaC: are S3 buckets / blob stores private by default, encrypted, and versioned?
 
-### 3. Write the report
+### 4. Write the report
 
 Create `docs/security-audit.md` (create `docs/` if it doesn't exist). Use this structure:
 
@@ -133,6 +150,17 @@ Create `docs/security-audit.md` (create `docs/` if it doesn't exist). Use this s
 | Logging, monitoring, rate limiting | ... |
 | Container / infrastructure | ... |
 
+## Project checklist
+
+| Rule (source skill) | Status | Evidence |
+| --- | --- | --- |
+| <rule> (`docs/maverick/skills/<name>`) | PASS / WARN / FAIL / N/A | `path:line` |
+
+<"No project security skill found" if there is none — and recommend
+writing one with do-upskill.>
+
+Project checks: <n configured, n failed — list failing commands>.
+
 ## Details
 
 ### <Category> — <STATUS>
@@ -147,11 +175,18 @@ Create `docs/security-audit.md` (create `docs/` if it doesn't exist). Use this s
 
 1. **<Severity: high/medium/low>** — <action>. <File or area>. <Why it matters>.
 2. ...
+
+## Proposed invariant checks
+
+<For each finding that a script could catch every time (a forbidden
+call, a missing declaration, a grant that must not exist), propose a
+check command and what it asserts. Reviewers miss repeat cases; a check
+in `checks.commands` never does.>
 ```
 
 Use one-line citations (`path/to/file:42`) so a human (or a follow-up agent) can jump straight to evidence.
 
-### 4. Surface the findings to the user
+### 5. Surface the findings to the user
 
 After writing the report, print:
 
@@ -159,7 +194,7 @@ After writing the report, print:
 - The path to the report.
 - A one-line top-recommendation if any FAIL exists.
 
-### 5. Record the milestone
+### 6. Record the milestone
 
 Once the report is written, record that the cybersecurity review has run on this project:
 
@@ -171,72 +206,28 @@ This commits the milestone into `.maverick/config.json` so other Maverick skills
 
 ## Update Mode
 
-Diff-scoped review used as a mandatory pre-push gate by `do-issue-solo` and `do-issue-guided`. Reviews **only the changed code and the code that could be impacted by it** — not the whole codebase. Returns findings to the orchestrator as a structured outcome.
+Diff-scoped review used as the mandatory pre-PR security gate. It is
+performed by **agent-security-reviewer**, a read-only agent
+with a fresh context: the review must not run inside the context that
+wrote the code, or the author is checking their own work.
 
-This mode does **not** flip the `cybersecurity_reviewed` milestone — it runs on every PR, not once per project lifetime.
+`do-issue-solo` and `do-issue-guided` dispatch
+the agent directly. If you were invoked in `update` mode (for example by
+a user typing the command), do the same:
 
-### 1. Read the diff
+1. Build the diff (`git diff origin/<base>...HEAD > <file>`) if the
+   caller didn't pass one.
+2. Dispatch **agent-security-reviewer** with `Mode: diff`,
+   the diff path, the base branch and a one-paragraph spec. Do not
+   review the diff yourself.
+3. Return the agent's JSON result and its `MAVERICK_SECURITY_VERDICT`
+   line unchanged.
 
-Caller passes the diff via stdin or as a file path. Parse it to get:
-
-- the list of changed files
-- the changed line ranges per file (so subsequent checks can be scoped)
-- whether any of the changes touch dependency manifests (`package.json`, `pyproject.toml`, `Cargo.toml`, lock files), env / config files, IaC, or CI workflows — those carry security weight beyond the line count
-
-If no diff was provided, halt and ask the caller for one. Do not silently fall back to a full-audit scan.
-
-### 2. Identify impacted code
-
-A change to a function, type, schema, or config can introduce security risk in code that wasn't itself edited. For each changed entity, identify the impact set:
-
-| Change kind | Impact set to audit |
-| --- | --- |
-| Function signature / body | All callers (use grep / IDE-equivalent symbol search) |
-| Exported type / schema | All importers; also serialisation / persistence sites |
-| Auth / authz primitive (middleware, decorator, role) | Every route or handler protected by it |
-| Public API surface (route, endpoint, GraphQL resolver) | Clients of that API; rate-limits and input validation around it |
-| Config or env variable | Every reader of that config; consider whether the new value needs to be a secret |
-| Dependency added or upgraded | The added/upgraded package itself: licence, known CVEs, transitive deps |
-| Dockerfile / IaC | The deployed surface that uses it |
-
-The impact set is **bounded** — do not transitively trace until the entire codebase is included. Stop at one or two hops; if the impact is wider than that, surface it as a finding ("this change has wide reach; recommend a fuller review") rather than try to audit everything.
-
-### 3. Run the audit categories on the scoped set
-
-Apply the same eight categories from Full Audit Mode (Secret exposure, Dependency hygiene, Authentication / authorisation, Input validation / output encoding, Transport / headers / CORS, Data at rest, Logging / monitoring / rate-limit, Container / IaC) — but only against the changed lines and the impact set, not the whole repo.
-
-Most categories will be N/A on any given diff. That is fine. Returning "N/A" with a one-line justification is informative; returning empty findings without saying which categories were considered is not.
-
-### 4. Return a structured outcome
-
-The orchestrator wires this output into the PR description or a comment. Format:
-
-```json
-{
-  "verdict": "PASS" | "FINDINGS" | "BLOCKING",
-  "summary": "<one sentence: what was reviewed and the headline result>",
-  "categories_considered": ["secret-exposure", "auth", ...],
-  "findings": [
-    {
-      "severity": "critical|high|medium|low",
-      "category": "<one of the eight>",
-      "location": "<path/to/file:line>",
-      "description": "<concrete what + why>",
-      "recommendation": "<concrete next step>"
-    }
-  ]
-}
-```
-
-Verdict semantics:
-
-- **PASS** — nothing of concern. Findings list may still contain `low` severity items but none are actionable.
-- **FINDINGS** — one or more `medium` / `high` items. The PR may proceed; findings are surfaced to the human reviewer in the PR body.
-- **BLOCKING** — at least one `critical` finding (e.g., a secret committed to the diff, an auth bypass introduced). The orchestrator must halt the push and surface this to the user. Do not return BLOCKING lightly — the bar is "this PR cannot land safely as-is".
-
-### 5. Do not write to docs/security-audit.md
-
-Update mode produces transient findings, not a snapshot of the whole codebase. Writing to the audit doc would either overwrite valid full-audit content or accumulate noise. Findings stay in the structured output; the orchestrator decides where they end up.
+The agent's procedure (project checklist, invariant checks, impact set,
+categories) and verdict semantics (PASS / FINDINGS / BLOCKING) are
+defined in its own prompt. Update mode never writes to
+`docs/security-audit.md`: its findings are transient and the caller
+decides where they go.
 
 ## Rules
 
@@ -258,7 +249,7 @@ When you return from this skill, **do not** post a closing summary, do
 not stop. The calling workflow still owns, in order:
 
 1. Closing the `skill-dispatch` interval that wrapped this invocation
-   (`uv run maverick report end skill-dispatch … --outcome <success|failure|blocked>`).
+   (`uv run maverick report end --auto … --outcome <success|failure|blocked>`).
    The outcome maps from the verdict: `PASS` → `success`,
    `FINDINGS` → `success` (with the findings folded into the PR body
    draft), `BLOCKING` → `blocked`.
