@@ -521,7 +521,12 @@ def _docs_owners(args: argparse.Namespace) -> int:
 
 def _gh_state_write(args: argparse.Namespace) -> int:
     try:
-        payload = json.loads(Path(args.payload_file).read_text())
+        raw = (
+            sys.stdin.read()
+            if args.payload_file == "-"
+            else Path(args.payload_file).read_text()
+        )
+        payload = json.loads(raw)
     except (OSError, json.JSONDecodeError) as e:
         print(f"cannot read payload: {e}", file=sys.stderr)
         return 2
@@ -792,7 +797,9 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("repo")
     p.add_argument("issue", type=int)
     p.add_argument("kind", choices=list(gh_state.MARKER_KINDS))
-    p.add_argument("--payload-file", required=True, help="Path to the JSON payload")
+    p.add_argument(
+        "--payload-file", required=True, help="Path to the JSON payload, or - for stdin"
+    )
     p.add_argument("--preamble", help="Markdown shown above the fenced marker block")
     p.set_defaults(_handler=_gh_state_write)
 

@@ -206,7 +206,9 @@ checkout.
      merged, stack per `mav-stacked-prs` — base = sibling branch.
 3. Create the worktree: `uv run maverick worktree create <branch> [--base <sibling-branch>]`.
    From this point on, all file edits happen inside the worktree path.
-4. `cd` into the worktree path for the rest of the story.
+4. Note the current directory as the **main checkout path** (Phase 10
+   returns there before destroying the worktree), then `cd` into the
+   worktree path for the rest of the story.
 5. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS branch --branch <branch>`
    (recording the branch is what lets `coord resume-point` find the PR later).
 
@@ -576,26 +578,39 @@ next step is eject-to-human, not iterate.
        --text "<one-sentence summary of what landed in Phase 5>"
    # ... one `report note` per phase that produced work worth narrating
    ```
-10. Release the claim: `uv run maverick coord release <repo> $ARGUMENTS --reason merged`.
+10. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS complete`.
+    Run it **before** releasing the claim and destroying the worktree:
+    once the worktree is gone the shell's working directory no longer
+    exists, so any later `uv run maverick …` fails (#160). The checkpoint
+    is a merge-set, so re-running it is safe.
+11. Release the claim: `uv run maverick coord release <repo> $ARGUMENTS --reason merged`.
     Releasing also writes the workflow report to the **main repo's**
     `.maverick/reports/` (it prints `report: <path>`), so the report
     exists on every exit path — including halts and crashes, where the
-    SessionEnd hook does the release.
-11. Destroy the worktree: `uv run maverick worktree destroy <worktree-path>`.
-12. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS complete`.
-13. **Regenerate the report** so it includes the final checkpoint
-    (deterministic; safe to re-run):
+    SessionEnd hook does the release. Because the `complete` checkpoint
+    landed first, this report already includes it.
+12. **Destroy the worktree — always the last step.** Leave the worktree
+    first, then remove it from the main checkout:
     ```bash
-    uv run maverick report generate <repo> $ARGUMENTS
+    cd <main-checkout-path>
+    uv run maverick worktree destroy <worktree-path>
     ```
+    Run nothing from inside the worktree after this. If a step after the
+    destroy is ever refused or fails because the directory is gone, `cd`
+    to the main checkout and re-run it there — every command in this
+    phase is idempotent.
 
 ## Phase 11: Eject (on FAIL)
 
 1. Post the reviewer's verdict as a PR comment (App identity, per
    `mav-github-issue-workflow`):
    ```bash
-   uv run maverick gh-app gh -- pr comment <pr-url> --body-file /tmp/review-verdict-$ARGUMENTS.md
+   uv run maverick gh-app gh -- pr comment <pr-url> --body-file - <<'EOF'
+   <reviewer verdict>
+   EOF
    ```
+   Pass the body on stdin (`--body-file -`), never through a shared
+   `/tmp` file — concurrent stories would overwrite each other's (#159).
 2. Apply the `needs-human` label to both the PR and the issue:
    ```bash
    gh pr edit <pr-url> --add-label needs-human

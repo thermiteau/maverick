@@ -32,8 +32,14 @@ You will be given:
 7. **Post the design** durably (writes the comment, returns its id, and records `comments.design` in the task-progress marker in one step):
 
    ```bash
-   uv run maverick issue comment post <repo> $ISSUE_NUMBER --kind design --body-file /tmp/design.md
+   uv run maverick issue comment post <repo> $ISSUE_NUMBER --kind design --body-file - <<'EOF'
+   <design markdown>
+   EOF
    ```
+
+   Pass the body on stdin (`--body-file -`), never through a fixed
+   `/tmp` path — parallel stories share `/tmp`, so one story's file can be
+   posted to another story's issue (#159).
 
 8. **Checkpoint** — `uv run maverick task-progress set <repo> $ISSUE_NUMBER design`.
 
