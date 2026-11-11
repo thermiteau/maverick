@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -292,6 +293,9 @@ def _task_progress_read(args: argparse.Namespace) -> int:
     return 0
 
 
+_PHASE_ALIASES = {"completed": "complete"}
+
+
 def _task_progress_set(args: argparse.Namespace) -> int:
     """Merge-set the do-issue-solo phase checkpoint marker. Always rolls one
     marker per issue, so re-entering instances see the latest phase rather
@@ -300,8 +304,13 @@ def _task_progress_set(args: argparse.Namespace) -> int:
     checkpoints."""
     from datetime import datetime, timezone
 
+    # `completed` is the spelling skills pass: Claude Code's worktree guard
+    # refuses any command carrying the bare token `complete` (the bash
+    # builtin), so `set ... complete` cannot run from an isolated story
+    # (#160). It is stored as `complete`, which resume and reports read.
+    phase = _PHASE_ALIASES.get(args.phase, args.phase)
     updates: dict[str, Any] = {
-        "phase": args.phase,
+        "phase": phase,
         "instance_id": coordinator.instance_id(),
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
@@ -322,7 +331,7 @@ def _task_progress_set(args: argparse.Namespace) -> int:
             "instance_id": payload["instance_id"],
             "issue": args.issue,
             "maverick_version": report_cli._get_version(),
-            "phase": args.phase,
+            "phase": phase,
             "llm": report_cli._current_llm(issue=args.issue),
         }
         skill = report_cli._current_skill(args.issue)
@@ -432,16 +441,76 @@ def _bprop_run(args: argparse.Namespace) -> int:
     return 0
 
 
+_ISSUE_REF_RE = re.compile(r"#(\d+)\b")
+
+
+def _foreign_heading_issue(body: str, issue: int) -> str | None:
+    """Return the first heading if it names issues but not `issue`, else None.
+
+    Artefact bodies start with a heading that names their issue, e.g.
+    ``## Solution design: export (#42)``. A heading that cites only *other*
+    issue numbers means the body was written for another story — the
+    #159 failure, where a stale shared ``design.md`` was posted to the
+    wrong issue. A heading with no issue reference is not checked.
+    """
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not stripped.startswith("#"):
+            return None
+        refs = {int(n) for n in _ISSUE_REF_RE.findall(stripped)}
+        if refs and issue not in refs:
+            return stripped
+        return None
+    return None
+
+
 def _read_comment_body(args: argparse.Namespace) -> str:
+    """Read the body, refusing one whose heading names a different issue."""
     if args.body_file == "-":
-        return sys.stdin.read()
-    return Path(args.body_file).read_text()
+        body = sys.stdin.read()
+    else:
+        try:
+            body = Path(args.body_file).read_text()
+        except OSError as e:
+            raise ValueError(f"cannot read --body-file: {e}") from e
+    heading = _foreign_heading_issue(body, args.issue)
+    if heading is not None:
+        raise ValueError(
+            f"refusing to post: the body's heading {heading!r} names a different "
+            f"issue than #{args.issue}, so it was likely written for another "
+            f"story (#159). Check --body-file {args.body_file!r}."
+        )
+    return body
+
+
+def _discard_scratch_body(body_file: str) -> None:
+    """Delete a posted body file that lives under ``.maverick/tmp/``.
+
+    Skills stage artefact bodies there (#159). Removing the file once it
+    is posted means it is never committed with the story, and a later
+    story can never pick it up and post it to the wrong issue.
+    """
+    if body_file == "-":
+        return
+    path = Path(body_file)
+    if path.parent.name == "tmp" and path.parent.parent.name == ".maverick":
+        try:
+            path.unlink()
+        except OSError as e:
+            print(f"warning: could not delete {path}: {e}", file=sys.stderr)
 
 
 def _issue_comment_post(args: argparse.Namespace) -> int:
-    comment_id = workflow_verbs.comment_post(
-        args.repo, args.issue, args.kind, _read_comment_body(args)
-    )
+    try:
+        comment_id = workflow_verbs.comment_post(
+            args.repo, args.issue, args.kind, _read_comment_body(args)
+        )
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    _discard_scratch_body(args.body_file)
     _json_print({"kind": args.kind, "comment_id": comment_id})
     return 0
 
@@ -454,6 +523,7 @@ def _issue_comment_update(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
+    _discard_scratch_body(args.body_file)
     _json_print({"kind": args.kind, "comment_id": comment_id})
     return 0
 
@@ -827,8 +897,11 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("issue", type=int)
     p.add_argument(
         "phase",
-        choices=list(gh_state.TASK_PROGRESS_PHASES),
-        help="The do-issue-solo phase boundary just completed",
+        choices=[*gh_state.TASK_PROGRESS_PHASES, *_PHASE_ALIASES],
+        help=(
+            "The do-issue-solo phase boundary just completed. Pass "
+            "`completed` for the final checkpoint; it is stored as `complete`."
+        ),
     )
     p.add_argument("--branch", help="Record the working branch in the payload")
     p.add_argument(

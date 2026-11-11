@@ -15,6 +15,19 @@ from maverick.runtime_hooks import claims, scope_guard
 from maverick.runtime_hooks.adapters import ClaudeAdapter, ToolCall
 
 
+@pytest.fixture(autouse=True)
+def _isolated_home(tmp_path, monkeypatch):
+    """Keep the real ~/.maverick out of every test.
+
+    The guard treats a session as autonomous when this instance holds a
+    claim in ~/.maverick/active-claims.json. Without this, a developer
+    with live claims on their machine sees interactive-mode tests fail.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+
 @pytest.fixture(scope="module")
 def guard():
     return scope_guard
