@@ -33,14 +33,20 @@ You will be given:
    comment and records `comments.tasks` in the task-progress marker):
 
    ```bash
-   uv run maverick issue comment post $REPO $ISSUE_NUMBER --kind tasks --body-file - <<'EOF'
-   <task checklist markdown>
-   EOF
+   uv run maverick issue comment post $REPO $ISSUE_NUMBER --kind tasks --body-file .maverick/tmp/tasks-$ISSUE_NUMBER.md
    ```
 
-   Pass the body on stdin (`--body-file -`), never through a fixed
-   `/tmp` path — parallel stories share `/tmp`, so one story's file can be
-   posted to another story's issue (#159).
+   Write the body with the **Write tool** (not a heredoc: worktree-isolated
+   agents have long heredocs refused as too complex to verify) to
+   `.maverick/tmp/tasks-$ISSUE_NUMBER.md` inside the story's own
+   checkout, then post that file. Name the file after the issue, and never
+   use a shared location such as `/tmp` or the session scratchpad: every
+   concurrent story sees those, and a stale `tasks.md` from another story
+   has been posted to the wrong issue (#159). If the write fails, stop and
+   report it; never post a file you did not just write. Start the body
+   with a heading that names the issue (`## Tasks (#$ISSUE_NUMBER)`); the CLI refuses a
+   body whose heading names a different issue, and deletes
+   `.maverick/tmp/` body files once they are posted.
 
    **If >= 5 tasks:** Create sub-issues linked to the parent issue per the {{ SKILLS.MAV_CREATE_TASKS }} skill, then post the summary comment listing all sub-issues with execution order via the same `issue comment post --kind tasks` command.
 

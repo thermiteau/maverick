@@ -62,22 +62,31 @@ the API response (never scraped from output that may carry warnings) and
 records it in the task-progress marker automatically:
 
 ```bash
-# Post — body on stdin ('-')
-uv run maverick issue comment post <repo> <issue> --kind design --body-file - <<'EOF'
-<design markdown>
-EOF
+# Post — body written first with the Write tool
+uv run maverick issue comment post <repo> <issue> --kind design --body-file .maverick/tmp/design-<issue>.md
 
 # Revise later — updates the same comment, keeping one artefact per kind
-uv run maverick issue comment update <repo> <issue> --kind design --body-file - <<'EOF'
-<revised design markdown>
-EOF
+uv run maverick issue comment update <repo> <issue> --kind design --body-file .maverick/tmp/design-<issue>.md
 ```
 
-Pass bodies on stdin rather than through a file. Never use a fixed
-`/tmp` path such as `/tmp/design.md`: concurrent stories on the same
-machine share `/tmp`, so one story's body can be posted to another
-story's issue — a cross-issue disclosure, not just noise (#159). If a
-file is unavoidable, create a unique one with `mktemp`.
+**Where the body comes from.** Write it with the Write tool to
+`.maverick/tmp/<kind>-<issue>.md` inside the story's own checkout, then
+pass that path. A short body may instead go on stdin (`--body-file -`
+with a heredoc), but worktree-isolated agents have long heredocs refused
+as too complex to verify, so use a file for anything longer than a few
+lines.
+
+Never name a body file without its issue number, and never put it where
+other stories can see it — `/tmp` or the session scratchpad. Stories
+running in parallel have posted another story's stale `design.md` to
+their own issue: a cross-issue disclosure, not just noise (#159). If
+writing the file fails, stop; never post a file you did not just write.
+
+Two CLI safeguards back this up. `issue comment post` and `update`
+refuse a body whose first heading names only other issue numbers, so
+start each body with a heading that names its issue (e.g.
+`## Solution design: export (#42)`). They also delete a body file under
+`.maverick/tmp/` once it is posted, so it is never committed or reused.
 
 ### Identity
 

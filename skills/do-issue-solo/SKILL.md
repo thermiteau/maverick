@@ -578,11 +578,15 @@ next step is eject-to-human, not iterate.
        --text "<one-sentence summary of what landed in Phase 5>"
    # ... one `report note` per phase that produced work worth narrating
    ```
-10. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS complete`.
-    Run it **before** releasing the claim and destroying the worktree:
-    once the worktree is gone the shell's working directory no longer
-    exists, so any later `uv run maverick …` fails (#160). The checkpoint
-    is a merge-set, so re-running it is safe.
+10. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS completed`.
+    Spell it `completed`: Claude Code's worktree guard refuses any
+    command containing the bare name of the shell's completion builtin,
+    so that spelling can never run from an isolated story (#160). The CLI
+    records it as the `complete` phase. Run it **before** releasing the
+    claim and destroying the worktree: once the worktree is gone the
+    shell's working directory no longer exists, so any later
+    `uv run maverick …` fails. The checkpoint is a merge-set, so
+    re-running it is safe.
 11. Release the claim: `uv run maverick coord release <repo> $ARGUMENTS --reason merged`.
     Releasing also writes the workflow report to the **main repo's**
     `.maverick/reports/` (it prints `report: <path>`), so the report
@@ -609,8 +613,11 @@ next step is eject-to-human, not iterate.
    <reviewer verdict>
    EOF
    ```
-   Pass the body on stdin (`--body-file -`), never through a shared
-   `/tmp` file — concurrent stories would overwrite each other's (#159).
+   Pass the body on stdin (`--body-file -`) or, if it is long, write it
+   with the Write tool to `.maverick/tmp/review-verdict-$ARGUMENTS.md`
+   in the story's checkout and pass that path. Never use a shared
+   `/tmp` or scratchpad file — concurrent stories would post each other's
+   (#159).
 2. Apply the `needs-human` label to both the PR and the issue:
    ```bash
    gh pr edit <pr-url> --add-label needs-human

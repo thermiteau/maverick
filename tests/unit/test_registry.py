@@ -668,6 +668,38 @@ class TestTemplatesAvoidSharedTmpFiles:
         ]
         assert not problems, "Use --body-file - (stdin) in: " + ", ".join(problems)
 
+    # A body file must be named after its issue: a shared fixed name such
+    # as `design.md` let one story post another story's stale design.
+    UNKEYED = re.compile(r"--body-file\s+(?!-\s)\S*/(?:design|tasks|plan|completion)\.md")
+
+    def test_body_files_are_keyed_by_issue(self):
+        src = Path(__file__).resolve().parents[2] / "src" / "maverick"
+        problems = [
+            str(path.relative_to(src))
+            for kind in ("skills", "agents")
+            for path in sorted((src / kind).glob("*/body.md.j2"))
+            if self.UNKEYED.search(path.read_text())
+        ]
+        assert not problems, "Name body files after the issue in: " + ", ".join(problems)
+
+
+class TestTemplatesAvoidBareCompleteToken:
+    """#160: Claude Code's worktree guard refuses any shell command that
+    contains the bare word `complete` (the bash completion builtin), even as
+    a quoted argument. Commands in templates must spell it `completed`."""
+
+    PATTERN = re.compile(r"`[^`\n]*\bmaverick\b[^`\n]*(?<![\w-])complete(?![\w-])[^`\n]*`")
+
+    def test_no_bare_complete_in_commands(self):
+        src = Path(__file__).resolve().parents[2] / "src" / "maverick"
+        problems = [
+            f"{path.relative_to(src)}: {m.group(0)}"
+            for kind in ("skills", "agents")
+            for path in sorted((src / kind).glob("*/body.md.j2"))
+            for m in self.PATTERN.finditer(path.read_text())
+        ]
+        assert not problems, "Use `completed` instead:\n" + "\n".join(problems)
+
 
 class TestRenderTarget:
     def test_renders_complete_plugin_into_output_root(self, tmp_path: Path):

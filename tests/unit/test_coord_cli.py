@@ -400,3 +400,102 @@ class TestGhStateWritePayloadStdin:
         )
         assert args._handler(args) == 2
         assert "cannot read payload" in capsys.readouterr().err
+
+
+class TestTaskProgressCompletedAlias:
+    """#160: `completed` is accepted and stored as the `complete` phase, so
+    worktree-isolated agents never need the bare token their guard refuses."""
+
+    def test_completed_is_stored_as_complete(self, monkeypatch):
+        seen: dict = {}
+
+        def fake_patch(repo, issue, updates):
+            seen.update(updates)
+            return {**updates}
+
+        monkeypatch.setattr(coord_cli.gh_state, "patch_task_progress", fake_patch)
+        monkeypatch.setattr(coord_cli.coordinator, "instance_id", lambda: "abc")
+        from maverick import report_cli
+
+        events: list = []
+        monkeypatch.setattr(report_cli, "append_event", events.append)
+        args = _parse("task-progress", "set", "o/r", "7", "completed")
+        assert args._handler(args) == 0
+        assert seen["phase"] == "complete"
+        assert [e["phase"] for e in events] == ["complete"]
+
+    def test_complete_still_accepted(self):
+        args = _parse("task-progress", "set", "o/r", "7", "complete")
+        assert args.phase == "complete"
+
+
+class TestIssueCommentBodySafety:
+    """#159: refuse a body written for another issue, and delete staged
+    `.maverick/tmp/` body files once posted."""
+
+    @staticmethod
+    def _fake_post(monkeypatch, sink):
+        def fake(repo, issue, kind, body):
+            sink.append(body)
+            return 99
+
+        monkeypatch.setattr(coord_cli.workflow_verbs, "comment_post", fake)
+
+    def test_foreign_heading_is_refused(self, monkeypatch, tmp_path, capsys):
+        posted: list = []
+        self._fake_post(monkeypatch, posted)
+        body = tmp_path / "design-542.md"
+        body.write_text("## Solution design: other story (#906)\n\nbody\n")
+        args = _parse(
+            "issue", "comment", "post", "o/r", "542",
+            "--kind", "design", "--body-file", str(body),
+        )
+        assert args._handler(args) == 2
+        assert posted == []
+        assert "#906" in capsys.readouterr().err
+
+    def test_matching_heading_posts(self, monkeypatch, tmp_path):
+        posted: list = []
+        self._fake_post(monkeypatch, posted)
+        body = tmp_path / "design-542.md"
+        body.write_text("## Solution design: export (#542, epic #10)\n\nbody\n")
+        args = _parse(
+            "issue", "comment", "post", "o/r", "542",
+            "--kind", "design", "--body-file", str(body),
+        )
+        assert args._handler(args) == 0
+        assert len(posted) == 1
+        assert body.exists()  # outside .maverick/tmp: left alone
+
+    def test_heading_without_issue_ref_posts(self, monkeypatch, tmp_path):
+        posted: list = []
+        self._fake_post(monkeypatch, posted)
+        body = tmp_path / "b.md"
+        body.write_text("## Tasks\n\n- [ ] one\n")
+        args = _parse(
+            "issue", "comment", "post", "o/r", "5",
+            "--kind", "tasks", "--body-file", str(body),
+        )
+        assert args._handler(args) == 0
+
+    def test_staged_body_is_deleted_after_post(self, monkeypatch, tmp_path):
+        posted: list = []
+        self._fake_post(monkeypatch, posted)
+        staged = tmp_path / ".maverick" / "tmp" / "design-542.md"
+        staged.parent.mkdir(parents=True)
+        staged.write_text("## Solution design: x (#542)\n")
+        args = _parse(
+            "issue", "comment", "post", "o/r", "542",
+            "--kind", "design", "--body-file", str(staged),
+        )
+        assert args._handler(args) == 0
+        assert not staged.exists()
+
+    def test_missing_body_file_exits_2(self, monkeypatch, tmp_path, capsys):
+        self._fake_post(monkeypatch, [])
+        args = _parse(
+            "issue", "comment", "post", "o/r", "1",
+            "--kind", "design", "--body-file", str(tmp_path / "nope.md"),
+        )
+        assert args._handler(args) == 2
+        assert "cannot read --body-file" in capsys.readouterr().err
