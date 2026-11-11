@@ -193,4 +193,4 @@ Before finalising documentation:
 - [ ] All public exports from documented modules are covered (check for multiple exports per file)
 - [ ] Numbering, terminology, and facts are consistent across all documents in the set
 
-<!-- maverick-plugin-version: 5.2.4 -->
+<!-- maverick-plugin-version: 5.2.5-dev -->
