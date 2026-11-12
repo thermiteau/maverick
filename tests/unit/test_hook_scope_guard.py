@@ -292,6 +292,9 @@ class TestShellWriteTargets:
             "cd .maverick && cp /tmp/x session-{auth,x}.json",
             "cd .maverick && cp /tmp/x s?ssion-auth.json",
             "cp /tmp/x .maverick/sess*.json",
+            "cp /tmp/x .maverick/session-auth.{j..k}son",
+            "cp /tmp/x .maverick/se{s,t}{s,t}{i,j}{o,p}{n,m}{-,_}{a,b}uth.json",
+            "bash -c 'echo x <> .maverick/sess*.json'",
         ],
     )
     def test_quoted_braced_globbed_session_auth_denied(self, guard, command):
@@ -307,10 +310,22 @@ class TestShellWriteTargets:
             "echo x <> Dockerfile",
             "echo x > >(tee Dockerfile)",
             "tee >(cat > k8s/x.yaml) < /tmp/x",
+            "cp /tmp/x Docker{e..g}ile",
+            "bash -c 'echo x <> Dockerfile'",
+            "bash -c 'echo x > >(tee Dockerfile)'",
+            "cp /tmp/x .mave*/config.json",
+            "cd .mave* && cp /tmp/x c?nfig.json",
         ],
     )
     def test_braces_and_unhandled_redirects_ask(self, guard, command):
         assert guard.decide(_bash(command)).decision == guard.ASK, command
+
+    @pytest.mark.parametrize(
+        "command",
+        ["prettier --write src/*.json 2>/dev/null", "find . -name '*.json' -exec cat {} +"],
+    )
+    def test_generic_json_globs_do_not_hit_protected_files(self, guard, command):
+        assert guard.decide(_bash(command)).decision == guard.ALLOW, command
 
     @pytest.mark.parametrize(
         "command",

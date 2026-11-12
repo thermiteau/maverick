@@ -627,7 +627,7 @@ def decide(call: ToolCall) -> Verdict:
             return Verdict(DENY, _SESSION_AUTH_DENY, always_deny=True)
         if (
             not plain
-            and any(".maverick" in n for n in names)
+            and _mentions_dir(names, ".maverick")
             and _names_match(names, "config.json")
         ):
             return Verdict(ASK, _GUARD_CONFIG_ASK)
@@ -693,8 +693,9 @@ _MAX_BRACE_EXPANSION = 64
 def _brace_expand(word: str) -> list[str]:
     """Expand ``{a,b}`` alternatives the way the shell would (bounded).
 
-    Only comma lists are expanded; anything larger than the bound returns
-    the word unexpanded plus a marker so callers can stay conservative.
+    Only comma lists are expanded. Callers must also check
+    :func:`_brace_uncertain`: a sequence (``{a..z}``) or an expansion past
+    the bound leaves braces in the result, and those words fail closed.
     """
     results = [word]
     for _ in range(8):  # nesting depth bound
@@ -716,24 +717,76 @@ def _brace_expand(word: str) -> list[str]:
     return results
 
 
+def _brace_uncertain(word: str) -> bool:
+    """Brace expansion of *word* could not be fully resolved."""
+    return any(re.search(r"\{[^{}]*(,|\.\.)[^{}]*\}", r) for r in _brace_expand(word))
+
+
+def _brace_wildcard(word: str) -> str:
+    """Replace every brace group with ``*`` (conservative glob stand-in)."""
+    previous = None
+    while previous != word:
+        previous = word
+        word = re.sub(r"\{[^{}]*\}", "*", word)
+    return word
+
+
 def _name_candidates(command: str, segments: list[_Segment] | None) -> list[str]:
-    """Raw command text plus every dequoted, brace-expanded word."""
+    """Raw command text plus every dequoted, brace-expanded word.
+
+    Each word with braces also contributes a version with every brace group
+    turned into ``*``, so ranges and over-bound expansions still match
+    protected names as globs.
+    """
     names = [command]
     for seg in segments or []:
         for word in seg.words + seg.redirect_targets:
             names.extend(_brace_expand(word))
+            if "{" in word:
+                names.append(_brace_wildcard(word))
     return names
 
 
+def _component_matches(component: str, literal: str) -> bool:
+    """*component* is *literal*, contains it, or is a glob matching it.
+
+    A glob needs at least three literal characters, so a bare ``*`` (or a
+    ``{}`` placeholder turned into one) never matches.
+    """
+    if literal in component:
+        return True
+    if not re.search(r"[*?\[]", component):
+        return False
+    if len(re.sub(r"[*?\[\]]", "", component)) < 3:
+        return False
+    return fnmatch.fnmatchcase(literal, component)
+
+
 def _names_match(names: list[str], filename: str) -> bool:
-    """*filename* appears in a candidate, literally or as a glob's basename."""
-    for name in names:
-        if filename in name:
-            return True
-        base = name.replace("\\", "/").rsplit("/", 1)[-1]
-        if re.search(r"[*?\[]", base) and fnmatch.fnmatchcase(filename, base):
-            return True
-    return False
+    """*filename* appears in a candidate literally, or as a glob basename.
+
+    Glob matches count only when the command also names ``.maverick``
+    (literally or as a glob), the directory the protected files live in,
+    so ``prettier --write *.json`` does not trip it.
+    """
+    if any(filename in name for name in names):
+        return True
+    if not _mentions_dir(names, ".maverick"):
+        return False
+    return any(
+        _component_matches(name.replace("\\", "/").rsplit("/", 1)[-1], filename)
+        for name in names
+    )
+
+
+def _mentions_dir(names: list[str], dirname: str) -> bool:
+    """Some path component of a candidate is *dirname*, literally or as a glob."""
+    return any(
+        _component_matches(part, dirname)
+        for name in names
+        for part in name.replace("\\", "/").split("/")
+        if part
+    )
 
 
 def _unhandled_redirect(tokens: list[str]) -> bool:
@@ -876,7 +929,7 @@ def _expand_nested(
         if not script:
             continue
         tokens = _shell_tokens(script) if depth < _MAX_NESTING else None
-        if tokens is None:
+        if tokens is None or _unhandled_redirect(tokens):
             unparsed.append(script)
             continue
         inner, inner_unparsed = _expand_nested(_segments(tokens), depth + 1)
@@ -920,6 +973,13 @@ def _shell_verdict(
                 return verdict
     for seg in segments:
         for raw in seg.redirect_targets + _command_write_targets(seg.words):
+            if _brace_uncertain(raw):
+                return Verdict(
+                    ASK,
+                    f"cannot resolve the brace expansion in write target {raw!r}, so "
+                    f"it may be infrastructure — explicit authorization required. "
+                    f"{INFRA_COVERAGE}",
+                )
             for target in _brace_expand(raw):
                 if _is_infra_path(target):
                     return _infra_write_verdict(target)
@@ -939,6 +999,8 @@ def _coarse_shell_verdict(
     writes = any(marker in stripped for marker in _WRITE_MARKERS)
     if SESSION_AUTH_REL in command and writes:
         return Verdict(DENY, _SESSION_AUTH_DENY, always_deny=True)
+    if ".maverick" in command and "config.json" in command and writes:
+        return Verdict(ASK, _GUARD_CONFIG_ASK)
     for sub in _split_subcommands(command):
         tokens = _git_tokens(sub)
         if tokens is not None:
