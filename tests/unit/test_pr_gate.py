@@ -127,6 +127,20 @@ class TestNarrowing:
         diff = {"src/auth/x.ts": ["// note", line]}
         assert pr_gate.scan(["src/auth/x.ts"], diff=diff).auth_hits == ["src/auth/x.ts"]
 
+    @pytest.mark.parametrize(
+        "path, line",
+        [
+            ("src/auth/x.ts", "// note \\"),
+            ("src/auth/x.c", "/* ok */ \\"),
+            ("src/auth/x.php", "// done ?> <?php"),
+            ("src/auth/x.py", "# -*- coding: utf-7 -*-"),
+        ],
+    )
+    def test_context_changing_comments_not_cleared(self, path, line):
+        """A trailing backslash comments out the next, unchanged line."""
+        diff = {path: [line]}
+        assert pr_gate.scan([path], diff=diff).auth_hits == [path]
+
     def test_whole_line_block_comment_cleared(self):
         diff = {"src/auth/x.ts": ["/* note */", "// other", ""]}
         assert pr_gate.scan(["src/auth/x.ts"], diff=diff).auth_hits == []
