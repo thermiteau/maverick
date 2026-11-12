@@ -149,10 +149,20 @@ def is_test_path(path: str) -> bool:
     return bool(_TEST_FILE_RE.search(_normalize(path)))
 
 
+#: Comment text that changes how *neighbouring* lines parse, so a change
+#: to it is never "comment only": a trailing backslash continues a C-style
+#: line comment onto the next line (commenting out unchanged code), ``?>``
+#: ends PHP mode inside a ``//`` or ``#`` comment, and a Python coding
+#: cookie changes how the whole file decodes.
+_CONTEXT_CHANGING = re.compile(r"\\\s*$|\?>|coding[:=]")
+
+
 def _is_comment_or_blank(line: str, ext: str) -> bool:
     stripped = line.strip()
     if not stripped:
         return True
+    if _CONTEXT_CHANGING.search(stripped):
+        return False
     pattern = _COMMENT_RES.get(ext)
     return bool(pattern) and bool(pattern.fullmatch(stripped))
 

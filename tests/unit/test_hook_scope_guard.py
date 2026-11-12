@@ -284,6 +284,34 @@ class TestShellWriteTargets:
     @pytest.mark.parametrize(
         "command",
         [
+            "cd .maverick && echo x > session-auth'.json'",
+            "cd .maverick && echo x > session-auth.js\"\"on",
+            "cd .maverick && cp /tmp/x session-{auth,x}.json",
+            "cd .maverick && cp /tmp/x s?ssion-auth.json",
+            "cp /tmp/x .maverick/sess*.json",
+        ],
+    )
+    def test_quoted_braced_globbed_session_auth_denied(self, guard, command):
+        """Post-push review: names hidden by quotes, braces or globs."""
+        verdict = guard.decide(_bash(command))
+        assert verdict.decision == guard.DENY, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cp /tmp/x Docker{file,}",
+            "echo x > .github/{workflows,x}/ci.yml",
+            "echo x <> Dockerfile",
+            "echo x > >(tee Dockerfile)",
+            "tee >(cat > k8s/x.yaml) < /tmp/x",
+        ],
+    )
+    def test_braces_and_unhandled_redirects_ask(self, guard, command):
+        assert guard.decide(_bash(command)).decision == guard.ASK, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
             "C=.maverick/config.json; echo '{}' > $C",
             "cd .maverick && python3 -c 'open(\"config.json\",\"w\")'",
         ],

@@ -51,6 +51,7 @@ Documented as unsafe for autonomous/CI use.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import shlex
@@ -618,12 +619,19 @@ def decide(call: ToolCall) -> Verdict:
         plain = expanded is not None and _only_plain_reads(expanded)
         # Protected files are matched by name anywhere in the command, not
         # by parsed write target: a variable, a `cd` or a wrapper can hide
-        # the real target from the parser (#167 security review).
-        if "session-auth.json" in command and not plain:
+        # the real target from the parser (#167 security review). Names are
+        # matched on the raw text and on the dequoted, brace-expanded words,
+        # so quoting (`session-auth'.json'`), braces and globs can't hide them.
+        names = _name_candidates(command, expanded)
+        if not plain and _names_match(names, "session-auth.json"):
             return Verdict(DENY, _SESSION_AUTH_DENY, always_deny=True)
-        if ".maverick" in command and "config.json" in command and not plain:
+        if (
+            not plain
+            and any(".maverick" in n for n in names)
+            and _names_match(names, "config.json")
+        ):
             return Verdict(ASK, _GUARD_CONFIG_ASK)
-        if tokens is None or segments is None:
+        if tokens is None or segments is None or _unhandled_redirect(tokens):
             return _coarse_shell_verdict(command, cwd, protected)
         verdict = _shell_verdict(segments, cwd, protected)
         if verdict is None and expanded is not None and _is_opaque(expanded):
@@ -679,10 +687,66 @@ _OPAQUE_COMMANDS = frozenset(
 )
 
 
+_MAX_BRACE_EXPANSION = 64
+
+
+def _brace_expand(word: str) -> list[str]:
+    """Expand ``{a,b}`` alternatives the way the shell would (bounded).
+
+    Only comma lists are expanded; anything larger than the bound returns
+    the word unexpanded plus a marker so callers can stay conservative.
+    """
+    results = [word]
+    for _ in range(8):  # nesting depth bound
+        changed = False
+        out: list[str] = []
+        for item in results:
+            match = re.search(r"\{([^{}]*,[^{}]*)\}", item)
+            if not match:
+                out.append(item)
+                continue
+            changed = True
+            for alt in match.group(1).split(","):
+                out.append(item[: match.start()] + alt + item[match.end():])
+        results = out
+        if len(results) > _MAX_BRACE_EXPANSION:
+            return [word]
+        if not changed:
+            break
+    return results
+
+
+def _name_candidates(command: str, segments: list[_Segment] | None) -> list[str]:
+    """Raw command text plus every dequoted, brace-expanded word."""
+    names = [command]
+    for seg in segments or []:
+        for word in seg.words + seg.redirect_targets:
+            names.extend(_brace_expand(word))
+    return names
+
+
+def _names_match(names: list[str], filename: str) -> bool:
+    """*filename* appears in a candidate, literally or as a glob's basename."""
+    for name in names:
+        if filename in name:
+            return True
+        base = name.replace("\\", "/").rsplit("/", 1)[-1]
+        if re.search(r"[*?\[]", base) and fnmatch.fnmatchcase(filename, base):
+            return True
+    return False
+
+
+def _unhandled_redirect(tokens: list[str]) -> bool:
+    """Read-write (``<>``) or process-substitution operators: parse can't see targets."""
+    return any(
+        _is_operator(t) and ("<>" in t or ">(" in t or "<(" in t) for t in tokens
+    )
+
+
 def _is_opaque(segments: list[_Segment]) -> bool:
     """True when argv parsing cannot be trusted to find every write target."""
     for seg in segments:
-        if any(re.search(r"[$`*?\[]", t) for t in seg.redirect_targets):
+        if any(re.search(r"[$`*?\[{}~]", t) for t in seg.redirect_targets):
             return True
         words = _strip_prefix(seg.words)
         if len(words) < len(seg.words) and any("$" in w for w in seg.words):
@@ -708,7 +772,7 @@ def _is_opaque(segments: list[_Segment]) -> bool:
         if name in ("awk", "gawk") and ("-i" in args or "inplace" in args):
             return True
         targets = _command_write_targets(words)
-        if any(re.search(r"[$`*?\[]", t) for t in targets):
+        if any(re.search(r"[$`*?\[{}~]", t) for t in targets):
             return True
     return False
 
@@ -855,9 +919,10 @@ def _shell_verdict(
             if verdict:
                 return verdict
     for seg in segments:
-        for target in seg.redirect_targets + _command_write_targets(seg.words):
-            if _is_infra_path(target):
-                return _infra_write_verdict(target)
+        for raw in seg.redirect_targets + _command_write_targets(seg.words):
+            for target in _brace_expand(raw):
+                if _is_infra_path(target):
+                    return _infra_write_verdict(target)
     return None
 
 
