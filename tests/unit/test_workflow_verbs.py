@@ -399,7 +399,7 @@ class TestPrReady:
             patch.object(workflow_verbs, "_app_env", return_value=None),
         ):
             code, message = workflow_verbs.pr_ready("o/r", "9", **kwargs)
-        mutations = [c for c in calls if c[:2] == ("pr", "ready")]
+        mutations = [c for c in calls if c[:2] in {("pr", "ready"), ("pr", "merge")}]
         return code, message, mutations
 
     def _view(self, **overrides):
@@ -458,12 +458,36 @@ class TestPrReady:
             undo=True,
         )
         assert code == workflow_verbs.PR_READY_OK
-        assert mutations == [("pr", "ready", "9", "--repo", "o/r", "--undo")]
+        assert mutations == [
+            ("pr", "merge", "9", "--repo", "o/r", "--disable-auto"),
+            ("pr", "ready", "9", "--repo", "o/r", "--undo"),
+        ]
 
-    def test_undo_on_draft_is_noop(self):
+    def test_undo_on_draft_still_disables_auto_merge(self):
         code, _, mutations = self._run(self._view(), undo=True)
         assert code == workflow_verbs.PR_READY_OK
-        assert mutations == []
+        assert mutations == [("pr", "merge", "9", "--repo", "o/r", "--disable-auto")]
+
+    def test_undo_tolerates_auto_merge_already_off(self):
+        import subprocess
+
+        calls = []
+
+        def fake_gh(*args, env=None):
+            calls.append(args)
+            if args[:2] == ("pr", "view"):
+                return json.dumps(self._view(isDraft=False))
+            if args[:2] == ("pr", "merge"):
+                raise subprocess.CalledProcessError(1, "gh", stderr="not enabled")
+            return ""
+
+        with (
+            patch.object(workflow_verbs, "_gh", side_effect=fake_gh),
+            patch.object(workflow_verbs, "_app_env", return_value=None),
+        ):
+            code, _ = workflow_verbs.pr_ready("o/r", "9", undo=True)
+        assert code == workflow_verbs.PR_READY_OK
+        assert ("pr", "ready", "9", "--repo", "o/r", "--undo") in calls
 
 
 # ---------------------------------------------------------------------------

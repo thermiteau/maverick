@@ -1051,7 +1051,8 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Bounded wait for a PR to merge (default) or for its checks to "
             "settle (--checks). Exit codes: 0 ok, 3 timeout, 4 closed "
-            "without merge, 5 checks failed. Replaces unbounded polling."
+            "without merge, 5 checks failed, 6 PR is a draft (merge mode "
+            "only; a draft never merges). Replaces unbounded polling."
         ),
     )
     p.add_argument("repo")
@@ -1069,7 +1070,8 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         "ready",
         help=(
             "Mark a draft PR ready for review once it is settled, or put it "
-            "back to draft with --undo before pushing more work. Marking ready "
+            "back to draft with --undo (which also turns auto-merge off) "
+            "before pushing more work. Marking ready "
             "is refused unless every check on the PR head has passed. Exit "
             "codes: 0 ok (or already in that state), 2 error, 3 checks still "
             "running, 4 PR not open, 5 checks failed, 6 head is not "

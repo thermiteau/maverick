@@ -473,8 +473,9 @@ its impact set.
      it cannot be resolved.
    Do not proceed to Phase 9 until the wait exits 0. The PR stays a
    draft through these fixes. If the project's CI skips draft PRs, the
-   wait finds no checks and exits 0; CI then runs when Phase 10 marks
-   the PR ready, and auto-merge waits for it.
+   wait finds no checks and exits 0, so CI is checked again after
+   Phase 10 marks the PR ready. That only works if the CI workflow
+   triggers on the `ready_for_review` event as well as the defaults.
 6. **Browser/UI verification is non-blocking.** If the change touches UI
    and {{ RUNTIME.AGENT }}'s global instructions or a project skill ask for browser
    verification, run it with a strict timeout (e.g. 5 min total). On
@@ -568,6 +569,16 @@ next step is eject-to-human, not iterate.
      head, then re-run Phase 9 against it.
    - Exit 4: the PR was closed or merged under you — stop and report.
 
+   Then wait for checks once more, before approving. A project whose CI
+   skips drafts only starts it now, and auto-merge waits only for
+   *required* checks:
+   ```bash
+   uv run maverick pr wait <repo> <pr-num> --checks --timeout 30m
+   ```
+   Exit 0 continues. Exit 5 (failed) or 3 (timed out): put the PR back
+   to draft (`uv run maverick pr ready <repo> <pr-num> --undo`), then
+   handle it as in Phase 8 step 5 and re-run Phase 9.
+
    **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} settled`.
 
    **Re-entry.** Once the PR is ready, any change to the branch — a
@@ -576,7 +587,9 @@ next step is eject-to-human, not iterate.
    ```bash
    uv run maverick pr ready <repo> <pr-num> --undo
    ```
-   then goes back through Phase 8 step 5, Phase 9 and this step. The
+   This also turns auto-merge off, so an approval left from the last
+   pass cannot merge the new head. Then go back through Phase 8 step 5,
+   Phase 9 and this step. The
    commonest case is auto-merge stalling because branch protection
    requires the branch to be up to date with its base.
 4. The Maverick GitHub App posts the approval:
@@ -681,15 +694,18 @@ next step is eject-to-human, not iterate.
    (#159).
 2. Apply the `needs-human` label to both the PR and the issue, and mark
    the PR ready, so its draft/ready state says whose turn it is (draft:
-   the agent's; ready: a person's). Use plain `gh pr ready` here, not
-   `maverick pr ready`, which refuses while checks are failing:
+   the agent's; ready: a person's). Turn auto-merge off first: a
+   re-entry may have left it enabled with an approval from an earlier
+   pass, and marking ready would then merge the FAILed head. The
+   disable fails harmlessly when auto-merge is already off. Use plain
+   `gh pr ready` here, not `maverick pr ready`, which refuses while
+   checks are failing:
    ```bash
    gh pr edit <pr-url> --add-label needs-human
    gh issue edit {{ ARGUMENTS }} --add-label needs-human
-   gh pr ready <pr-url>
+   uv run maverick gh-app gh -- pr merge <pr-url> --disable-auto || true
+   uv run maverick gh-app gh -- pr ready <pr-url>
    ```
-   Ejecting does not approve or enable auto-merge, so marking ready
-   cannot merge anything on its own.
 3. Request human review on the PR:
    ```bash
    gh pr edit <pr-url> --add-reviewer <human-handle>

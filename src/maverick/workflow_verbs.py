@@ -851,10 +851,18 @@ def pr_ready(
     draft = bool(details.get("isDraft"))
 
     if undo:
+        # Turn auto-merge off as well: it may survive the draft conversion,
+        # and with an approval still standing, marking the PR ready again
+        # (by an eject, or by hand) would merge a head no gate has passed.
+        # Fails harmlessly when auto-merge isn't enabled.
+        try:
+            _gh("pr", "merge", pr, "--repo", repo, "--disable-auto", env=_app_env())
+        except subprocess.CalledProcessError:
+            pass
         if draft:
-            return PR_READY_OK, "already a draft"
+            return PR_READY_OK, "already a draft (auto-merge off)"
         _gh("pr", "ready", pr, "--repo", repo, "--undo", env=_app_env())
-        return PR_READY_OK, "converted to draft"
+        return PR_READY_OK, "converted to draft (auto-merge off)"
 
     head = str(details.get("headRefOid") or "")
     if expect_head and head != expect_head:
