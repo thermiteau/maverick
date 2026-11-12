@@ -204,7 +204,10 @@ class TestShellWriteTargets:
             "cat Dockerfile >&2",
         ],
     )
-    def test_reads_and_prose_pass(self, guard, command):
+    def test_reads_and_prose_pass(self, guard, command, monkeypatch):
+        # Pin the branch: on a protected branch (CI on main) `git commit`
+        # rightly asks, which is not what this test is about.
+        monkeypatch.setattr(guard, "_current_branch", lambda cwd: "feat/1-x")
         assert guard.decide(_bash(command)).decision == guard.ALLOW, command
 
     @pytest.mark.parametrize(
