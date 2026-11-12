@@ -225,6 +225,20 @@ For each story being worked on (whether as subagent or serially):
    - Release the story-level claim.
    - Destroy the worktree.
 
+**Draft until the story's agent reports done.** Every story PR is
+opened as a draft (`do-issue-solo` Phase 8), and only that
+story's own run marks it ready, at its Phase 10 step 3 or on eject.
+The coordinator treats a draft story PR as unfinished, and never marks
+one ready or merges it on a story's behalf. If the coordinator itself
+changes a story branch — a conflict resolution, a base merge, a
+regenerated migration — it first runs
+`uv run maverick pr ready <repo> <pr> --undo`, and the story goes back
+through `do-issue-solo` Phase 8 step 5 onward. A project
+that merges story PRs through its own queue instead of auto-merge runs
+`uv run maverick pr ready <repo> <pr> --expect-head <sha>` immediately
+before `gh pr merge`, so a head that moved since the gates ran is never
+merged.
+
 ### Phase 5e: Wave completion
 
 When every story in the wave is terminal (merged or ejected):
@@ -326,6 +340,9 @@ state.
 - **The Maverick GitHub App is mandatory.** Abort on entry if `maverick gh-app status` does not report `configured: true`.
 - **Binary review everywhere.** No story merges without PASS from
   `agent-code-reviewer`. No fix loop.
+- **Draft until settled.** A story PR stays a draft while any agent is
+  still gating or changing it. Ready means a person, or the merge, is
+  next.
 - **Block propagation is idempotent.** Re-running it after a crash is
   safe; the marker-walk-clear protocol handles partial completion.
 - **Release every claim on every exit.** Success, eject, abort, crash.

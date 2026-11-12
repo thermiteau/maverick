@@ -431,8 +431,21 @@ def _pr_wait(args: argparse.Namespace) -> int:
         workflow_verbs.PR_WAIT_TIMEOUT: "timeout",
         workflow_verbs.PR_WAIT_CLOSED: "closed-without-merge",
         workflow_verbs.PR_WAIT_CHECKS_FAILED: "checks-failed",
+        workflow_verbs.PR_WAIT_DRAFT: "draft — mark it ready (maverick pr ready) before waiting for the merge",
     }
     print(labels.get(code, str(code)))
+    return code
+
+
+def _pr_ready(args: argparse.Namespace) -> int:
+    try:
+        code, message = workflow_verbs.pr_ready(
+            args.repo, args.pr, undo=args.undo, expect_head=args.expect_head
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"pr ready error: {e.stderr or e}", file=sys.stderr)
+        return 2
+    print(message)
     return code
 
 
@@ -1038,7 +1051,8 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Bounded wait for a PR to merge (default) or for its checks to "
             "settle (--checks). Exit codes: 0 ok, 3 timeout, 4 closed "
-            "without merge, 5 checks failed. Replaces unbounded polling."
+            "without merge, 5 checks failed, 6 PR is a draft (merge mode "
+            "only; a draft never merges). Replaces unbounded polling."
         ),
     )
     p.add_argument("repo")
@@ -1051,6 +1065,31 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--timeout", default="30m", help="e.g. 300s, 30m, 1h (default 30m)")
     p.add_argument("--interval", type=int, default=15, help="Poll interval seconds")
     p.set_defaults(_handler=_pr_wait)
+
+    p = pr_sub.add_parser(
+        "ready",
+        help=(
+            "Mark a draft PR ready for review once it is settled, or put it "
+            "back to draft with --undo (which also turns auto-merge off) "
+            "before pushing more work. Marking ready "
+            "is refused unless every check on the PR head has passed. Exit "
+            "codes: 0 ok (or already in that state), 2 error, 3 checks still "
+            "running, 4 PR not open, 5 checks failed, 6 head is not "
+            "--expect-head."
+        ),
+    )
+    p.add_argument("repo")
+    p.add_argument("pr", help="PR number or URL")
+    p.add_argument(
+        "--undo",
+        action="store_true",
+        help="Convert the PR back to a draft (no-op if it already is one)",
+    )
+    p.add_argument(
+        "--expect-head",
+        help="Refuse unless the PR head is this commit (pass `git rev-parse HEAD`)",
+    )
+    p.set_defaults(_handler=_pr_ready)
 
     # tasks — durable task-list operations
     tasks = subparsers.add_parser(

@@ -406,10 +406,21 @@ its impact set.
      scope (it needs an auth or infrastructure change the issue does not
      authorise, or a product decision), halt and surface the findings to
      the user verbatim.
+   - **Round cap.** Count the BLOCKING rounds per file or mechanism
+     (a sanitiser, a parser, a key scheme). After **two** rounds on the
+     same one, stop refining it: a third finding there means
+     point-patches are chasing edge cases. Either switch it to a
+     fail-closed design (refuse, redact or withhold anything it cannot
+     classify with certainty) and run this phase once more, or halt and
+     surface the remaining findings to the user. Never start a third
+     narrower regex or parser rule for the same mechanism. Record the
+     count in the step 4 note as `rounds=<n>`.
    - **FINDINGS** — append a `## Security Review` section to the PR
      body draft listing each finding (severity, location, description,
      recommendation). The PR may proceed to Phase 8 with these items
      visible to the human reviewer and to agent-code-reviewer.
+     Any finding the PR leaves unfixed gets a follow-up issue per
+     "Follow-up Issues" below.
    - **PASS** — record `Security review: PASS (<files> files, <checklist
      summary>).` in the PR body draft so the gate is auditable.
 6. The PR cannot proceed to Phase 8 until this phase has returned a
@@ -428,7 +439,14 @@ its impact set.
    ```bash
    PR_TARGET=$(uv run maverick git-workflow pr-target)
    ```
-   Open the PR. The body **must** end with a literal `Closes #$ARGUMENTS`
+   Open the PR **as a draft**. Phases 8–10 still have gates to run, and
+   an open, non-draft PR looks finished: a human can't tell "an agent is
+   still working on this" from "ready for you", and GitHub will merge
+   either. GitHub refuses to merge a draft, from the button and from
+   `gh pr merge`. The PR is marked ready only in Phase 10, once it is
+   settled, or in Phase 11 when it is handed to a human.
+
+   The body **must** end with a literal `Closes #$ARGUMENTS`
    line (capitalised; not `Refs`, `Related to`, or any other phrasing).
    `gh pr merge --squash` carries the PR body verbatim into the squash
    commit body; GitHub only auto-closes the linked issue when one of
@@ -439,7 +457,7 @@ its impact set.
    even after promotion (#56). Use `Refs #N` only for cross-references
    to *other* issues, never for the primary story:
    ```bash
-   gh pr create --base "$PR_TARGET" --head <branch> \
+   gh pr create --draft --base "$PR_TARGET" --head <branch> \
        --title "<conventional title referencing #$ARGUMENTS>" \
        --body "$(cat <<'PR_EOF'
    ## Summary
@@ -460,7 +478,11 @@ its impact set.
    - Exit 3: timeout — investigate the stuck check (a required check
      that never reports blocks auto-merge too); report to the user if
      it cannot be resolved.
-   Do not proceed to Phase 9 until the wait exits 0.
+   Do not proceed to Phase 9 until the wait exits 0. The PR stays a
+   draft through these fixes. If the project's CI skips draft PRs, the
+   wait finds no checks and exits 0, so CI is checked again after
+   Phase 10 marks the PR ready. That only works if the CI workflow
+   triggers on the `ready_for_review` event as well as the defaults.
 6. **Browser/UI verification is non-blocking.** If the change touches UI
    and Claude's global instructions or a project skill ask for browser
    verification, run it with a strict timeout (e.g. 5 min total). On
@@ -530,12 +552,59 @@ next step is eject-to-human, not iterate.
      post the scan output as a comment, release the claim) and stop.
    - Exit 2: scan error — retry once; if it still fails, eject rather
      than merging unverified.
-3. The Maverick GitHub App posts the approval:
+3. **Settle, then mark the PR ready.** Ready is the handoff: it tells a
+   human the agent is done, and it is the last step before approval and
+   auto-merge (GitHub can't enable auto-merge on a draft). Before it:
+   - nothing this run started against the branch is still running — a
+     browser check, a background job, a subagent, a migration
+     regeneration;
+   - the local branch has no unpushed commits, and its head is the
+     commit Phases 8 and 9 checked.
+
+   Then let the CLI confirm the pushed head has passed its checks and
+   flip the PR:
+   ```bash
+   uv run maverick pr ready <repo> <pr-num> --expect-head "$(git rev-parse HEAD)"
+   ```
+   - Exit 0: marked ready (or already was) — continue.
+   - Exit 3: checks still running — wait with
+     `uv run maverick pr wait <repo> <pr-num> --checks --timeout 30m`,
+     then re-run.
+   - Exit 5 or 6: the checks failed, or the PR head is not the commit
+     that was reviewed (push any local commits first). The PR is still a
+     draft and is not settled: go back to Phase 8 step 5 for the pushed
+     head, then re-run Phase 9 against it.
+   - Exit 4: the PR was closed or merged under you — stop and report.
+
+   Then wait for checks once more, before approving. A project whose CI
+   skips drafts only starts it now, and auto-merge waits only for
+   *required* checks:
+   ```bash
+   uv run maverick pr wait <repo> <pr-num> --checks --timeout 30m
+   ```
+   Exit 0 continues. Exit 5 (failed) or 3 (timed out): put the PR back
+   to draft (`uv run maverick pr ready <repo> <pr-num> --undo`), then
+   handle it as in Phase 8 step 5 and re-run Phase 9.
+
+   **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS settled`.
+
+   **Re-entry.** Once the PR is ready, any change to the branch — a
+   conflict resolution, a base-branch merge, a migration regeneration —
+   first puts it back to draft, **before its first commit**:
+   ```bash
+   uv run maverick pr ready <repo> <pr-num> --undo
+   ```
+   This also turns auto-merge off, so an approval left from the last
+   pass cannot merge the new head. Then go back through Phase 8 step 5,
+   Phase 9 and this step. The
+   commonest case is auto-merge stalling because branch protection
+   requires the branch to be up to date with its base.
+4. The Maverick GitHub App posts the approval:
    ```bash
    uv run maverick gh-app gh -- pr review <pr-url> --approve \
        --body "Approved by agent-code-reviewer at $(date -u +%FT%TZ)"
    ```
-4. Enable auto-merge (squash):
+5. Enable auto-merge (squash):
    ```bash
    uv run maverick gh-app gh -- pr merge <pr-url> --auto --squash
    ```
@@ -545,18 +614,22 @@ next step is eject-to-human, not iterate.
    adopted) the CI-side re-run of agent-code-reviewer. If all required
    checks were already green, GitHub merges immediately; otherwise it
    merges when they pass.
-5. **Wait for the merge to land** with a bounded wait — cleanup steps
+6. **Wait for the merge to land** with a bounded wait — cleanup steps
    below assume the PR is no longer in flight:
    ```bash
    uv run maverick pr wait <repo> <pr-num> --timeout 30m
    ```
-   Exit 3 (timeout) usually means a required check never reported —
-   investigate rather than looping; exit 4 (closed without merge) means
-   a human intervened — stop and report.
-6. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS merged`.
-7. Post the completion comment on the issue per
-   `mav-github-issue-workflow`.
-8. **Run the post-merge issue-lifecycle step.** This always posts an
+   Exit 3 (timeout) usually means a required check never reported, or
+   the branch must be brought up to date with its base (a re-entry, per
+   step 3) — investigate rather than looping; exit 4 (closed without
+   merge) means a human intervened — stop and report; exit 6 means the
+   PR is a draft again — someone converted it, so stop and report
+   rather than marking it ready over them.
+7. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS merged`.
+8. Post the completion comment on the issue per
+   `mav-github-issue-workflow`, and file any reviewer notes
+   the PR left unfixed per "Follow-up Issues" below.
+9. **Run the post-merge issue-lifecycle step.** This always posts an
    audit comment ("Resolved in PR #<P>; merged to <branch>.") and
    applies a `merged-to-<branch>` label, then closes the issue per the
    per-project policy in `.maverick/config.json`'s
@@ -572,18 +645,18 @@ next step is eject-to-human, not iterate.
    uv run maverick issue close-on-merge <repo> $ARGUMENTS \
        --pr <pr-num> --target <target-branch>
    ```
-9. **Emit per-phase narrative notes** so the report's Analysis section
-   has context for what happened. The JSONL is the authoritative
-   record; the report is a pure render of it, so notes must land in
-   the JSONL — do not edit the rendered Markdown by hand:
-   ```bash
-   uv run maverick report note --issue $ARGUMENTS --phase design \
-       --text "<one-sentence summary of what the analyst returned>"
-   uv run maverick report note --issue $ARGUMENTS --phase implement \
-       --text "<one-sentence summary of what landed in Phase 5>"
-   # ... one `report note` per phase that produced work worth narrating
-   ```
-10. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS completed`.
+10. **Emit per-phase narrative notes** so the report's Analysis section
+    has context for what happened. The JSONL is the authoritative
+    record; the report is a pure render of it, so notes must land in
+    the JSONL — do not edit the rendered Markdown by hand:
+    ```bash
+    uv run maverick report note --issue $ARGUMENTS --phase design \
+        --text "<one-sentence summary of what the analyst returned>"
+    uv run maverick report note --issue $ARGUMENTS --phase implement \
+        --text "<one-sentence summary of what landed in Phase 5>"
+    # ... one `report note` per phase that produced work worth narrating
+    ```
+11. **Checkpoint**: `uv run maverick task-progress set <repo> $ARGUMENTS completed`.
     Spell it `completed`: Claude Code's worktree guard refuses any
     command containing the bare name of the shell's completion builtin,
     so that spelling can never run from an isolated story (#160). The CLI
@@ -592,13 +665,13 @@ next step is eject-to-human, not iterate.
     shell's working directory no longer exists, so any later
     `uv run maverick …` fails. The checkpoint is a merge-set, so
     re-running it is safe.
-11. Release the claim: `uv run maverick coord release <repo> $ARGUMENTS --reason merged`.
+12. Release the claim: `uv run maverick coord release <repo> $ARGUMENTS --reason merged`.
     Releasing also writes the workflow report to the **main repo's**
     `.maverick/reports/` (it prints `report: <path>`), so the report
     exists on every exit path — including halts and crashes, where the
     SessionEnd hook does the release. Because the `complete` checkpoint
     landed first, this report already includes it.
-12. **Destroy the worktree — always the last step.** Leave the worktree
+13. **Destroy the worktree — always the last step.** Leave the worktree
     first, then remove it from the main checkout:
     ```bash
     cd <main-checkout-path>
@@ -616,6 +689,9 @@ next step is eject-to-human, not iterate.
    ```bash
    uv run maverick gh-app gh -- pr comment <pr-url> --body-file - <<'EOF'
    <reviewer verdict>
+
+   This PR is now waiting on a person: the agent has stopped work on it
+   and marked it ready for review.
    EOF
    ```
    Pass the body on stdin (`--body-file -`) or, if it is long, write it
@@ -623,10 +699,19 @@ next step is eject-to-human, not iterate.
    in the story's checkout and pass that path. Never use a shared
    `/tmp` or scratchpad file — concurrent stories would post each other's
    (#159).
-2. Apply the `needs-human` label to both the PR and the issue:
+2. Apply the `needs-human` label to both the PR and the issue, and mark
+   the PR ready, so its draft/ready state says whose turn it is (draft:
+   the agent's; ready: a person's). Turn auto-merge off first: a
+   re-entry may have left it enabled with an approval from an earlier
+   pass, and marking ready would then merge the FAILed head. The
+   disable fails harmlessly when auto-merge is already off. Use plain
+   `gh pr ready` here, not `maverick pr ready`, which refuses while
+   checks are failing:
    ```bash
    gh pr edit <pr-url> --add-label needs-human
    gh issue edit $ARGUMENTS --add-label needs-human
+   uv run maverick gh-app gh -- pr merge <pr-url> --disable-auto || true
+   uv run maverick gh-app gh -- pr ready <pr-url>
    ```
 3. Request human review on the PR:
    ```bash
@@ -655,6 +740,29 @@ next step is eject-to-human, not iterate.
 8. Do **not** destroy the worktree — the human may want to inspect it.
    Log the worktree path so the user can find it.
 
+## Follow-up Issues
+
+Reviewers return low and informational notes on every story. Opening an
+issue per note buries the backlog in one-liners and duplicates. When
+the run ends (Phase 10 or 11):
+
+- **Don't file** notes the PR already fixed.
+- **One issue per story** for the remaining low and informational
+  notes: a checklist in one body, the area in the title
+  (`Review notes from #$ARGUMENTS: <area>`), labelled
+  `review-notes` (create the label if it doesn't exist).
+- **A separate issue** only for an unfixed medium, high or critical
+  finding, or for a distinct defect in code this story didn't change.
+- **Search before filing.** For each would-be issue, look for an open
+  one that covers it
+  (`gh issue list --state open --search "<file path or key term>"`).
+  If one exists, comment on it instead of opening another.
+
+File with the Maverick GitHub App identity
+(`uv run maverick gh-app gh -- issue create …`), with a body file under
+`.maverick/tmp/` in the story's checkout. Docs drift from Phase 6 keeps
+its own single issue.
+
 ## Rules
 
 - **Only pause for user input** when blocked or when the issue is ambiguous.
@@ -663,6 +771,14 @@ next step is eject-to-human, not iterate.
 - **Always use conventional commits** referencing `#$ARGUMENTS`.
 - **Push after every task.** Durability trumps CI-cost optimisation.
 - **Binary review.** PASS auto-merges; FAIL ejects. No fix loop.
+- **Draft until settled.** The PR is opened as a draft and marked ready
+  only by Phase 10 step 3 or by an eject. Any later push to the branch
+  first puts it back to draft with `maverick pr ready --undo`.
+- **Two rounds, then change approach.** After two review rounds on the
+  same file or mechanism — security, docs accuracy or any other — stop
+  point-patching. Security switches to a fail-closed design or ejects
+  (Phase 7). For other reviews, the next round covers only the lines
+  changed since the last one, not a fresh sample.
 - **Release the claim on every exit path.** Success, eject, abort, crash —
   all of them must release. Release is also what writes the report.
 - **Every dispatch carries `maverick-issue: $ARGUMENTS`.** Without it,

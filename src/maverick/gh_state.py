@@ -74,6 +74,7 @@ TASK_PROGRESS_PHASES = (
     "pr_open",
     "ci_green",
     "review",
+    "settled",
     "merged",
     "complete",
     "ejected",
