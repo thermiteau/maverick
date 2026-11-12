@@ -51,6 +51,7 @@ Documented as unsafe for autonomous/CI use.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import shlex
@@ -618,12 +619,19 @@ def decide(call: ToolCall) -> Verdict:
         plain = expanded is not None and _only_plain_reads(expanded)
         # Protected files are matched by name anywhere in the command, not
         # by parsed write target: a variable, a `cd` or a wrapper can hide
-        # the real target from the parser (#167 security review).
-        if "session-auth.json" in command and not plain:
+        # the real target from the parser (#167 security review). Names are
+        # matched on the raw text and on the dequoted, brace-expanded words,
+        # so quoting (`session-auth'.json'`), braces and globs can't hide them.
+        names = _name_candidates(command, expanded)
+        if not plain and _names_match(names, "session-auth.json"):
             return Verdict(DENY, _SESSION_AUTH_DENY, always_deny=True)
-        if ".maverick" in command and "config.json" in command and not plain:
+        if (
+            not plain
+            and _mentions_dir(names, ".maverick")
+            and _names_match(names, "config.json")
+        ):
             return Verdict(ASK, _GUARD_CONFIG_ASK)
-        if tokens is None or segments is None:
+        if tokens is None or segments is None or _unhandled_redirect(tokens):
             return _coarse_shell_verdict(command, cwd, protected)
         verdict = _shell_verdict(segments, cwd, protected)
         if verdict is None and expanded is not None and _is_opaque(expanded):
@@ -679,10 +687,119 @@ _OPAQUE_COMMANDS = frozenset(
 )
 
 
+_MAX_BRACE_EXPANSION = 64
+
+
+def _brace_expand(word: str) -> list[str]:
+    """Expand ``{a,b}`` alternatives the way the shell would (bounded).
+
+    Only comma lists are expanded. Callers must also check
+    :func:`_brace_uncertain`: a sequence (``{a..z}``) or an expansion past
+    the bound leaves braces in the result, and those words fail closed.
+    """
+    results = [word]
+    for _ in range(8):  # nesting depth bound
+        changed = False
+        out: list[str] = []
+        for item in results:
+            match = re.search(r"\{([^{}]*,[^{}]*)\}", item)
+            if not match:
+                out.append(item)
+                continue
+            changed = True
+            for alt in match.group(1).split(","):
+                out.append(item[: match.start()] + alt + item[match.end():])
+        results = out
+        if len(results) > _MAX_BRACE_EXPANSION:
+            return [word]
+        if not changed:
+            break
+    return results
+
+
+def _brace_uncertain(word: str) -> bool:
+    """Brace expansion of *word* could not be fully resolved."""
+    return any(re.search(r"\{[^{}]*(,|\.\.)[^{}]*\}", r) for r in _brace_expand(word))
+
+
+def _brace_wildcard(word: str) -> str:
+    """Replace every brace group with ``*`` (conservative glob stand-in)."""
+    previous = None
+    while previous != word:
+        previous = word
+        word = re.sub(r"\{[^{}]*\}", "*", word)
+    return word
+
+
+def _name_candidates(command: str, segments: list[_Segment] | None) -> list[str]:
+    """Raw command text plus every dequoted, brace-expanded word.
+
+    Each word with braces also contributes a version with every brace group
+    turned into ``*``, so ranges and over-bound expansions still match
+    protected names as globs.
+    """
+    names = [command]
+    for seg in segments or []:
+        for word in seg.words + seg.redirect_targets:
+            names.extend(_brace_expand(word))
+            if "{" in word:
+                names.append(_brace_wildcard(word))
+    return names
+
+
+def _component_matches(component: str, literal: str) -> bool:
+    """*component* is *literal*, contains it, or is a glob matching it.
+
+    A glob needs at least three literal characters, so a bare ``*`` (or a
+    ``{}`` placeholder turned into one) never matches.
+    """
+    if literal in component:
+        return True
+    if not re.search(r"[*?\[]", component):
+        return False
+    if len(re.sub(r"[*?\[\]]", "", component)) < 3:
+        return False
+    return fnmatch.fnmatchcase(literal, component)
+
+
+def _names_match(names: list[str], filename: str) -> bool:
+    """*filename* appears in a candidate literally, or as a glob basename.
+
+    Glob matches count only when the command also names ``.maverick``
+    (literally or as a glob), the directory the protected files live in,
+    so ``prettier --write *.json`` does not trip it.
+    """
+    if any(filename in name for name in names):
+        return True
+    if not _mentions_dir(names, ".maverick"):
+        return False
+    return any(
+        _component_matches(name.replace("\\", "/").rsplit("/", 1)[-1], filename)
+        for name in names
+    )
+
+
+def _mentions_dir(names: list[str], dirname: str) -> bool:
+    """Some path component of a candidate is *dirname*, literally or as a glob."""
+    return any(
+        _component_matches(part, dirname)
+        for name in names
+        for part in name.replace("\\", "/").split("/")
+        if part
+    )
+
+
+def _unhandled_redirect(tokens: list[str]) -> bool:
+    """Read-write (``<>``) or process-substitution operators: parse can't see targets."""
+    return any(
+        _is_operator(t) and ("<>" in t or ">(" in t or "<(" in t) for t in tokens
+    )
+
+
 def _is_opaque(segments: list[_Segment]) -> bool:
     """True when argv parsing cannot be trusted to find every write target."""
     for seg in segments:
-        if any(re.search(r"[$`*?\[]", t) for t in seg.redirect_targets):
+        if any(re.search(r"[$`*?\[{}~]", t) for t in seg.redirect_targets):
             return True
         words = _strip_prefix(seg.words)
         if len(words) < len(seg.words) and any("$" in w for w in seg.words):
@@ -708,7 +825,7 @@ def _is_opaque(segments: list[_Segment]) -> bool:
         if name in ("awk", "gawk") and ("-i" in args or "inplace" in args):
             return True
         targets = _command_write_targets(words)
-        if any(re.search(r"[$`*?\[]", t) for t in targets):
+        if any(re.search(r"[$`*?\[{}~]", t) for t in targets):
             return True
     return False
 
@@ -812,7 +929,7 @@ def _expand_nested(
         if not script:
             continue
         tokens = _shell_tokens(script) if depth < _MAX_NESTING else None
-        if tokens is None:
+        if tokens is None or _unhandled_redirect(tokens):
             unparsed.append(script)
             continue
         inner, inner_unparsed = _expand_nested(_segments(tokens), depth + 1)
@@ -855,9 +972,17 @@ def _shell_verdict(
             if verdict:
                 return verdict
     for seg in segments:
-        for target in seg.redirect_targets + _command_write_targets(seg.words):
-            if _is_infra_path(target):
-                return _infra_write_verdict(target)
+        for raw in seg.redirect_targets + _command_write_targets(seg.words):
+            if _brace_uncertain(raw):
+                return Verdict(
+                    ASK,
+                    f"cannot resolve the brace expansion in write target {raw!r}, so "
+                    f"it may be infrastructure — explicit authorization required. "
+                    f"{INFRA_COVERAGE}",
+                )
+            for target in _brace_expand(raw):
+                if _is_infra_path(target):
+                    return _infra_write_verdict(target)
     return None
 
 
@@ -874,6 +999,8 @@ def _coarse_shell_verdict(
     writes = any(marker in stripped for marker in _WRITE_MARKERS)
     if SESSION_AUTH_REL in command and writes:
         return Verdict(DENY, _SESSION_AUTH_DENY, always_deny=True)
+    if ".maverick" in command and "config.json" in command and writes:
+        return Verdict(ASK, _GUARD_CONFIG_ASK)
     for sub in _split_subcommands(command):
         tokens = _git_tokens(sub)
         if tokens is not None:
