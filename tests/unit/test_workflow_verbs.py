@@ -137,6 +137,67 @@ class TestResumePoint:
         )
         assert result["next"] == "merged"
 
+    def test_draft_flag_in_evidence(self):
+        result = self._run(
+            {"phase": "ci_green", "branch": "b"},
+            pr={"number": 9, "state": "OPEN", "url": "u"},
+            details={
+                "isDraft": True,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+            },
+        )
+        assert result["evidence"]["draft"] is True
+        assert "--undo" not in result["instruction"]
+
+    def test_ready_pr_needing_work_goes_back_to_draft(self):
+        failing = self._run(
+            {"phase": "pr_open", "branch": "b"},
+            pr={"number": 9, "state": "OPEN", "url": "u"},
+            details={"isDraft": False, "statusCheckRollup": [{"conclusion": "FAILURE"}]},
+        )
+        assert "pr ready o/r 9 --undo" in failing["instruction"]
+        unreviewed = self._run(
+            {"phase": "ci_green", "branch": "b"},
+            pr={"number": 9, "state": "OPEN", "url": "u"},
+            details={"isDraft": False, "statusCheckRollup": [{"conclusion": "SUCCESS"}]},
+        )
+        assert "--undo" in unreviewed["instruction"]
+        assert unreviewed["next"] == "review"
+
+    def test_pass_verdict_resumes_at_mark_ready(self):
+        result = self._run(
+            {"phase": "review", "branch": "b"},
+            pr={"number": 9, "state": "OPEN", "url": "u"},
+            details={
+                "isDraft": True,
+                "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+                "reviews": [{"body": "MAVERICK_VERDICT: PASS"}],
+            },
+        )
+        assert result["next"] == "merged"
+        assert "mark ready" in result["instruction"]
+
+    def test_settled_without_pr_reopens(self):
+        assert self._run({"phase": "settled"})["next"] == "pr_open"
+
+    def test_ejected_with_open_pr_stays_ejected(self):
+        with patch.object(workflow_verbs, "_pr_details") as details:
+            with (
+                patch.object(
+                    gh_state,
+                    "read_task_progress",
+                    return_value={"phase": "ejected", "branch": "b"},
+                ),
+                patch.object(
+                    workflow_verbs,
+                    "_find_pr",
+                    return_value={"number": 9, "state": "OPEN", "url": "u"},
+                ),
+            ):
+                result = workflow_verbs.resume_point("o/r", 42)
+        assert result["next"] == "ejected"
+        details.assert_not_called()
+
     def test_closed_pr_flags_investigation(self):
         result = self._run(
             {"phase": "pr_open", "branch": "b"},
@@ -289,6 +350,24 @@ class TestPrWait:
         code, _ = self._run([{"state": "OPEN"}], timeout=0)
         assert code == workflow_verbs.PR_WAIT_TIMEOUT
 
+    def test_draft_never_merges(self):
+        code, slept = self._run([{"state": "OPEN", "isDraft": True}])
+        assert code == workflow_verbs.PR_WAIT_DRAFT
+        assert slept == []
+
+    def test_draft_checks_still_waitable(self):
+        code, _ = self._run(
+            [
+                {
+                    "state": "OPEN",
+                    "isDraft": True,
+                    "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+                }
+            ],
+            until="checks",
+        )
+        assert code == workflow_verbs.PR_WAIT_OK
+
     def test_parse_duration(self):
         assert workflow_verbs.parse_duration("90") == 90
         assert workflow_verbs.parse_duration("90s") == 90
@@ -296,6 +375,95 @@ class TestPrWait:
         assert workflow_verbs.parse_duration("2h") == 7200
         with pytest.raises(ValueError):
             workflow_verbs.parse_duration("soon")
+
+
+# ---------------------------------------------------------------------------
+# pr ready (#177)
+# ---------------------------------------------------------------------------
+
+HEAD = "a" * 40
+
+
+class TestPrReady:
+    def _run(self, view, **kwargs):
+        calls = []
+
+        def fake_gh(*args, env=None):
+            calls.append(args)
+            if args[:2] == ("pr", "view"):
+                return json.dumps(view)
+            return ""
+
+        with (
+            patch.object(workflow_verbs, "_gh", side_effect=fake_gh),
+            patch.object(workflow_verbs, "_app_env", return_value=None),
+        ):
+            code, message = workflow_verbs.pr_ready("o/r", "9", **kwargs)
+        mutations = [c for c in calls if c[:2] == ("pr", "ready")]
+        return code, message, mutations
+
+    def _view(self, **overrides):
+        view = {
+            "state": "OPEN",
+            "isDraft": True,
+            "headRefOid": HEAD,
+            "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+        }
+        view.update(overrides)
+        return view
+
+    def test_marks_settled_draft_ready(self):
+        code, _, mutations = self._run(self._view(), expect_head=HEAD)
+        assert code == workflow_verbs.PR_READY_OK
+        assert mutations == [("pr", "ready", "9", "--repo", "o/r")]
+
+    def test_refuses_on_pending_checks(self):
+        code, _, mutations = self._run(
+            self._view(statusCheckRollup=[{"state": "PENDING"}])
+        )
+        assert code == workflow_verbs.PR_READY_CHECKS_PENDING
+        assert mutations == []
+
+    def test_refuses_on_failed_checks(self):
+        code, _, mutations = self._run(
+            self._view(statusCheckRollup=[{"conclusion": "FAILURE"}])
+        )
+        assert code == workflow_verbs.PR_READY_CHECKS_FAILED
+        assert mutations == []
+
+    def test_refuses_unpushed_head(self):
+        code, message, mutations = self._run(self._view(), expect_head="b" * 40)
+        assert code == workflow_verbs.PR_READY_HEAD_MISMATCH
+        assert mutations == []
+        assert "aaaaaaaaaaaa" in message
+
+    def test_refuses_missing_head_when_expected(self):
+        code, _, mutations = self._run(self._view(headRefOid=""), expect_head=HEAD)
+        assert code == workflow_verbs.PR_READY_HEAD_MISMATCH
+        assert mutations == []
+
+    def test_already_ready_is_noop(self):
+        code, _, mutations = self._run(self._view(isDraft=False))
+        assert code == workflow_verbs.PR_READY_OK
+        assert mutations == []
+
+    def test_closed_pr(self):
+        code, _, mutations = self._run(self._view(state="MERGED"))
+        assert code == workflow_verbs.PR_READY_CLOSED
+        assert mutations == []
+
+    def test_undo_converts_to_draft_without_checking(self):
+        code, _, mutations = self._run(
+            self._view(isDraft=False, statusCheckRollup=[{"conclusion": "FAILURE"}]),
+            undo=True,
+        )
+        assert code == workflow_verbs.PR_READY_OK
+        assert mutations == [("pr", "ready", "9", "--repo", "o/r", "--undo")]
+
+    def test_undo_on_draft_is_noop(self):
+        code, _, mutations = self._run(self._view(), undo=True)
+        assert code == workflow_verbs.PR_READY_OK
+        assert mutations == []
 
 
 # ---------------------------------------------------------------------------

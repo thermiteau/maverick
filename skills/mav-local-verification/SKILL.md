@@ -116,4 +116,27 @@ Not every change needs the full suite:
 
 For the final push before PR creation, always run the full suite regardless of change type.
 
+## After Merging the Base Branch
+
+A moving base branch is merged into a story branch often. Re-running the
+full suite after every such merge, when nothing the branch touches
+changed, can cost more than the story itself. A suite that passed
+before the merge still stands when **all** of these hold:
+
+- No file the merge brought in is one this branch changes. With
+  `<passed>` the commit the suite last passed on and `<base>` the story
+  base, these two lists must not overlap:
+  ```bash
+  git diff --name-only "origin/<base>...<passed>"   # the branch's own files
+  git diff --name-only "<passed>" HEAD             # what the merge changed
+  ```
+- The merge brought in no schema migration, lockfile or dependency
+  change, and no change to build, lint, test or `checks.commands`
+  configuration.
+- The merge itself had no conflicts.
+
+Otherwise, run the full suite again. Say which way you went, and why,
+in the push's report note. Before marking a PR ready, the CI checks on
+the pushed head still have to pass, whatever was skipped locally.
+
 <!-- maverick-plugin-version: 5.2.6-dev -->

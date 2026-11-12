@@ -140,7 +140,7 @@ Once every descendant appears in `labelled`, delete the comment.
 
 ```json
 {
-  "phase": "claimed|design|tasks|branch|implement|docs|security|pr_open|ci_green|review|merged|complete|ejected",
+  "phase": "claimed|design|tasks|branch|implement|docs|security|pr_open|ci_green|review|settled|merged|complete|ejected",
   "instance_id": "abc123def0",
   "updated_at": "2026-07-02T10:20:00Z",
   "branch": "feat/42-add-export",

@@ -56,7 +56,7 @@ the only writer — skills never compose marker comments by hand):
 
 ```json
 {
-  "phase": "claimed|design|tasks|branch|implement|docs|security|pr_open|ci_green|review|merged|complete|ejected",
+  "phase": "claimed|design|tasks|branch|implement|docs|security|pr_open|ci_green|review|settled|merged|complete|ejected",
   "instance_id": "abc123def0",
   "updated_at": "2026-07-02T10:20:00Z",
   "branch": "feat/42-short-description",
@@ -121,7 +121,7 @@ flowchart TD
 | `branch`    | Implement tasks                                 | Branch exists and matches `branch`                 |
 | `implement` | Continue from first unchecked task              | Completed tasks have corresponding commits         |
 | `docs` / `security` | Next gate (security / open PR)          | Gate outcome recorded on the PR body draft         |
-| `pr_open` / `ci_green` / `review` | PR-state dependent (CI, verdict) | `coord resume-point` refines via checks + `MAVERICK_VERDICT` |
+| `pr_open` / `ci_green` / `review` / `settled` | PR-state dependent (CI, verdict) | `coord resume-point` refines via checks + `MAVERICK_VERDICT` |
 | `merged`    | Post-merge cleanup                              | PR state is `MERGED`                               |
 | `complete` / `ejected` | Nothing to resume                    | Terminal states                                    |
 

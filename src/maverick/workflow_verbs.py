@@ -82,7 +82,8 @@ _NO_PR_RESUME: dict[str | None, tuple[str, str]] = {
     "pr_open": ("pr_open", "marker says PR opened but none found — re-run Phase 8 (open PR)"),
     "ci_green": ("pr_open", "marker says CI green but no PR found — re-run Phase 8 (open PR)"),
     "review": ("pr_open", "marker says review ran but no PR found — re-run Phase 8 (open PR)"),
-    "merged": ("merged", "resume at Phase 10 step 6 — post-merge cleanup"),
+    "settled": ("pr_open", "marker says PR marked ready but no PR found — re-run Phase 8 (open PR)"),
+    "merged": ("merged", "resume at Phase 10 step 7 — post-merge cleanup"),
     "complete": ("complete", "workflow already complete — nothing to resume"),
     "ejected": ("ejected", "issue was ejected to a human — do not resume autonomously"),
 }
@@ -117,7 +118,7 @@ def _pr_details(repo: str, number: int) -> dict[str, Any]:
         "--repo",
         repo,
         "--json",
-        "state,statusCheckRollup,reviews,comments",
+        "state,isDraft,statusCheckRollup,reviews,comments",
     )
     return json.loads(out)
 
@@ -182,7 +183,7 @@ def resume_point(repo: str, issue: int) -> dict[str, Any]:
         return {
             "next": "merged",
             "instruction": (
-                "PR merged — resume at Phase 10 step 6 (completion comment, "
+                "PR merged — resume at Phase 10 step 7 (completion comment, "
                 "close-on-merge, release claim, destroy worktree)"
             ),
             "evidence": evidence,
@@ -198,14 +199,37 @@ def resume_point(repo: str, issue: int) -> dict[str, Any]:
             "evidence": evidence,
         }
 
+    if phase == "ejected":
+        return {
+            "next": "ejected",
+            "instruction": "issue was ejected to a human — do not resume autonomously",
+            "evidence": evidence,
+        }
+
     # OPEN PR: refine with checks, then review verdict.
     details = _pr_details(repo, pr["number"])
+    draft = bool(details.get("isDraft"))
+    evidence["draft"] = draft
+    # A PR that is not a draft looks finished to a human, who may merge it.
+    # Any resume that will push to the branch must put it back to draft
+    # first (#177).
+    undo = (
+        ""
+        if draft
+        else (
+            f"PR is marked ready — first run `uv run maverick pr ready {repo} "
+            f"{pr['number']} --undo`, then "
+        )
+    )
     checks = _checks_status(details.get("statusCheckRollup"))
     evidence["checks"] = checks
     if checks == "failing":
         return {
             "next": "ci_green",
-            "instruction": "PR open with failing checks — resume at Phase 8 step 4 (read CI logs, fix, push)",
+            "instruction": (
+                f"{undo}PR open with failing checks — resume at Phase 8 step 5 "
+                "(read CI logs, fix, push)"
+            ),
             "evidence": evidence,
         }
     if checks == "pending":
@@ -229,12 +253,18 @@ def resume_point(repo: str, issue: int) -> dict[str, Any]:
     if verdict == "PASS":
         return {
             "next": "merged",
-            "instruction": "reviewer verdict PASS — resume at Phase 10 (auth-scan, approve, auto-merge)",
+            "instruction": (
+                "reviewer verdict PASS — resume at Phase 10 (auth-scan, mark "
+                "ready, approve, auto-merge)"
+            ),
             "evidence": evidence,
         }
     return {
         "next": "review",
-        "instruction": "PR open, CI green, no review verdict — resume at Phase 9 (dispatch agent-code-reviewer)",
+        "instruction": (
+            f"{undo}PR open, CI green, no review verdict — resume at Phase 9 "
+            "(dispatch agent-code-reviewer)"
+        ),
         "evidence": evidence,
     }
 
@@ -731,6 +761,7 @@ PR_WAIT_OK = 0
 PR_WAIT_TIMEOUT = 3
 PR_WAIT_CLOSED = 4
 PR_WAIT_CHECKS_FAILED = 5
+PR_WAIT_DRAFT = 6
 
 
 def pr_wait(
@@ -744,6 +775,8 @@ def pr_wait(
     """Wait for a PR to merge (`until='merged'`) or its checks to settle
     (`until='checks'`). Bounded: returns PR_WAIT_TIMEOUT when the deadline
     passes, instead of polling forever against a check that never reports.
+    Waiting for a draft to merge returns PR_WAIT_DRAFT at once: GitHub never
+    merges a draft, so the wait could only time out.
     """
     deadline = time.monotonic() + timeout_seconds
     while True:
@@ -754,7 +787,7 @@ def pr_wait(
             "--repo",
             repo,
             "--json",
-            "state,statusCheckRollup",
+            "state,isDraft,statusCheckRollup",
         )
         details = json.loads(out)
         state = details.get("state")
@@ -762,6 +795,8 @@ def pr_wait(
             return PR_WAIT_OK
         if state == "CLOSED":
             return PR_WAIT_CLOSED
+        if until == "merged" and details.get("isDraft"):
+            return PR_WAIT_DRAFT
         if until == "checks":
             checks = _checks_status(details.get("statusCheckRollup"))
             if checks == "failing":
@@ -771,3 +806,69 @@ def pr_wait(
         if time.monotonic() >= deadline:
             return PR_WAIT_TIMEOUT
         _sleep(interval_seconds)
+
+
+# ---------------------------------------------------------------------------
+# pr ready — the draft/ready handoff (#177)
+# ---------------------------------------------------------------------------
+
+#: pr_ready exit codes.
+PR_READY_OK = 0
+PR_READY_CHECKS_PENDING = 3
+PR_READY_CLOSED = 4
+PR_READY_CHECKS_FAILED = 5
+PR_READY_HEAD_MISMATCH = 6
+
+
+def pr_ready(
+    repo: str,
+    pr: str,
+    *,
+    undo: bool = False,
+    expect_head: str | None = None,
+) -> tuple[int, str]:
+    """Mark a PR ready for review, or put it back to draft (`undo`).
+
+    A draft PR tells a human "an agent is still working on this", and
+    GitHub refuses to merge it. Marking it ready is the handoff, so it is
+    refused unless the PR is open, its head is `expect_head` (when given)
+    and every check on that head has passed. Both directions are no-ops
+    when the PR is already in the requested state. Returns (code, message).
+    """
+    out = _gh(
+        "pr",
+        "view",
+        pr,
+        "--repo",
+        repo,
+        "--json",
+        "state,isDraft,headRefOid,statusCheckRollup",
+    )
+    details = json.loads(out)
+    state = details.get("state")
+    if state != "OPEN":
+        return PR_READY_CLOSED, f"PR is {str(state).lower()}, not open"
+    draft = bool(details.get("isDraft"))
+
+    if undo:
+        if draft:
+            return PR_READY_OK, "already a draft"
+        _gh("pr", "ready", pr, "--repo", repo, "--undo", env=_app_env())
+        return PR_READY_OK, "converted to draft"
+
+    head = str(details.get("headRefOid") or "")
+    if expect_head and head != expect_head:
+        return (
+            PR_READY_HEAD_MISMATCH,
+            f"PR head is {head[:12]}, expected {expect_head[:12]} — push, or "
+            "re-run the gates on the pushed head",
+        )
+    checks = _checks_status(details.get("statusCheckRollup"))
+    if checks == "failing":
+        return PR_READY_CHECKS_FAILED, "checks failed on the PR head"
+    if checks == "pending":
+        return PR_READY_CHECKS_PENDING, "checks still running on the PR head"
+    if not draft:
+        return PR_READY_OK, "already ready for review"
+    _gh("pr", "ready", pr, "--repo", repo, env=_app_env())
+    return PR_READY_OK, "marked ready for review"
