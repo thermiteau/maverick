@@ -8,6 +8,7 @@ deny everywhere. It must fail open on anything it does not understand.
 from __future__ import annotations
 
 import json
+import subprocess
 
 import pytest
 
@@ -17,12 +18,7 @@ from maverick.runtime_hooks.adapters import ClaudeAdapter, ToolCall
 
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
-    """Keep the real ~/.maverick out of every test.
-
-    The guard treats a session as autonomous when this instance holds a
-    claim in ~/.maverick/active-claims.json. Without this, a developer
-    with live claims on their machine sees interactive-mode tests fail.
-    """
+    """Keep the real ~/.maverick out of every test."""
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -192,6 +188,220 @@ class TestInfraPaths:
         assert verdict.decision == guard.ALLOW
 
 
+class TestShellWriteTargets:
+    """#167: only real write targets are checked against infra paths."""
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            'grep -rn "\\.github/workflows" src/ 2>/dev/null',
+            'gh issue comment 5 --body "fixes the Dockerfiles" >/dev/null 2>&1',
+            'git commit -m "touch .github/workflows/ci.yml later" 2>&1',
+            "rg Dockerfile docs/ > /dev/null",
+            "cp .github/workflows/ci.yml /tmp/ci.yml",
+            "sed -n 1,5p Dockerfile",
+            "ls k8s/ 2>&1 | head",
+            "cat Dockerfile >&2",
+        ],
+    )
+    def test_reads_and_prose_pass(self, guard, command):
+        assert guard.decide(_bash(command)).decision == guard.ALLOW, command
+
+    @pytest.mark.parametrize(
+        "command, target",
+        [
+            ("echo x > Dockerfile", "Dockerfile"),
+            ("echo x >> docker-compose.yml", "docker-compose.yml"),
+            ("make gen &> k8s/out.yaml", "k8s/out.yaml"),
+            ("echo x | tee -a helm/values.yaml", "helm/values.yaml"),
+            ("cp a.yml .github/workflows/b.yml", ".github/workflows/b.yml"),
+            ("mv Dockerfile Dockerfile.old", "Dockerfile"),
+            ("sed -i 's/a/b/' Dockerfile", "Dockerfile"),
+            ("sed -i.bak -e 's/a/b/' infra/main.tf", "infra/main.tf"),
+            ("rm -f .github/workflows/old.yml", ".github/workflows/old.yml"),
+            ("git rm k8s/svc.yaml", "k8s/svc.yaml"),
+            ("sudo tee Dockerfile < x", "Dockerfile"),
+        ],
+    )
+    def test_writes_hit(self, guard, command, target):
+        verdict = guard.decide(_bash(command))
+        assert verdict.decision == guard.ASK, command
+        assert repr(target) in verdict.reason
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "bash -c 'echo x > .github/workflows/x.yml'",
+            "sh -c \"git push --force origin feat/x\"",
+            "eval 'cp a Dockerfile'",
+            "bash -c \"sh -c 'echo x > Dockerfile'\"",
+            "bash -c 'echo \"unclosed > Dockerfile'",
+            "bash -lc 'cp /tmp/x .github/workflows/ci.yml'",
+            "sh -xc 'echo x > Dockerfile'",
+            "env -i bash -c 'cp /tmp/x .github/workflows/ci.yml'",
+            "sudo -u root sh -c 'tee Dockerfile < x'",
+            "env -u HOME tee Dockerfile < x",
+            "bash -o pipefail -c 'cp /tmp/x .github/workflows/ci.yml'",
+            "bash +O extglob -lc 'echo x > Dockerfile'",
+            "bash --rcfile /tmp/rc -c 'tee Dockerfile < x'",
+            "bash x -c 'echo > Dockerfile'",
+            "python3 -c \"open('Dockerfile','w')\" > /tmp/log",
+        ],
+    )
+    def test_nested_shells_are_checked(self, guard, command):
+        assert guard.decide(_bash(command)).decision == guard.ASK, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cd .github/workflows && echo x > ci.yml",
+            "W=.github/workflows/ci.yml; cp /tmp/x $W",
+            "xargs -I{} cp /tmp/x .github/workflows/ci.yml",
+            "find .github/workflows -name '*.yml' -exec sed -i s/a/b/ {} +",
+            "timeout 5 tee .github/workflows/ci.yml < /tmp/x",
+            "echo x > $(echo Dockerfile)",
+            "perl -pi -e 's/a/b/' Dockerfile",
+        ],
+    )
+    def test_indirect_infra_writes_ask(self, guard, command):
+        """#167 security review: indirection must not hide an infra write."""
+        assert guard.decide(_bash(command)).decision == guard.ASK, command
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "F=.maverick/session-auth.json; echo '{\"scopes\":[\"infra\"]}' > $F",
+            "export F=.maverick/session-auth.json; echo x > $F",
+            "cd .maverick && echo '{}' > session-auth.json",
+            "bash -c 'F=.maverick/session-auth.json; echo x > $F'",
+        ],
+    )
+    def test_indirect_session_auth_writes_denied(self, guard, command):
+        verdict = guard.decide(_bash(command))
+        assert verdict.decision == guard.DENY, command
+        assert verdict.always_deny
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "C=.maverick/config.json; echo '{}' > $C",
+            "cd .maverick && python3 -c 'open(\"config.json\",\"w\")'",
+        ],
+    )
+    def test_indirect_guard_config_writes_ask(self, guard, command):
+        verdict = guard.decide(_bash(command))
+        assert verdict.decision == guard.ASK, command
+        assert "scope_guards" in verdict.reason
+
+    def test_nested_shell_read_passes(self, guard):
+        assert guard.decide(_bash("bash -c 'cat Dockerfile 2>/dev/null'")).decision == guard.ALLOW
+
+    def test_unparseable_command_falls_back_to_coarse_check(self, guard):
+        verdict = guard.decide(_bash('echo "unclosed > Dockerfile'))
+        assert verdict.decision == guard.ASK
+
+    def test_infra_reason_says_what_is_covered(self, guard):
+        verdict = guard.decide(_edit("Dockerfile"))
+        assert "CDK" in verdict.reason and "not restricted" in verdict.reason
+
+    def test_compound_denial_says_nothing_ran(self, guard):
+        verdict = guard.decide(_bash("git worktree remove --force wt && git push -f"))
+        assert "none of it ran" in verdict.reason
+        single = guard.decide(_bash("git push -f"))
+        assert "none of it ran" not in single.reason
+
+
+class TestGuardConfigProtection:
+    """The file that tunes the guards must not be widened by the guarded agent."""
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            _edit(".maverick/config.json"),
+            _edit("/repo/.maverick/config.json"),
+            _bash("echo '{}' > .maverick/config.json"),
+            _bash("jq '.scope_guards.auth_scan=\"advisory\"' c > .maverick/config.json"),
+            _bash("python3 -c \"open('.maverick/config.json','w')\""),
+        ],
+    )
+    def test_writes_ask(self, guard, call):
+        verdict = guard.decide(call)
+        assert verdict.decision == guard.ASK
+        assert "scope_guards" in verdict.reason
+
+    def test_read_allowed(self, guard):
+        assert guard.decide(_bash("jq .scope_guards .maverick/config.json")).decision == guard.ALLOW
+
+    def test_infra_grant_does_not_unlock_config(self, guard, tmp_path):
+        (tmp_path / ".maverick").mkdir()
+        (tmp_path / ".maverick" / "session-auth.json").write_text(
+            json.dumps({"repo": "o/r", "issue": 1, "scopes": ["infra"]})
+        )
+        call = _edit(str(tmp_path / ".maverick/config.json"), cwd=str(tmp_path))
+        resolved = guard.resolve(guard.decide(call), call, env={"MAVERICK_AUTONOMOUS": "1"})
+        assert resolved.decision == guard.DENY
+
+
+class TestBranchForceDelete:
+    @pytest.fixture
+    def repo(self, tmp_path):
+        def git(*args):
+            subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+        git("init", "-q", "-b", "main")
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "a")
+        git("branch", "empty-story")
+        git("checkout", "-q", "-b", "real-work")
+        git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "b")
+        git("checkout", "-q", "main")
+        return tmp_path
+
+    def test_branch_without_own_commits_allowed(self, guard, repo):
+        verdict = guard.decide(_bash("git branch -D empty-story", cwd=str(repo)))
+        assert verdict.decision == guard.ALLOW
+
+    def test_branch_with_unique_commits_asks(self, guard, repo):
+        verdict = guard.decide(_bash("git branch -D real-work", cwd=str(repo)))
+        assert verdict.decision == guard.ASK
+        assert "real-work" in verdict.reason
+
+    def test_unknown_branch_asks(self, guard, repo):
+        verdict = guard.decide(_bash("git branch -D no-such-branch", cwd=str(repo)))
+        assert verdict.decision == guard.ASK
+
+    def test_combined_short_flags_detected(self, guard, repo):
+        verdict = guard.decide(_bash("git branch -df real-work", cwd=str(repo)))
+        assert verdict.decision == guard.ASK
+
+    def test_dash_c_checks_the_named_repo(self, guard, repo, tmp_path):
+        """`git -C other branch -D x` must not be judged against the session repo."""
+        other = tmp_path / "other"
+        other.mkdir()
+        subprocess.run(["git", "-C", str(other), "init", "-q", "-b", "main"], check=True)
+        subprocess.run(
+            ["git", "-C", str(other), "-c", "user.name=t", "-c", "user.email=t@t",
+             "commit", "-q", "--allow-empty", "-m", "a"], check=True,
+        )
+        subprocess.run(["git", "-C", str(other), "checkout", "-q", "-b", "empty-story"], check=True)
+        subprocess.run(
+            ["git", "-C", str(other), "-c", "user.name=t", "-c", "user.email=t@t",
+             "commit", "-q", "--allow-empty", "-m", "b"], check=True,
+        )
+        subprocess.run(["git", "-C", str(other), "checkout", "-q", "main"], check=True)
+        # empty-story is redundant in `repo` but has a unique commit in `other`.
+        verdict = guard.decide(_bash(f"git -C {other} branch -D empty-story", cwd=str(repo)))
+        assert verdict.decision == guard.ASK
+
+    def test_cd_first_never_trusts_redundancy(self, guard, repo):
+        verdict = guard.decide(_bash("cd /elsewhere && git branch -D empty-story", cwd=str(repo)))
+        assert verdict.decision == guard.ASK
+
+    def test_mixed_list_names_only_unsafe(self, guard, repo):
+        verdict = guard.decide(_bash("git branch -D empty-story real-work", cwd=str(repo)))
+        assert verdict.decision == guard.ASK
+        assert "real-work" in verdict.reason and "empty-story" not in verdict.reason
+
+
 # ---------------------------------------------------------------------------
 # Production patterns
 # ---------------------------------------------------------------------------
@@ -253,6 +463,21 @@ class TestSessionAuthProtection:
     def test_bash_read_allowed(self, guard):
         verdict = guard.decide(_bash("cat .maverick/session-auth.json"))
         assert verdict.decision == guard.ALLOW
+        verdict = guard.decide(_bash("jq . .maverick/session-auth.json 2>/dev/null"))
+        assert verdict.decision == guard.ALLOW
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "cp /tmp/x.json .maverick/session-auth.json",
+            "echo '{}' | tee .maverick/session-auth.json",
+            "python3 -c \"open('.maverick/session-auth.json','w').write('{}')\"",
+        ],
+    )
+    def test_other_writers_denied(self, guard, command):
+        verdict = guard.decide(_bash(command))
+        assert verdict.decision == guard.DENY, command
+        assert verdict.always_deny
 
 
 # ---------------------------------------------------------------------------
@@ -290,33 +515,44 @@ class TestResolve:
         assert verdict.decision == guard.ASK
         assert guard.ESCALATION not in verdict.reason  # rules give only the why
         env = {"MAVERICK_AUTONOMOUS": "1"} if autonomous else {}
-        resolved = guard.resolve(verdict, call, env=env, claims_path=tmp_path / "none.json")
+        resolved = guard.resolve(verdict, call, env=env)
         assert resolved.decision == (guard.DENY if autonomous else guard.ASK)
         assert resolved.reason.count(guard.ESCALATION) == 1
         assert resolved.reason.count("mav-scope-boundaries") == 1
 
-    def test_autonomous_via_claims_registry(self, guard, tmp_path):
-        claims = tmp_path / "active-claims.json"
-        claims.write_text(
+    def test_claims_do_not_make_a_session_autonomous(self, guard, tmp_path, monkeypatch):
+        """#167: the interactive coordinator holds claims; it must still ask."""
+        home = tmp_path / "home" / ".maverick"
+        home.mkdir(parents=True, exist_ok=True)
+        (home / "active-claims.json").write_text(
             json.dumps({"claims": [{"repo": "o/r", "issue": 1, "instance_id": "abc123"}]})
         )
         env = {"MAVERICK_INSTANCE_ID": "abc123"}
-        assert guard.is_autonomous(env, claims_path=claims)
-        assert not guard.is_autonomous({"MAVERICK_INSTANCE_ID": "other"}, claims_path=claims)
+        assert not guard.is_autonomous(env, _bash("git push -f"))
+        hit = guard.Verdict(guard.ASK, "git push --force rewrites shared history")
+        assert guard.resolve(hit, _bash("git push -f"), env=env).decision == guard.ASK
 
-    def test_autonomous_via_instance_id_file_without_session_env(self, guard, tmp_path):
-        """Issue #130 Test C: a claim recorded under the file id must classify
-        as autonomous even when the hook subprocess receives no session env."""
-        id_file = tmp_path / "instance_id"
-        id_file.write_text("847a039d01\n")
-        claims = tmp_path / "active-claims.json"
-        claims.write_text(
-            json.dumps(
-                {"claims": [{"repo": "o/r", "issue": 1, "instance_id": "847a039d01"}]}
-            )
+    def test_subagent_call_is_autonomous(self, guard):
+        call = _claude(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git push -f"},
+                "agent_id": "a1b2",
+                "agent_type": "general-purpose",
+            }
         )
-        # No MAVERICK_INSTANCE_ID / session env at all — only the file bridges.
-        assert guard.is_autonomous({}, claims_path=claims, id_path=id_file)
+        assert call.subagent
+        hit = guard.decide(call)
+        resolved = guard.resolve(hit, call, env={})
+        assert resolved.decision == guard.DENY
+        assert "subagent" in resolved.reason
+
+    def test_agent_type_alone_is_not_a_subagent(self, guard):
+        """`claude --agent x` sets agent_type on the main session too."""
+        call = _claude(
+            {"tool_name": "Bash", "tool_input": {"command": "ls"}, "agent_type": "x"}
+        )
+        assert not call.subagent
 
     def test_instance_id_file_fallback_read_only(self, guard, tmp_path):
         id_file = tmp_path / "instance_id"

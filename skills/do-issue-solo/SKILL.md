@@ -517,8 +517,13 @@ next step is eject-to-human, not iterate.
    authentication/authorization surfaces or CI workflow definitions —
    those require human review regardless of the code-review verdict:
    ```bash
-   uv run maverick pr auth-scan <repo> <pr-num>
+   uv run maverick pr auth-scan <repo> <pr-num> --security-verdict <PASS|FINDINGS|BLOCKING>
    ```
+   Pass the verdict Phase 7 recorded for this diff, exactly as the
+   marker gave it. Test files and comment-only changes are cleared by
+   the scan itself. Only a project that set `scope_guards.auth_scan:
+   "advisory"` treats auth-path hits as advisory, and then only with
+   `PASS`; CI workflow definitions always gate.
    - Exit 0: clean — proceed.
    - Exit 3: gated paths touched — **do not merge.** Treat this exactly
      like a review FAIL: follow the eject path (apply `needs-human`,
