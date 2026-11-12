@@ -63,11 +63,27 @@ The policy layer (the `mav-scope-boundaries` skill) is backed by a
 
 | Mechanism | What it enforces |
 | --- | --- |
-| Scope-guard hook (`PreToolUse`) | Destructive git ops, commits/pushes on protected branches, infrastructure-path edits, production-pattern commands. Rule hits **ask** the user in interactive sessions (that is the session consent the policy requires) and are **denied** in autonomous runs. Production patterns are denied in every mode — no consent carve-out. |
+| Scope-guard hook (`PreToolUse`) | Destructive git ops, commits/pushes on protected branches, infrastructure-path edits, production-pattern commands. Rule hits **ask** the user in interactive sessions (that is the session consent the policy requires) and are **denied** in autonomous runs — a call is autonomous when `MAVERICK_AUTONOMOUS=1` is set (workers set it) or when a subagent makes it. Holding a coordination claim does not make a session autonomous, so a coordinator session with a user present still asks. Any other unattended entry point (a headless `claude -p`, cron, CI) must set `MAVERICK_AUTONOMOUS=1`. Shell commands are parsed, so only real write targets count: `2>/dev/null` is not a write, and a path inside a `grep` pattern or a `--body` is not a target. Commands whose targets parsing cannot see (`cd`, variables in a target, `xargs`, `find -exec`, `timeout`) fall back to the conservative substring check, and `bash -c`/`eval` scripts are parsed too. The session-auth and guard-config files are matched by name anywhere in a command that is not a plain read. `git branch -D` is allowed when no commits would be lost. Production patterns are denied in every mode — no consent carve-out. |
 | Verified authorization (`maverick coord authorize`) | Infrastructure edits in autonomous runs are permitted only when the GitHub issue itself carries the `maverick-authorize-infra` label or a `Maverick-Authorize: infra` body line. The CLI verifies the issue and records the grant; the hook blocks any other write to the authorization file, so an agent cannot self-grant. |
 | Permission deny rules | `maverick init` writes baseline deny rules (force-push, workflow-file edits) into the project's `.claude/settings.json` — a second layer that holds even if hooks are disabled. |
-| Auth-path merge gate (`maverick pr auth-scan`) | No autonomous auto-merge of a PR that touches authentication surfaces or CI workflow definitions, regardless of the code-review verdict. A hit ejects to human review. |
+| Auth-path merge gate (`maverick pr auth-scan`) | No autonomous auto-merge of a PR that touches authentication surfaces or CI workflow definitions, regardless of the code-review verdict. A hit ejects to human review. Test files and flagged files whose changed lines are all whole-line comments or blank are cleared. A PR that changes `.maverick/config.json` always gates, because that file tunes the guards. |
 | SessionEnd release + lease expiry | Coordination claims are released on every exit path; a dead machine's claim expires within minutes and another instance can take over cleanly. |
+
+### Tuning the guards per project
+
+Generic rules produce false positives in some codebases. These keys in
+`.maverick/config.json` → `scope_guards` narrow them without turning them
+off. The auth-scan keys are read only from the PR's base branch on GitHub,
+never the working tree, so only reviewed, merged config can loosen the gate.
+There is no per-project exemption from the infrastructure rule yet: it needs a
+config source the agent cannot forge, which local git refs are not. The scope guard asks before any edit to `.maverick/config.json` (and denies it in autonomous runs, even with an `infra` grant), so an agent cannot widen its own limits:
+
+| Key | Effect |
+| --- | --- |
+| `auth_paths` | Extra tokens the auth-path merge gate treats as sensitive. |
+| `auth_paths_exclude` | Built-in tokens the project uses in a non-auth sense, such as `"roles"` for a job-role catalogue or `"credentials"` for professional credentials. |
+| `auth_scan` | `"advisory"` reports auth-path hits without gating, but only when the independent security reviewer returned PASS on the same diff (`maverick pr auth-scan --security-verdict PASS`). CI workflow definitions always gate. |
+| `protected_branches`, `production_patterns` | As before: branches no commit or push may target, and production markers that are denied in every mode. |
 
 On top of that mechanical floor, the skill layer still matters:
 

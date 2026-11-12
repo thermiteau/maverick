@@ -1,5 +1,6 @@
 """DynamoDB worker daemon — polls for issues, runs Claude Code, logs to CloudWatch."""
 
+import os
 import shutil
 import subprocess
 import sys
@@ -191,6 +192,9 @@ def _process_item(item, cfg, dynamodb, logs_client):
         proc = subprocess.Popen(
             ["claude", "-p", prompt],
             cwd=clone_dir,
+            # No user is present on a worker: scope-guard hits must deny
+            # rather than ask (#167).
+            env={**os.environ, "MAVERICK_AUTONOMOUS": "1"},
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

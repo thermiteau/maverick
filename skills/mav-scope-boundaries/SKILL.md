@@ -19,8 +19,15 @@ These boundaries are not prose-only. The plugin's scope-guard hook (a
 pre-tool-use hook that runs `maverick hook scope-guard`) mechanically gates
 destructive git operations, commits/pushes on protected branches,
 infrastructure-path edits, and production-pattern commands — asking the
-user in interactive sessions and denying in autonomous mode. If the hook
-blocks an action you believe is authorized:
+user in interactive sessions and denying in autonomous mode. A call is
+autonomous when `MAVERICK_AUTONOMOUS=1` is set or when a subagent makes
+it. Holding coordination claims does not count, so a coordinator session
+with a user present asks. Any unattended launch (a headless run, cron,
+CI) must set `MAVERICK_AUTONOMOUS=1`. The infrastructure rule covers only
+CI definitions, Dockerfiles, compose files, k8s/helm manifests,
+Terraform, CloudFormation templates and serverless.yml. Do not park work
+on other files (CDK code, Makefiles, scripts) as "infrastructure". If the
+hook blocks an action you believe is authorized:
 
 - **Infrastructure:** record the issue-level authorization with
   `uv run maverick coord authorize <repo> <issue> infra` (requires the

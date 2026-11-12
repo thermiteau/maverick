@@ -383,13 +383,33 @@ def _pr_auth_scan(args: argparse.Namespace) -> int:
 
     try:
         files = pr_gate.pr_changed_files(args.repo, args.pr)
+        guards = pr_gate.pr_base_guards(args.repo, args.pr)
     except subprocess.CalledProcessError as e:
         print(f"auth-scan error: {e.stderr or e}", file=sys.stderr)
         return 2
-    hits = pr_gate.scan_paths(files)
-    if hits:
+    try:
+        diff = pr_gate.pr_diff(args.repo, args.pr)
+    except (subprocess.CalledProcessError, ValueError):
+        diff = None  # no comment-only clearing; the scan stays conservative
+    result = pr_gate.scan(files, diff=diff, guards=guards)
+    for path, why in result.cleared.items():
+        print(f"cleared ({why}): {path}")
+    advisory = (
+        result.auth_hits
+        and pr_gate.auth_scan_advisory(guards=guards)
+        and (args.security_verdict or "").upper() == "PASS"
+    )
+    gated = result.ci_hits + ([] if advisory else result.auth_hits)
+    if advisory:
+        print(
+            "advisory (scope_guards.auth_scan, security review PASS) — "
+            "auth-sensitive paths, not gating:"
+        )
+        for path in result.auth_hits:
+            print(f"  {path}")
+    if gated:
         print("gated paths touched — do not auto-merge; eject to needs-human:")
-        for path in hits:
+        for path in gated:
             print(f"  {path}")
         return 3
     print(f"clean ({len(files)} file(s) scanned)")
@@ -995,11 +1015,22 @@ def build_subparsers(subparsers: argparse._SubParsersAction) -> None:
             "Scan a PR's changed files for auth-sensitive paths and CI workflow "
             "definitions. Exit 0 = clean (safe to auto-merge), 3 = gated paths "
             "touched (eject to needs-human instead of auto-merging), 2 = error. "
-            "Extra tokens: .maverick/config.json -> scope_guards.auth_paths."
+            "Test files and comment-only changes are cleared. Tune with "
+            ".maverick/config.json -> scope_guards.auth_paths (extra tokens), "
+            "auth_paths_exclude (tokens to drop) and auth_scan ('advisory')."
         ),
     )
     p.add_argument("repo")
     p.add_argument("pr", help="PR number or URL")
+    p.add_argument(
+        "--security-verdict",
+        choices=["PASS", "FINDINGS", "BLOCKING"],
+        help=(
+            "The independent security reviewer's verdict on this diff. With "
+            "scope_guards.auth_scan = 'advisory', PASS makes auth-path hits "
+            "advisory. CI workflow definitions always gate."
+        ),
+    )
     p.set_defaults(_handler=_pr_auth_scan)
 
     p = pr_sub.add_parser(

@@ -15,7 +15,7 @@ Adding a runtime means adding an adapter; handlers do not change.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -48,6 +48,10 @@ class ToolCall:
     text: str = ""
     #: agent: dispatched in the background (its tool call returns at launch).
     background: bool = False
+    #: The call was made by a subagent rather than the main session. A
+    #: subagent cannot be relied on to surface a consent prompt, so the
+    #: scope guard treats its calls as autonomous (#167).
+    subagent: bool = False
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,10 @@ class ClaudeAdapter:
         if tool_name is not None and event == "other":
             event = "tool_call"
         tool = self._tool(tool_name or "", raw.get("tool_input") or {}, cwd)
+        # Claude Code sets agent_id only when the hook fires inside a
+        # subagent (agent_type alone also appears for `claude --agent`).
+        if raw.get("agent_id"):
+            tool = replace(tool, subagent=True)
         model = raw.get("model")
         if isinstance(model, dict):  # some payloads carry {"id": ..., ...}
             model = model.get("id")

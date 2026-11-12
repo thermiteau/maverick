@@ -54,8 +54,10 @@ that enforce them at the tool-call boundary:
 - A **scope-guard hook** gates destructive git operations, commits and
   pushes on protected branches, infrastructure edits, and
   production-pattern commands. In interactive sessions rule hits ask you;
-  in autonomous runs they are denied outright. Production patterns are
-  denied in every mode.
+  in autonomous runs (workers and subagents) they are denied outright.
+  Production patterns are denied in every mode. Per-project tuning lives
+  in `.maverick/config.json` → `scope_guards` (see
+  [docs/scope-boundaries.md](docs/scope-boundaries.md)).
 - Infrastructure changes in autonomous runs require **verified
   issue-level authorization** (`maverick coord authorize`) — an agent
   cannot self-grant a scope the issue never approved.
