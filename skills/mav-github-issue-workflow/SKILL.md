@@ -189,4 +189,4 @@ inspects CI and the review verdict, and returns `{next, instruction,
 evidence}`. Follow the instruction. If the evidence contradicts what you
 observe locally, GitHub wins — local files are a cache.
 
-<!-- maverick-plugin-version: 5.3.0 -->
+<!-- maverick-plugin-version: 5.3.1-dev -->
