@@ -5,7 +5,7 @@
     "name": "David Cheal",
     "email": "david.cheal@thermite.au"
   },
-  "version": "5.3.1",
+  "version": "5.3.2-dev",
   "plugins": [
     {
       "name": "maverick",

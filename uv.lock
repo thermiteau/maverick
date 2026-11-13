@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 
 [[package]]
@@ -310,7 +310,7 @@ wheels = [
 
 [[package]]
 name = "maverick-harness"
-version = "5.3.1"
+version = "5.3.2.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },

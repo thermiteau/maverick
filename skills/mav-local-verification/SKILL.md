@@ -157,4 +157,4 @@ Otherwise, run the full suite again. Say which way you went, and why,
 in the push's report note. Before marking a PR ready, the CI checks on
 the pushed head still have to pass, whatever was skipped locally.
 
-<!-- maverick-plugin-version: 5.3.1 -->
+<!-- maverick-plugin-version: 5.3.2-dev -->
