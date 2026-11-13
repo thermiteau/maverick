@@ -329,6 +329,10 @@ class TestLLMResolution:
         # between tests. Tests that need a populated cache monkeypatch
         # this themselves.
         monkeypatch.setattr(report_cli, "_AGENT_MODEL_CACHE", {})
+        # Never read the developer's real agent_models routes.
+        from maverick import config
+
+        monkeypatch.setattr(config, "read_agent_models", lambda path=None: {})
 
     def _patch_config(self, monkeypatch, **overrides):
         """Replace `read_llm_config` with a fixture that returns the given values."""
@@ -516,6 +520,46 @@ class TestLLMResolution:
             report_cli._current_llm(agent="agent-tech-docs-writer")
             == "claude-sonnet-4-7"
         )
+
+    def test_agent_models_route_beats_frontmatter_pin(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """#181: the workflow passes the routed model as the dispatch's
+        `model` override, so the row records the route, not the pin."""
+        from maverick import config
+
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(monkeypatch, default="claude-opus-4-7", agents={})
+        monkeypatch.setattr(
+            report_cli, "_AGENT_MODEL_CACHE", {"agent-code-reviewer": "claude-opus"}
+        )
+        monkeypatch.setattr(
+            config,
+            "read_agent_models",
+            lambda path=None: {
+                "agent-code-reviewer": "sonnet",
+                "agent-issue-analyst": "claude-haiku-5-5",
+            },
+        )
+        assert report_cli._current_llm(agent="agent-code-reviewer") == "claude-sonnet"
+        assert report_cli._current_llm(agent="agent-issue-analyst") == "claude-haiku-5-5"
+        # No route → the pin still applies.
+        assert report_cli._current_llm(agent="agent-tech-docs-writer") == "claude-opus-4-7"
+
+    def test_llm_agents_label_beats_agent_models_route(
+        self, tmp_path: Path, monkeypatch
+    ):
+        """An explicit `llm.agents` report label stays the top agent override."""
+        from maverick import config
+
+        self._setup(tmp_path, monkeypatch)
+        self._patch_config(
+            monkeypatch, agents={"agent-issue-analyst": "claude-sonnet-5-5"}
+        )
+        monkeypatch.setattr(
+            config, "read_agent_models", lambda path=None: {"agent-issue-analyst": "haiku"}
+        )
+        assert report_cli._current_llm(agent="agent-issue-analyst") == "claude-sonnet-5-5"
 
     def test_skill_name_alone_does_not_drive_resolution(
         self, tmp_path: Path, monkeypatch

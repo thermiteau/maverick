@@ -450,6 +450,70 @@ class TestReadLlmConfig:
         assert config.read_llm_config()["agents"]["agent-foo"] == "claude-opus-4-7"
 
 
+class TestReadAgentModels:
+    """#181: `agent_models` routes a dispatched agent to a model."""
+
+    def _stage(self, tmp_path: Path, monkeypatch, user: dict | None, repo: dict | None):
+        project_dir = tmp_path / ".maverick"
+        project_dir.mkdir(parents=True, exist_ok=True)
+        if repo is not None:
+            (project_dir / "config.json").write_text(json.dumps({"agent_models": repo}))
+        monkeypatch.setattr(config, "PROJECT_CONFIG_DIR", project_dir)
+        system_cfg = tmp_path / "system_config.json"
+        if user is not None:
+            system_cfg.write_text(json.dumps({"agent_models": user}))
+        monkeypatch.setattr(config, "SYSTEM_CONFIG_FILE", system_cfg)
+
+    def test_empty_when_unset(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        self._stage(tmp_path, monkeypatch, user=None, repo=None)
+        assert config.read_agent_models() == {}
+
+    def test_repo_overrides_user_by_key(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._stage(
+            tmp_path,
+            monkeypatch,
+            user={"agent-issue-analyst": "haiku", "agent-tech-docs-writer": "sonnet"},
+            repo={"agent-issue-analyst": "sonnet"},
+        )
+        assert config.read_agent_models() == {
+            "agent-issue-analyst": "sonnet",
+            "agent-tech-docs-writer": "sonnet",
+        }
+
+    def test_inherit_removes_a_user_route(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        self._stage(
+            tmp_path,
+            monkeypatch,
+            user={"agent-issue-analyst": "haiku"},
+            repo={"agent-issue-analyst": "inherit"},
+        )
+        assert config.read_agent_models() == {}
+
+    def test_drops_values_that_are_not_model_names(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    ):
+        self._stage(
+            tmp_path,
+            monkeypatch,
+            user=None,
+            repo={
+                "agent-issue-analyst": "sonnet; rm -rf /",
+                "agent-github-issue-planner": 3,
+                "agent-tech-docs-writer": "claude-sonnet-5-5",
+            },
+        )
+        assert config.read_agent_models() == {"agent-tech-docs-writer": "claude-sonnet-5-5"}
+        assert "agent_models.agent-issue-analyst" in capsys.readouterr().err
+
+    def test_route_does_not_trip_config_healing(self):
+        """Arbitrary agent names must not read as unknown schema keys."""
+        assert config._has_unknown_keys({"agent_models": {"agent-x": "sonnet"}}) == []
+
+
 class TestSaveConfig:
     def test_creates_dir_and_writes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         cfg_dir = tmp_path / "new_dir"

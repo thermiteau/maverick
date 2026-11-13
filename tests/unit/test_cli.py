@@ -91,3 +91,32 @@ class TestCliParsing:
 
         assert excinfo.value.code == 0
         assert mock_dispatch.called
+
+
+class TestAgentModelCommand:
+    """#181: `maverick agent-model` prints an agent's routed model."""
+
+    def _run(self, monkeypatch, capsys, argv, routes):
+        monkeypatch.setattr("maverick.agent_model_cli.read_agent_models", lambda: routes)
+        monkeypatch.setattr("sys.argv", ["maverick", "agent-model", *argv])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 0
+        return capsys.readouterr().out
+
+    def test_prints_route(self, monkeypatch, capsys):
+        out = self._run(
+            monkeypatch, capsys, ["agent-issue-analyst"], {"agent-issue-analyst": "sonnet"}
+        )
+        assert out == "sonnet\n"
+
+    def test_prints_empty_line_when_unrouted(self, monkeypatch, capsys):
+        out = self._run(monkeypatch, capsys, ["agent-code-reviewer"], {})
+        assert out == "\n"
+
+    def test_lists_every_route_as_json(self, monkeypatch, capsys):
+        import json
+
+        routes = {"agent-issue-analyst": "sonnet", "agent-tech-docs-writer": "haiku"}
+        out = self._run(monkeypatch, capsys, ["--json"], routes)
+        assert json.loads(out) == routes
