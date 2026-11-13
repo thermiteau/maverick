@@ -349,4 +349,4 @@ state.
 - **Never auto-close an epic with ejected stories.** Those belong to the
   human.
 
-<!-- maverick-plugin-version: 5.2.6-dev -->
+<!-- maverick-plugin-version: 5.3.0 -->
