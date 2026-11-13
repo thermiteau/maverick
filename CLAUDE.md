@@ -60,7 +60,7 @@ Skills compose via a `Depends on:` declaration. The primary entry points are `do
 
 ### Agents (`agents/*.md`)
 
-Autonomous workers dispatched as subagents: `code-reviewer.md` (two-stage: spec compliance then code quality), `tech-docs-writer.md`.
+Autonomous workers dispatched as subagents, e.g. `agent-code-reviewer.md` (two-stage: spec compliance then code quality), `agent-security-reviewer.md`, `agent-implementer.md` (one task per dispatch from `do-issue-solo`), `agent-tech-docs-writer.md`.
 
 ### CLI (`cli/`)
 

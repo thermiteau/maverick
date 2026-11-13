@@ -523,6 +523,25 @@ def _agent_pinned_model(agent: str) -> str | None:
     return _AGENT_MODEL_CACHE.get(agent)
 
 
+def _agent_routed_model(agent: str) -> str | None:
+    """The model ``agent_models`` routes this agent to, as a report label.
+
+    Workflow skills pass the routed model as the dispatch's ``model``
+    override, so it outranks the agent's frontmatter pin. Aliases are
+    labelled like pinned models (``sonnet`` → ``claude-sonnet``); a full
+    model id is kept as-is.
+    """
+    try:
+        from maverick.config import read_agent_models
+
+        model = read_agent_models().get(agent)
+    except Exception:  # noqa: BLE001 — best-effort; fall through on any error
+        return None
+    if not model:
+        return None
+    return model if "-" in model else f"claude-{model}"
+
+
 def _session_model() -> str | None:
     """The model the plugin hooks recorded for this session, if any."""
     import os as _os
@@ -551,24 +570,27 @@ def _current_llm(
     2. ``MAVERICK_LLM`` env var (workflow-wide override).
     3. **Agent rows only:** explicit per-agent override in the merged
        ``llm.agents`` config block (user or repo), if present.
-    4. **Agent rows only:** the agent's own pinned model from its
+    4. **Agent rows only:** the model ``agent_models`` routes the agent
+       to — the workflow passes it as the dispatch's ``model`` override,
+       so it is what actually ran.
+    5. **Agent rows only:** the agent's own pinned model from its
        ``AgentConfig.claude.model`` field. This is the source of truth — the
        same value that gets rendered into the agent's frontmatter and
        therefore the same generation Claude Code actually dispatches.
-    5. The model the runtime reported for this session, recorded by the
+    6. The model the runtime reported for this session, recorded by the
        plugin hooks (``runtime_hooks.session_model``). This is what the
        session actually ran on, so it outranks any configured label.
-    6. ``llm.default`` from the merged config (defaults → user → repo);
+    7. ``llm.default`` from the merged config (defaults → user → repo);
        empty unless a user or repo sets it.
-    7. Latest ``run-start`` row's ``llm`` for this issue (inherits
+    8. Latest ``run-start`` row's ``llm`` for this issue (inherits
        across CLI invocations even if the orchestrator never opened
        the project config — useful for one-off runs).
-    8. The ``FALLBACK_LLM`` literal.
+    9. The ``FALLBACK_LLM`` literal.
 
     ``skill_name`` is accepted for API compatibility but no longer
     drives resolution: skills are instruction blocks loaded into the
     orchestrator's session and cannot run on a different model from it
-    (#108). Skill-dispatch rows therefore land in step 5 (the
+    (#108). Skill-dispatch rows therefore land in step 6 (the
     orchestrator's model) unless an explicit per-skill override is set in the
     config's ``llm.skills`` block.
     """
@@ -589,6 +611,9 @@ def _current_llm(
     if agent:
         if llm_cfg is not None and agent in llm_cfg["agents"]:
             return llm_cfg["agents"][agent]
+        routed = _agent_routed_model(agent)
+        if routed:
+            return routed
         pinned = _agent_pinned_model(agent)
         if pinned:
             return pinned

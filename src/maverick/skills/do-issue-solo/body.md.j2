@@ -44,6 +44,37 @@ multi-machine fleets or audit needs); when present it adds a status
 check the auto-merge in Phase 10 will wait on, but its absence is not
 a blocker.
 
+## Dispatching agents
+
+You are the story agent. Your context is re-read on every call you make,
+so keep it for coordination: claims, checkpoints, verdicts, task
+bookkeeping. The work that reads code and runs commands — design,
+planning, implementation, fixes, docs, reviews — goes to subagents, and
+you keep only what they return.
+
+- **Model routing.** Before each dispatch, look up the agent's route:
+  ```bash
+  uv run maverick agent-model <agent-name>
+  ```
+  A non-empty result is the project's `agent_models` choice for that
+  agent: pass it as the dispatch's `model` override. An empty line means
+  no route: dispatch without an override, so the agent keeps its own
+  pinned model or inherits yours. Look the routes up once (run it with no
+  argument for the full list) and reuse them for the rest of the story.
+- **Foreground only.** Every dispatch in this workflow runs in the
+  foreground and you wait for its result. A story agent that ends its
+  turn while a subagent runs in the background is never woken, and the
+  story stalls.
+- **Context budget.** If your own context grows past about 100k tokens,
+  stop reading files and command output yourself: hand anything that
+  needs them to {{ AGENTS.AGENT_IMPLEMENTER }} (or the relevant agent)
+  and keep only its summary.
+- **Command output: failures only.** Whenever you run a test, typecheck,
+  lint or build command yourself, send its output to a log under
+  `.maverick/tmp/` in the worktree and read back only the exit status,
+  the summary lines and the failures (`tail`, `grep`), never the whole
+  log.
+
 ## Phase 0: Coordination + cold-start
 
 Before any other phase.
@@ -210,56 +241,64 @@ checkout.
 **Push after every task, not at the end.** See
 `{{ SKILLS.MAV_DURABILITY_ON_GH }}`.
 
-1. Read project-level skills at `docs/maverick/skills/`. Apply any
-   topic-specific guidance they carry.
+Each task is implemented by a **fresh {{ AGENTS.AGENT_IMPLEMENTER }}
+subagent**, not in your own context. The implementer reads the code,
+runs `/{{ SKILLS.DO_CODE }}`, verifies, commits and pushes; you keep
+only its summary and the per-task bookkeeping. Do not read the task's
+source files or its test output yourself.
 
 **For each task (sub-issue or checklist item), in order:**
 
-Each step below is its own obligation. After `/{{ SKILLS.DO_CODE }}` returns
-in step 1, **do not stop** — continue with step 2. The inner skill's
-return is a hand-back, not a task-complete signal (#106).
+Each step below is its own obligation. When the implementer returns in
+step 1, **do not stop** — continue with step 2. Its return is a
+hand-back, not a task-complete signal (#106).
 
-1. **Invoke `/{{ SKILLS.DO_CODE }} <one-line task description> (maverick-issue: {{ ARGUMENTS }})`.** The
-   skill reads before writing, makes the smallest diff that satisfies
-   the task, verifies per `{{ SKILLS.MAV_LOCAL_VERIFICATION }}`, and
-   refuses to return on red. (Invoking it auto-opens the
-   `skill-dispatch` interval via the plugin's Skill hook.)
-2. **Record the outcome** — the single bookkeeping obligation per task:
+1. **Dispatch {{ AGENTS.AGENT_IMPLEMENTER }}** in the foreground (with
+   its `agent-model` route, if any) with:
+   - **Mode:** `task`
+   - **Worktree path** and **branch** (from Phase 4)
+   - **Repo** and **issue number:** `<repo>`, `{{ ARGUMENTS }}`
+   - **Task:** its number and text, exactly as the tasks comment or
+     sub-issue states it
+   - **Design comment ID:** `comments.design` from the task-progress marker
+   - **Files:** the files the plan names for this task
+   - **Stacked on:** the sibling branch, if Phase 4 stacked the branch
+   - `maverick-issue: {{ ARGUMENTS }}`
+
+   The agent-dispatch interval is recorded by the plugin hooks, and the
+   implementer closes the `skill-dispatch` interval its
+   `/{{ SKILLS.DO_CODE }}` call opened, so there is no `report end` for you
+   here.
+2. **Read the result block** (`## Implementer result`).
+   - `status: done` — continue with step 3.
+   - `status: failure` or `blocked`, a missing result block, or
+     `pushed: no` — halt the per-task loop (the implementer never
+     commits red). Record it, then decide: re-dispatch once in `fix`
+     mode with the reported failure, or surface it to the user if the
+     cause is outside the issue's scope:
+     ```bash
+     uv run maverick report note --issue {{ ARGUMENTS }} --phase implement \
+         --text "task <n>: <status> — <one line from the result>"
+     ```
+   - Anything under `unexpected:` that changes the plan or the scope:
+     note it the same way, and carry follow-ups to "Follow-up Issues".
+3. **Log the commit** to the workflow report, from the result's `commit`
+   and `subject` (the timestamp is wall-clock at this call):
    ```bash
-   uv run maverick report end --auto --issue {{ ARGUMENTS }} --outcome <success|failure>
-   ```
-   On `failure`, halt the per-task loop and diagnose per
-   `{{ SKILLS.MAV_SYSTEMATIC_DEBUGGING }}` — do not proceed to the
-   commit step with a failing build or red tests.
-3. **(Optional) Sibling-dispatch `/{{ SKILLS.DO_TEST }}`** if the change
-   needs new or updated tests that `{{ SKILLS.DO_CODE }}` did not
-   already cover — then record its outcome the same way:
-   ```bash
-   uv run maverick report end --auto --issue {{ ARGUMENTS }} --outcome <success|failure>
-   ```
-   When `/{{ SKILLS.DO_TEST }}` returns, proceed to step 4.
-4. **Create a conventional commit** referencing the issue number.
-5. **Push immediately.**
-   - If this is the first push on the branch, set upstream:
-     `git push -u origin <branch>`.
-   - If on a stacked branch, run the retarget check per
-     `{{ SKILLS.MAV_STACKED_PRS }}` **before every push**.
-6. **Log the commit** to the workflow report. SHA and subject come from
-   git; the timestamp is wall-clock at the moment of this CLI call:
-   ```bash
-   SHA=$(git rev-parse HEAD)
-   SUBJECT=$(git log -1 --pretty=%s)
    uv run maverick report commit --issue {{ ARGUMENTS }} \
-       --phase implement --sha "$SHA" --subject "$SUBJECT"
+       --phase implement --sha "<commit>" --subject "<subject>"
    ```
-7. **Check the task off durably** — `uv run maverick tasks check <repo> {{ ARGUMENTS }} <n>`
+4. **Check the task off durably** — `uv run maverick tasks check <repo> {{ ARGUMENTS }} <n>`
    (or close the sub-issue). Never PATCH the comment body by hand.
-8. **Verify the heartbeat daemon is alive:**
+5. **Verify the heartbeat daemon is alive:**
    `uv run maverick coord heartbeat-status <repo> {{ ARGUMENTS }}` — if it
    reports not running, treat it as claim-lost: stop pushing, re-run the
    Phase 0 entry check before continuing.
 
-After the last task, run the full verification suite once more.
+After the last task, run the full verification suite once more, output
+to a log and read back failures only (see "Dispatching agents"). If it
+fails, dispatch the implementer in `fix` mode with the failing lines
+only, then run the suite again.
 
 **Checkpoint**: `uv run maverick task-progress set <repo> {{ ARGUMENTS }} implement`.
 
@@ -393,9 +432,11 @@ its impact set.
        --text "verdict=<V> files=<n> checklist=<n pass>/<n> checks=<n failed>/<n> findings=<n by severity>"
    ```
 5. **Act on the verdict:**
-   - **BLOCKING** — do not open the PR. Fix the BLOCKING findings as
-     tasks in Phase 5 (implement, test, commit, push), then re-run this
-     phase from step 1. If a finding cannot be fixed within the issue's
+   - **BLOCKING** — do not open the PR. Fix each BLOCKING finding by
+     dispatching {{ AGENTS.AGENT_IMPLEMENTER }} in `fix` mode with that
+     finding only (severity, location, description, recommendation),
+     then handle its result as in Phase 5 steps 2–3 and re-run this phase
+     from step 1. If a finding cannot be fixed within the issue's
      scope (it needs an auth or infrastructure change the issue does not
      authorise, or a product decision), halt and surface the findings to
      the user verbatim.
@@ -424,7 +465,8 @@ its impact set.
 ## Phase 8: Open PR + Monitor CI
 
 1. Pre-push verification per `{{ SKILLS.MAV_LOCAL_VERIFICATION }}` — a final
-   green check before asking for review.
+   green check before asking for review. Output to a log, failures only;
+   a failure goes to {{ AGENTS.AGENT_IMPLEMENTER }} in `fix` mode.
 2. Stacked-PR retarget check per `{{ SKILLS.MAV_STACKED_PRS }}` if the branch
    stacks on a sibling. Retarget before opening the PR if the sibling is now
    merged.
@@ -466,8 +508,11 @@ its impact set.
    uv run maverick pr wait <repo> <pr-num> --checks --timeout 30m
    ```
    - Exit 0: checks green — continue.
-   - Exit 5: checks failed — read the logs per `{{ SKILLS.MAV_BP_CICD }}`,
-     fix locally, push, re-run the wait.
+   - Exit 5: checks failed — find the failing job and its failing lines
+     per `{{ SKILLS.MAV_BP_CICD }}` (read the failures, not the whole
+     log: `gh run view <run-id> --log-failed | tail -n 60`), dispatch
+     {{ AGENTS.AGENT_IMPLEMENTER }} in `fix` mode with those lines only,
+     handle its result as in Phase 5 steps 2–3, then re-run the wait.
    - Exit 3: timeout — investigate the stuck check (a required check
      that never reports blocks auto-merge too); report to the user if
      it cannot be resolved.
@@ -589,7 +634,10 @@ next step is eject-to-human, not iterate.
    ```
    This also turns auto-merge off, so an approval left from the last
    pass cannot merge the new head. Then go back through Phase 8 step 5,
-   Phase 9 and this step. The
+   Phase 9 and this step. Dispatch a fresh
+   {{ AGENTS.AGENT_CODE_REVIEWER }} for the re-run of Phase 9, and tell it
+   which commits are new since its last PASS: it may narrow its review
+   to those commits, because that PASS completed both stages. The
    commonest case is auto-merge stalling because branch protection
    requires the branch to be up to date with its base.
 4. The Maverick GitHub App posts the approval:
@@ -763,6 +811,9 @@ its own single issue.
   the feature branch → PR.
 - **Always use conventional commits** referencing `#{{ ARGUMENTS }}`.
 - **Push after every task.** Durability trumps CI-cost optimisation.
+- **Implementation runs in subagents.** Every task and every fix goes to
+  a fresh {{ AGENTS.AGENT_IMPLEMENTER }} in the foreground. You keep its
+  summary, never the code or the logs it read.
 - **Binary review.** PASS auto-merges; FAIL ejects. No fix loop.
 - **Draft until settled.** The PR is opened as a draft and marked ready
   only by Phase 10 step 3 or by an eject. Any later push to the branch

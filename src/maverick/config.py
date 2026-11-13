@@ -8,6 +8,7 @@ worker, and build_ami without side effects.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -895,6 +896,52 @@ def read_llm_config(path: Path | None = None) -> LlmConfig:
     repo_block = repo_raw.get("llm") if isinstance(repo_raw, dict) else None
     if isinstance(repo_block, dict):
         _merge_llm_block(result, repo_block)
+    return result
+
+
+#: Model a dispatch may name: an alias (``sonnet``) or a full model id
+#: (``claude-sonnet-5-5``). Anything else is ignored rather than passed on.
+_AGENT_MODEL_RE = re.compile(r"^[a-z][a-z0-9._-]{0,63}$")
+
+
+def read_agent_models(path: Path | None = None) -> dict[str, str]:
+    """Read the ``agent_models`` map: agent name → model to dispatch it on.
+
+    Workflow skills pass the value as the dispatch's ``model`` override,
+    so a project can run its analyst or planner on a cheaper model while
+    the reviewers and implementers stay on the strongest one (#181).
+
+    Merged user (``~/.maverick/config.json``) then repo
+    (``.maverick/config.json``), repo winning by key. Values that are not
+    a plausible model name are dropped with a warning; ``inherit`` (or an
+    empty string) removes an entry, so a repo can undo a user-level route.
+
+    Kept out of ``CONFIG_DEFAULTS`` on purpose: that schema treats every
+    key of a section as fixed, so arbitrary agent names would read as
+    unknown keys and config healing would drop them.
+    """
+    target = path or project_config_path()
+    layers = [
+        _load_json(SYSTEM_CONFIG_FILE) if SYSTEM_CONFIG_FILE.exists() else {},
+        _load_json(target),
+    ]
+    result: dict[str, str] = {}
+    for raw in layers:
+        block = raw.get("agent_models") if isinstance(raw, dict) else None
+        if not isinstance(block, dict):
+            continue
+        for agent, model in block.items():
+            if not isinstance(agent, str) or not isinstance(model, str):
+                continue
+            if model in ("", "inherit"):
+                result.pop(agent, None)
+            elif _AGENT_MODEL_RE.match(model):
+                result[agent] = model
+            else:
+                print(
+                    f"warning: agent_models.{agent} = {model!r} is not a model name; ignored",
+                    file=sys.stderr,
+                )
     return result
 
 

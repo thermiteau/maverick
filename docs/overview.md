@@ -140,10 +140,12 @@ maverick/
 │   ├── do-epic/                # Epic-driven parallel workflow
 │   ├── do-upskill/             # Project skill generation
 │   └── ...                     # Execution, governance, debugging
-├── agents/                     # Autonomous workers (5 agents, build output)
+├── agents/                     # Autonomous workers (7 agents, build output)
 │   ├── agent-code-reviewer.md
-│   ├── agent-issue-analyst.md
 │   ├── agent-github-issue-planner.md
+│   ├── agent-implementer.md
+│   ├── agent-issue-analyst.md
+│   ├── agent-security-reviewer.md
 │   ├── agent-session-reviewer.md
 │   └── agent-tech-docs-writer.md
 ├── hooks/                      # Hook config + shim calling `maverick hook` (build output)

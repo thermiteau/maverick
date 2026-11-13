@@ -218,11 +218,29 @@ This is the core loop and is identical for epic-driven and standalone work:
 
 1. **Re-verify the claim.** A late `blocked-by` propagation from a sibling ejection or an expired lease aborts the story before any push.
 2. **Branch.** From `story_base` (the repo's default branch unless overridden) for an independent story; from a sibling branch when the story depends on a sibling whose PR is open but not yet merged (stacked PR pattern).
-3. **Implement task by task.** Each task: implement (via `do-code`) → local verification (lint, typecheck, tests) → conventional commit referencing the issue → **push immediately** → check the task off durably (`maverick tasks check`). Pushing per task is a durability checkpoint — if the machine dies between tasks, the work survives. Dispatch intervals for the workflow report are recorded automatically by the plugin's lifecycle hooks; the model's only bookkeeping is a one-line outcome record per inner-skill dispatch.
+3. **Implement task by task.** Each task goes to a fresh `agent-implementer` subagent, dispatched in the foreground: it runs `do-code`, verifies locally (lint, typecheck, tests), makes a conventional commit referencing the issue, **pushes immediately**, and returns a short structured result (status, commit, files, verification, anything unexpected). The story agent then logs the commit and checks the task off durably (`maverick tasks check`). Pushing per task is a durability checkpoint — if the machine dies between tasks, the work survives. Fixes take the same route: a BLOCKING security finding, a failed CI check or a red final verification goes to an implementer in `fix` mode with only the finding or the failing lines.
+
+   The story agent's context is re-read on every call it makes, so it is kept for coordination. Measured on one project, story agents averaged about 230k tokens of context per call over 400–800 calls per story, and that context re-read was about two-thirds of all usage. Code, test output and fix iterations now stay in the implementer's short-lived context. Command output is written to a log under `.maverick/tmp/` and read back as the summary and the failures, never the whole log. Dispatch intervals for the workflow report are recorded automatically by the plugin's lifecycle hooks; the implementer closes the `do-code` interval it opened.
 4. **Wrap up.** After the last task: full verification, then two mandatory pre-push reviews (always run, no skip path):
    - **Documentation review** builds the diff and a candidate-doc shortlist in one deterministic step (`maverick docs shortlist`), then dispatches `agent-tech-docs-writer` in `update` mode — updating stale docs and creating new ones for new components. The shortlist combines words from the diff, `docs/` paths the issue cites, and the repo's own `docs.shortlist_commands` (for example a route → help-topic map), and is written to a per-worktree directory so parallel stories never collide. Docs that belong to someone else (`docs.owners`, e.g. product specs or accepted ADRs) are never edited by the writer: drift in them goes to the owner's agent, or to a labelled follow-up issue. "No changes required" is a valid outcome but is recorded explicitly, with an evidence note in the workflow report.
    - **Security review** dispatches `agent-security-reviewer`, a read-only agent with a fresh context, so the author never reviews their own work. It applies the project's security checklist from `docs/maverick/skills/`, runs `maverick checks run`, and reviews the changed code AND the code that could be impacted by it (callers, importers, dependents — bounded to one or two hops). Returns PASS / FINDINGS / BLOCKING. **BLOCKING halts the workflow** and routes the user back to implementation. After two BLOCKING rounds on the same file or mechanism, the agent stops point-patching: it switches that mechanism to a fail-closed design or ejects to a human. FINDINGS are folded into the PR description so the human reviewer and `agent-code-reviewer` see them; PASS is recorded as `Security review: no concerns.`
    - Then: stacked-PR retarget guard if applicable, final push, and a **bounded** CI wait (`maverick pr wait --checks --timeout 30m` — distinct exit codes for green, failed, and timed-out checks; no unbounded polling). The PR opens as a **draft**: GitHub refuses to merge a draft, so nobody can merge it while the agent is still gating it.
+
+### Model routing per agent
+
+A project can run each dispatched agent on a different model with an `agent_models` map in `.maverick/config.json` (or `~/.maverick/config.json`, which the repo file overrides by key):
+
+```json
+{
+  "agent_models": {
+    "agent-issue-analyst": "sonnet",
+    "agent-github-issue-planner": "sonnet",
+    "agent-tech-docs-writer": "sonnet"
+  }
+}
+```
+
+Before each dispatch the workflow runs `maverick agent-model <agent>` and passes a non-empty result as the dispatch's `model` override; an unrouted agent keeps its own pinned model or inherits the caller's. `inherit` removes a user-level route for one repo. Report rows for a routed agent record the routed model. The analyst, planner and docs writer run well on a cheaper model. Leave the reviewers and the implementer, whose work decides what merges, on the strongest one: `agent-code-reviewer` is pinned to a strong model for that reason, and a route overrides the pin.
 
 ### Code review — binary gate
 
@@ -253,6 +271,7 @@ When a story in an epic is ejected, `maverick bprop run` labels every transitive
 | GitHub is the source of truth                          | Any instance can recover full state by reading the epic issue's comments and labels      |
 | Lease + heartbeat with short TTL                       | Machine death is detected within minutes, not hours; another instance can take over      |
 | Push after every task                                  | Work survives machine death at task granularity, not story granularity                   |
+| Each task runs in a fresh implementer subagent         | The story agent's context stays small, so its hundreds of calls stay cheap               |
 | Code review is binary and the only merge gate           | No silent low-quality merges; rejection routes to human, not back to the agent           |
 | The verdict is a parsed marker, absent ⇒ FAIL          | The most consequential parse in the system cannot be gamed by persuasive prose           |
 | A PR is a draft until the agent is done                | GitHub refuses to merge a draft, so a human can't merge a PR mid-gate                     |

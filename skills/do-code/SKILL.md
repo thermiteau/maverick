@@ -15,10 +15,12 @@ inside `do-issue-solo` / `do-issue-guided` /
 `do-epic` Phase 5. The argument is a one-line task
 description that gets logged in the report.
 
-This skill is a thin wrapper. The actual edits are made by the
-orchestrating Claude Code session using its built-in tools (Read, Edit,
-Write, Bash, Grep). The skill's job is to pin standards and scope, not
-to perform the edits in a subagent.
+This skill is a thin wrapper. The actual edits are made by the session
+that invoked it, using its built-in tools (Read, Edit, Write, Bash,
+Grep). In `do-issue-solo` that is a
+`agent-implementer` subagent dispatched for the one task, so
+the story agent's context never holds the code. The skill's job is to
+pin standards and scope.
 
 ## Project rules (mandatory)
 
@@ -110,8 +112,9 @@ hand-back to the caller's next numbered step, not a completion event
 (#106).
 
 When you return from this skill, **do not** post a closing summary, do
-not stop, do not treat verification-green as "task done." The calling
-workflow's loop still owns, in order:
+not stop, do not treat verification-green as "task done." The caller
+still owns, in order (inside `agent-implementer`, its own
+process steps cover 1–3 and the story agent does 4–6):
 
 1. Closing the `skill-dispatch` interval that wrapped this invocation
    (`uv run maverick report end skill-dispatch … --outcome success`).

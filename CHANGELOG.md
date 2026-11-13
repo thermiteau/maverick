@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`do-issue-solo` implements each task in a fresh subagent** (#181). Phase 5
+  dispatches the new `agent-implementer` once per task: it runs `do-code`,
+  verifies, commits and pushes, and returns a short structured result. BLOCKING
+  security findings, failed CI checks and a red final verification go to an
+  implementer in `fix` mode with only the finding or the failing lines. The
+  story agent no longer reads the task's code or test output. On a measured
+  project it had averaged about 230k tokens of context per call, re-read on
+  every one of 400–800 calls per story.
+- **Command output is read back as failures only.** `mav-local-verification`
+  and the implementer send test, typecheck, lint and build output to a log under
+  `.maverick/tmp/` and read the summary and the failures.
+
+### Added
+
+- **Per-agent model routing** (#181). An `agent_models` map in
+  `.maverick/config.json` (or `~/.maverick/config.json`) names a model per
+  dispatched agent; `maverick agent-model <agent>` prints it, and
+  `do-issue-solo` passes it as the dispatch's `model` override. Report rows for a
+  routed agent record the routed model.
+
 ## [5.3.0] - 2026-11-13
 
 ## [5.2.5] - 2026-11-13

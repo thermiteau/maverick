@@ -238,6 +238,18 @@ def main():
         help="New value for the flag",
     )
 
+    # Per-agent model routing for workflow dispatches (#181)
+    agent_model_parser = subparsers.add_parser(
+        "agent-model",
+        help="Print the model an agent should be dispatched on (agent_models config)",
+    )
+    agent_model_parser.add_argument(
+        "agent", nargs="?", help="Agent name; omit to list every route"
+    )
+    agent_model_parser.add_argument(
+        "--json", action="store_true", help="Emit JSON instead of plain text"
+    )
+
     # maverick hook — listed for --help only; main() dispatches it before parsing.
     subparsers.add_parser(
         "hook", help="Run a plugin hook handler on a runtime hook payload (stdin)"
@@ -311,6 +323,13 @@ def main():
         from maverick.integration_cli import main as integration_main
 
         integration_main(args)
+
+    elif args.command == "agent-model":
+        import sys as _sys
+
+        from maverick.agent_model_cli import main as agent_model_main
+
+        _sys.exit(agent_model_main(args))
 
     elif args.command == "preflight":
         import sys as _sys
