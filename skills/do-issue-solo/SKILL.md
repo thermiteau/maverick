@@ -839,4 +839,4 @@ its own single issue.
 - **Never remove a `blocked-by:#N` label from inside the workflow.** Only a
   human may clear a block.
 
-<!-- maverick-plugin-version: 5.3.1-dev -->
+<!-- maverick-plugin-version: 5.3.1 -->
